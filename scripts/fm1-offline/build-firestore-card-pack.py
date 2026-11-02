@@ -199,7 +199,7 @@ def self_test():
     assert parse_cost("8301")["known"] is False
     assert parse_cost("0100")["cost"]=={"neutral":0}
     assert parse_cost("")["known"] is False
-    assert CATEGORY[5]=="enchant" and EXPECTED==sum(EXPECTED.values())
+    assert CATEGORY[5]=="enchant" and sum(EXPECTED.values())==TOTAL
     assert expected_large_image_name({"id":"land-card","sourceFields":{"Category":1,"KIND":5}})=="L00005L.webp"
     assert expected_large_image_name({"id":"magic-card","sourceFields":{"Category":3,"KIND":3861}})=="M03861L.webp"
     assert expected_large_image_name({"id":"enchant-card","sourceFields":{"Category":5,"KIND":823}})=="E00823L.webp"
