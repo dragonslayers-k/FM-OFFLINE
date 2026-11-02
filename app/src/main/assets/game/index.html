@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="theme-color" content="#101522">
+  <title>Fantasy Masters Offline</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <header class="topbar">
+      <div class="brand-mark">FM</div>
+      <div class="brand-copy">
+        <div class="brand-title">FANTASY MASTERS</div>
+        <div class="brand-subtitle">OFFLINE SOLO PROTOTYPE · v0.1.8</div>
+      </div>
+      <div class="offline-pill"><span></span> OFFLINE</div>
+    </header>
+
+    <nav class="tabs" aria-label="메뉴">
+      <button class="tab active" data-tab="duel">대전</button>
+      <button class="tab" data-tab="deck">덱 편집</button>
+      <button class="tab" data-tab="library">카드 도감</button>
+      <button class="tab" data-tab="data">데이터 관리</button>
+    </nav>
+
+    <main>
+      <section id="tab-duel" class="tab-panel active">
+        <div class="match-toolbar">
+          <div>
+            <div class="eyebrow">SINGLE PLAYER</div>
+            <h1>AI 대전</h1>
+          </div>
+          <div class="toolbar-controls">
+            <select id="difficulty" aria-label="AI 난이도">
+              <option value="easy">쉬움</option>
+              <option value="normal" selected>보통</option>
+              <option value="hard">어려움</option>
+            </select>
+            <button id="new-match" class="button button-gold">새 대전</button>
+          </div>
+        </div>
+
+        <div class="round-line">
+          <span id="round-label">ROUND 1</span>
+          <span id="phase-label">나의 공격 준비</span>
+          <span id="turn-status" class="status-chip">진행 중</span>
+        </div>
+        <section class="battle-feed-panel" aria-live="polite">
+          <span class="eyebrow">LATEST ACTION</span>
+          <strong id="battle-feed">전투가 시작되면 주요 행동이 여기에 표시됩니다.</strong>
+        </section>
+
+        <section class="player-board enemy-board">
+          <div class="player-head">
+            <div class="avatar ai-avatar">AI</div>
+            <div class="player-info"><strong>AI 상대</strong><small id="ai-status">대기 중</small></div>
+            <div class="deck-stat"><b id="ai-deck-count">30</b><small>서고</small></div>
+            <div class="deck-stat"><b id="ai-hand-count">6</b><small>패</small></div>
+            <button id="ai-graveyard" class="graveyard-button">AI 무덤 0</button>
+          </div>
+          <div class="field-label"><span>AI 지형 <b id="ai-land-count">0/10</b></span><span class="field-resources"><b id="ai-lp">LP 0</b><span id="ai-soul">소울 0</span><span id="ai-deploy-limit">유닛 배치 0/0</span></span></div>
+          <div id="ai-lands" class="land-row"></div>
+          <div class="field-label"><span>AI 마법 슬롯</span><span id="ai-spell-count">0장</span></div>
+          <div id="ai-spells" class="spell-row"></div>
+          <div class="field-label"><span>AI 유닛 슬롯</span><span id="ai-unit-count">0장</span></div>
+          <div id="ai-units" class="unit-row"></div>
+        </section>
+
+        <div class="battle-divider"><span>전투 처리</span><small>공격 마법 → 방어 마법 → 유닛 슬롯</small><i></i></div>
+
+        <section class="player-board player-board-self">
+          <div class="player-head self-head">
+            <div class="avatar user-avatar">YOU</div>
+            <div class="player-info"><strong>플레이어</strong><small id="player-status">준비 단계</small></div>
+            <div class="deck-stat"><b id="player-deck-count">30</b><small>서고</small></div>
+            <div class="deck-stat"><b id="player-hand-count">6</b><small>패</small></div>
+            <button id="player-graveyard" class="graveyard-button">내 무덤 0</button>
+          </div>
+          <div class="field-label"><span>나의 유닛 슬롯</span><span id="player-unit-count">0장</span></div>
+          <div id="player-units" class="unit-row"></div>
+          <div class="field-label"><span>나의 마법 슬롯</span><span id="player-spell-count">0장</span></div>
+          <div id="player-spells" class="spell-row"></div>
+          <div class="field-label"><span>나의 지형 <b id="player-land-count">0/10</b></span><span class="field-resources"><b id="player-lp">LP 0</b><span id="player-soul">소울 0</span><span id="player-deploy-limit">유닛 배치 0/0</span></span></div>
+          <div id="player-lands" class="land-row"></div>
+          
+        </section>
+
+        <section class="hand-panel">
+          <div class="hand-title"><div><span class="eyebrow">YOUR HAND</span><h2>보유 카드 <small id="hand-size">6 / 6</small></h2></div><span class="hint">카드를 선택해 사용</span></div>
+          <div id="hand-cards" class="hand-cards"></div>
+          <div id="selected-card-panel" class="selected-card-panel empty">사용할 카드를 선택하십시오.</div>
+          <div class="action-row">
+            <button id="play-card" class="button button-primary" disabled>선택한 카드 사용</button>
+            <button id="discard-card" class="button button-danger" disabled>선택 카드 버리기</button>
+            <button id="reshuffle-hand" class="button button-secondary">핸드 다시 받기 · 1장 소각</button>
+            <button id="end-phase" class="button button-secondary">준비 완료</button>
+          </div>
+        </section>
+
+        <section class="log-panel">
+          <div class="panel-title"><h2>전투 기록</h2><button id="clear-log" class="text-button">접기</button></div>
+          <div id="game-log" class="game-log"></div>
+        </section>
+      </section>
+
+      <section id="tab-deck" class="tab-panel">
+        <div class="page-heading"><div class="eyebrow">DECK CONSTRUCTION</div><h1>덱 편집</h1><p>현재 덱은 50장입니다. 카드 데이터에서 원하는 카드를 선택해 편성할 수 있습니다.</p></div>
+        <div class="deck-summary"><div><strong id="deck-count">50</strong><small> / 50장</small></div><div class="deck-actions"><select id="starter-faction" aria-label="기본 덱 속성"><option value="forest">숲</option><option value="fire">불</option><option value="water">물</option><option value="dark">암흑</option><option value="metal">금속</option><option value="earth">대지</option><option value="light">빛</option></select><button id="starter-deck" class="button button-secondary">속성 기본 덱</button><button id="save-deck" class="button button-gold">저장</button></div></div>
+        <div class="deck-progress"><span id="deck-progress-bar"></span></div>
+        <div id="deck-list" class="deck-list"></div>
+        <div class="section-subhead"><h2>카드 추가</h2><input id="deck-search" type="search" placeholder="카드명 검색"></div>
+        <div id="deck-catalogue" class="catalogue-list"></div>
+      </section>
+
+      <section id="tab-library" class="tab-panel">
+        <div class="page-heading"><div class="eyebrow">CARD DATABASE</div><h1>카드 도감</h1><p>설치된 카드 데이터팩의 카드 정보를 검색하고 상세 내용을 확인할 수 있습니다.</p></div>
+        <div class="filter-row">
+          <input id="library-search" type="search" placeholder="카드 이름·능력 검색">
+          <select id="filter-type"><option value="all">전체 종류</option><option value="land">지형</option><option value="unit">유닛</option><option value="item">아이템</option><option value="spell">마법</option><option value="enchant">인챈트</option></select>
+          <select id="filter-faction"><option value="all">전체 속성</option><option value="dark">암흑</option><option value="fire">불</option><option value="water">물</option><option value="forest">숲</option><option value="metal">금속</option><option value="earth">대지</option><option value="light">빛</option><option value="neutral">무속성</option></select>
+        </div>
+        <div id="library-grid" class="library-grid"></div>
+      </section>
+
+      <section id="tab-data" class="tab-panel">
+        <div class="page-heading"><div class="eyebrow">LOCAL DATA</div><h1>데이터 관리</h1><p>게임 앱과 카드 DB·일러스트를 분리했습니다. 아래에서 별도 배포한 FM1 카드 데이터팩 ZIP을 최초 1회 가져오면 이후 오프라인으로 사용할 수 있습니다.</p></div>
+        <div class="notice-card"><strong>원작 복원 데이터 관련</strong><p>FAN-MADE MASTERS와 FM LUNATIC은 카드명·능력·구성·속성 분류를 대조하는 참고 대상으로 사용할 수 있습니다. 다만 해당 사이트의 이미지 파일과 카드 데이터베이스를 그대로 추출·재배포할 권한은 확인되지 않았습니다. 현재 앱에는 무단 복제된 이미지가 포함되어 있지 않습니다.</p><p>원작 또는 FAN-MADE MASTERS의 일러스트는 권리자 허락이나 명시적 이용허락이 확인된 파일을 제공받은 뒤 앱의 assets/game/cards/ 폴더에 포함하는 방식으로 처리합니다. 카드 JSON의 artImage에는 cards/파일명.webp 경로를 지정합니다.</p></div>
+        <div class="import-card">
+          <h2>FM1 카드 데이터팩 설치</h2>
+          <p>카드 DB와 일러스트는 APK와 분리되어 있습니다. GitHub Actions의 Fantasy Masters Offline v0.1.8 APK 작업에서 Run workflow를 실행하고 build_card_pack을 켜면 FM1-CardData-v1.1.0.zip이 생성됩니다. 성공한 실행의 Artifacts에서 ZIP을 내려받은 뒤 아래에서 가져오면 이후 오프라인으로 사용할 수 있습니다. ZIP은 수백 MB일 수 있으므로 Wi-Fi와 충분한 저장 공간을 권장합니다.</p>
+          <div class="action-row"><button id="download-data-pack" class="button button-secondary">최신 카드 ZIP 받는 곳 열기</button><button id="import-data-pack" class="button button-primary">카드 ZIP 가져오기</button></div>
+          <div id="data-pack-status" class="data-message">데이터팩이 설치되지 않았습니다.</div>
+          <div id="data-message" class="data-message"></div>
+          <p class="database-only-note">카드 목록은 설치한 FM1 카드 DB 하나만 사용합니다. 데모 카드와 개별 임시 카드 목록은 데이터팩 설치 시 자동으로 제외됩니다.</p>
+        </div>
+        <div class="spec-card"><h2>현재 복원 단계</h2><div class="spec-row"><span>카드 엔트리</span><b id="data-card-count">0</b></div><div class="spec-row"><span>원작 카드 ID 확인</span><b>데이터팩 기준</b></div><div class="spec-row"><span>원작 특수능력 매핑</span><b>기본 효과 복원 · 검증 중</b></div><div class="spec-row"><span>이미지 이용권한 검증</span><b>필요</b></div><div class="spec-row"><span>네트워크 요청</span><b>없음</b></div></div>
+      </section>
+    </main>
+    <footer>독립 팬 프로젝트 · 원작 권리자와 제휴·승인 관계 없음 · 게임 규칙 및 카드 데이터 검증 진행 중</footer>
+  </div>
+
+  <div id="card-modal" class="modal hidden" role="dialog" aria-modal="true"><div class="modal-card card-detail-modal"><div class="modal-head"><div><span class="eyebrow">CARD DETAIL</span><h2>카드 상세</h2></div><button id="close-card-modal" class="icon-button" aria-label="닫기">×</button></div><div id="card-detail-content"></div></div></div>
+
+  <div id="graveyard-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card graveyard-modal-card">
+      <div class="modal-head"><div><span class="eyebrow">GRAVEYARD</span><h2 id="graveyard-title">무덤</h2></div><button id="close-graveyard" class="icon-button" aria-label="닫기">×</button></div>
+      <div id="graveyard-content" class="graveyard-content"></div>
+    </div>
+  </div>
+
+  <div id="target-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card"><div class="modal-head"><div><span class="eyebrow">SELECT TARGET</span><h2>대상 선택</h2></div><button id="close-modal" class="icon-button" aria-label="닫기">×</button></div><div id="target-options" class="target-options"></div></div>
+  </div>
+
+  <script src="verified-costs.js"></script>
+  <script src="card-schema.js"></script>
+  <script src="rules.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
