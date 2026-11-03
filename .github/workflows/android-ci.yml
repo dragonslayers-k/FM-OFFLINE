@@ -262,6 +262,26 @@ jobs:
             unzip -tq "$APK"
           done
 
+      - name: Reclaim runner disk space for Android emulator userdata
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]')) }}
+        run: |
+          set -euo pipefail
+          echo "Disk space before cleanup:"
+          df -h "$RUNNER_TEMP"
+          # These preinstalled toolchains are not used by this Android/Java build.
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
+          sudo rm -rf /usr/local/lib/android/sdk/ndk /usr/local/lib/android/sdk/cmake
+          if command -v docker >/dev/null 2>&1; then
+            sudo docker system prune --all --force || true
+          fi
+          echo "Disk space after cleanup:"
+          df -h "$RUNNER_TEMP"
+          AVAILABLE_KB=$(df -Pk "$RUNNER_TEMP" | awk 'NR==2 {print $4}')
+          if [ "$AVAILABLE_KB" -lt 8000000 ]; then
+            echo "::error::Less than 8 GB disk space remains; emulator userdata creation requires additional space."
+            exit 1
+          fi
+
       - name: Prepare Android emulator KVM permissions
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]')) }}
         run: |
