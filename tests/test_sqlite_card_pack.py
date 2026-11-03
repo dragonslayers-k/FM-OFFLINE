@@ -90,7 +90,7 @@ class SqliteCardPackTests(unittest.TestCase):
         )
         self.db.execute(
             "INSERT INTO card_effect_clauses VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (1,self.card_id,0,0,10,"clause","아군 AP+1.",'["stat_ap"]','[]',
+            (1,self.card_id,0,0,8,"clause","아군 AP+1.",'["stat_ap"]','[]',
              '["friendly"]','[]','["stat_modify"]',"pattern_candidate")
         )
         self.db.commit()
