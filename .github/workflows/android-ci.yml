@@ -259,6 +259,21 @@ jobs:
             unzip -tq "$APK"
           done
 
+      - name: Prepare Android emulator KVM permissions
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) }}
+        run: |
+          set -euo pipefail
+          if [ -e /dev/kvm ]; then
+            sudo chmod a+rw /dev/kvm
+            ls -l /dev/kvm
+            if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+              echo "::error::/dev/kvm exists but remains inaccessible after permission repair"
+              exit 1
+            fi
+          else
+            echo "::warning::/dev/kvm is not exposed by this runner; emulator startup may be unavailable"
+          fi
+
       - name: Install and launch APK in Android emulator
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) }}
         id: emulator
