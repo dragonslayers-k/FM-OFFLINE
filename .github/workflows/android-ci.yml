@@ -7,6 +7,7 @@ on:
   pull_request:
     branches:
       - main
+    types: [opened, synchronize, reopened, edited]
   workflow_dispatch:
     inputs:
       build_card_pack:
@@ -78,7 +79,7 @@ jobs:
           python scripts/fm1-offline/audit-enchant-cards.py --self-test
 
       - name: Download the audited T SQLite DB release and build Android data ZIP
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.build_card_pack == true) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-card-pack]') || contains(github.event.head_commit.message, '[run-emulator]'))) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.build_card_pack == true) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-card-pack]') || contains(github.event.head_commit.message, '[run-emulator]'))) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]')) }}
         env:
           CARD_DB_RELEASE: https://github.com/dragonslayers-k/T/releases/download/${{ env.CARD_DB_RELEASE_TAG }}
           SOURCE_DIR: ${{ runner.temp }}/fm1-source
@@ -206,7 +207,7 @@ jobs:
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Install Android emulator components
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]')) }}
         run: |
           set -euo pipefail
           sdkmanager "platforms;android-34" "emulator" "system-images;android-34;google_apis;x86_64"
@@ -261,7 +262,7 @@ jobs:
           done
 
       - name: Prepare Android emulator KVM permissions
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]')) }}
         run: |
           set -euo pipefail
           if [ -e /dev/kvm ]; then
@@ -272,11 +273,12 @@ jobs:
               exit 1
             fi
           else
-            echo "::warning::/dev/kvm is not exposed by this runner; emulator startup may be unavailable"
+            echo "::error::/dev/kvm is not exposed by this runner; refusing to waste time on an emulator boot that cannot use KVM"
+            exit 1
           fi
 
       - name: Install and launch APK in Android emulator
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]')) }}
         id: emulator
         timeout-minutes: 25
         uses: reactivecircus/android-emulator-runner@v2.38.0
