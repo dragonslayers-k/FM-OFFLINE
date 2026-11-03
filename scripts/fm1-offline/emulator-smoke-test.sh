@@ -34,7 +34,7 @@ grep -Eq 'Status: ok|LaunchState: (HOT|WARM|COLD)' <<<"$START_OUTPUT" || {
 # images, then require the WebView to parse and normalize every card via pages.
 CARD_LOAD_OK=false
 for attempt in $(seq 1 360); do
-  DATA_LOG="$(adb logcat -d -s FM1CardData:I FM1CardData:E 2>/dev/null || true)"
+  DATA_LOG="$(adb logcat -d -s FM1CardData:V 2>/dev/null || true)"
   if grep -q 'WEBVIEW_CARDS_LOADED=15350/15350' <<<"$DATA_LOG"; then
     CARD_LOAD_OK=true
     break
@@ -66,5 +66,5 @@ APP_PID="$(adb shell pidof "$APP_ID" 2>/dev/null | tr -d '\r\n' || true)"
 test -n "$APP_PID" || { echo "::error::Application process exited after card loading"; exit 1; }
 adb exec-out screencap -p > emulator-screen.png
 test -s emulator-screen.png
-adb logcat -d -s AndroidRuntime:E ActivityManager:E FM1CardData:I FM1CardData:E > emulator-launch-log.txt || true
+adb logcat -d -s AndroidRuntime:E ActivityManager:E FM1CardData:V > emulator-launch-log.txt || true
 echo "Emulator card-data import + WebView load smoke test: PASS ($APP_ID, cards=15350, pid=$APP_PID)"
