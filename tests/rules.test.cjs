@@ -792,3 +792,18 @@ test('compact DB29 Manual Skill1 fields activate only the mapped canonical rule 
     specialSkillMappingStatus:'manual_verified',specialSkillRuleAuthority:'community'};
   assert.equal(FM._test.normalizeSpecialSkillForEngine(forged,forged.skill),'');
 });
+
+
+test('a Skill2-only ability never falls through to the Skill1 combat handler',()=>{
+  const attacker=unit('skill2-only',{
+    skill:'일반공격기술 / 헌신방어',
+    specialSkill1:'없음',
+    specialSkill2:'헌신방어',
+    specialSkillMappingStatus:'no_special_skill',
+    specialSkillRuleAuthority:null,
+    specialSkillRuleId:null,
+    specialSkill2MappingStatus:'unmapped',
+    specialSkill2RuleId:null
+  });
+  assert.equal(FM._test.normalizeSpecialSkillForEngine(attacker,attacker.specialSkill2),'');
+});
