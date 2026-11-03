@@ -32,52 +32,98 @@
     catch (_) { showDataMessage('저장 공간이 부족합니다. 카드 데이터 크기를 줄여주십시오.', true); }
   }
   function mergeCards() {
-    let external = [];
     let packInfo = {};
     let diagnostics = {};
+    imageBaseUri = '';
+    cardDataReadError = '';
+
+    // Read the installed manifest before the larger card payload. A WebView
+    // bridge read error must not prevent us from discovering that a pack is
+    // installed and reporting the correct failure state.
     try {
-      if (window.FMNative && typeof window.FMNative.getCardsJson === 'function') {
-        const parsedPack = JSON.parse(window.FMNative.getCardsJson() || '[]');
-        external = Array.isArray(parsedPack) ? parsedPack
-          : (parsedPack && Array.isArray(parsedPack.cards) ? parsedPack.cards : []);
-      }
       if (window.FMNative && typeof window.FMNative.getDataPackInfo === 'function') {
         packInfo = JSON.parse(window.FMNative.getDataPackInfo() || '{}');
       }
+    } catch (e) {
+      cardDataReadError = '데이터팩 manifest를 읽지 못했습니다: ' + (e && e.message ? e.message : e);
+      console.warn(cardDataReadError, e);
+    }
+    try {
       if (window.FMNative && typeof window.FMNative.getCardDataDiagnostics === 'function') {
         diagnostics = JSON.parse(window.FMNative.getCardDataDiagnostics() || '{}');
       }
       imageBaseUri = window.FMNative && window.FMNative.getImageBaseUri
         ? window.FMNative.getImageBaseUri() : '';
-    } catch (e) { console.warn('외부 카드 데이터팩을 읽지 못했습니다.', e); }
+    } catch (e) {
+      if (!cardDataReadError) cardDataReadError = '카드 데이터 상태 확인 실패: ' + (e && e.message ? e.message : e);
+      console.warn(cardDataReadError, e);
+    }
 
     authoritativeCardPack = packInfo.installed === true;
-    cardDataReadError = '';
     const map = new Map();
-    if (authoritativeCardPack && Array.isArray(external)) {
+    if (authoritativeCardPack && window.FMNative) {
       try {
-        const normalized = window.FMCardSchema && typeof window.FMCardSchema.normalizeMany === 'function'
-          ? window.FMCardSchema.normalizeMany(external) : external;
-        normalized.forEach(card => { if (card && card.id) map.set(card.id, card); });
+        const normalizeBatch = batch =>
+          window.FMCardSchema && typeof window.FMCardSchema.normalizeMany === 'function'
+            ? window.FMCardSchema.normalizeMany(batch) : batch;
+        const addNormalized = batch => {
+          normalizeBatch(batch).forEach(card => {
+            if (card && card.id) map.set(String(card.id), card);
+          });
+        };
+
+        // Avoid sending the entire ~88MB cards.json through one Java/WebView
+        // bridge response. Pages keep each native response small and discard
+        // its raw records immediately after normalization.
+        if (typeof window.FMNative.getCardPageJson === 'function') {
+          let pageIndex = 0;
+          let finished = false;
+          while (!finished) {
+            if (pageIndex > 10000) throw new Error('카드 데이터 페이지 수가 허용 한도를 초과했습니다.');
+            const response = JSON.parse(window.FMNative.getCardPageJson(pageIndex, 250) || '{}');
+            if (response.error) throw new Error(response.error);
+            if (!Array.isArray(response.items)) throw new Error('카드 데이터 페이지 형식이 올바르지 않습니다.');
+            if (response.items.length === 0 && response.hasMore === true) {
+              throw new Error('카드 데이터 페이지를 읽지 못했습니다.');
+            }
+            addNormalized(response.items);
+            finished = response.hasMore !== true;
+            pageIndex++;
+          }
+        } else if (typeof window.FMNative.getCardsJson === 'function') {
+          const parsedPack = JSON.parse(window.FMNative.getCardsJson() || '[]');
+          const sourceCards = Array.isArray(parsedPack) ? parsedPack
+            : (parsedPack && Array.isArray(parsedPack.cards) ? parsedPack.cards : []);
+          addNormalized(sourceCards);
+        } else {
+          throw new Error('이 앱 버전은 카드 데이터 연결 기능을 지원하지 않습니다.');
+        }
       } catch (e) {
-        console.error('FM1 원본 카드 정규화 실패', e);
-        showDataMessage('FM1 카드 원본 필드 검증에 실패했습니다: ' + e.message, true);
+        cardDataReadError = 'FM1 카드 데이터를 완전히 읽지 못했습니다: ' + (e && e.message ? e.message : e);
+        console.error(cardDataReadError, e);
+        showDataMessage(cardDataReadError, true);
       }
     }
+
     // The imported FM1 database is the sole source of playable cards.
     if ((data.extraCards || []).length) { data.extraCards = []; safeWrite(); }
     cards = Array.from(map.values());
-    if (authoritativeCardPack && Number(packInfo.installedCards || 0) > 0 &&
-        cards.length !== Number(packInfo.installedCards)) {
+    const expectedCards = Number(packInfo.installedCards || 0);
+    if (authoritativeCardPack && expectedCards > 0 && cards.length !== expectedCards) {
       const bytes = Number(diagnostics.bytes || 0);
       const limit = Number(diagnostics.limitBytes || 0);
-      cardDataReadError = diagnostics.reason && diagnostics.reason !== 'ready'
+      const mismatch = (diagnostics.reason && diagnostics.reason !== 'ready')
         ? diagnostics.reason
-        : 'WebView parsed ' + cards.length + ' / ' + Number(packInfo.installedCards) + ' installed cards';
+        : 'WebView parsed ' + cards.length + ' / ' + expectedCards + ' installed cards';
+      cardDataReadError = cardDataReadError ? cardDataReadError + ' · ' + mismatch : mismatch;
       if (bytes && limit && bytes > limit) {
         cardDataReadError += ' (cards.json ' + bytes.toLocaleString() + ' bytes; bridge limit ' + limit.toLocaleString() + ')';
       }
       console.error('Installed FM1 card payload could not be loaded completely:', cardDataReadError);
+    }
+    if (window.FMNative && typeof window.FMNative.reportCardDataLoad === 'function') {
+      try { window.FMNative.reportCardDataLoad(cards.length, expectedCards, cardDataReadError); }
+      catch (e) { console.warn('카드 데이터 로딩 상태를 Native에 전달하지 못했습니다.', e); }
     }
     cardById = new Map(cards.map(c => [c.id, c]));
     cardSearchIndex = new Map(cards.map(c => [c.id,
