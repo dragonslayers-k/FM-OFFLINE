@@ -138,11 +138,12 @@ for (const [key, expected] of skill2Expected) {
     // Evidence references deliberately preserve exact source HTML/text. Compare
     // them with the raw pack record, not the normalized display text (which has
     // tags/entities/line breaks decoded for rendering).
-    if (!card || !rawCard || ref.sourceCardUrl !== card.sourceCardUrl ||
-        ref.sourceListUrl !== card.sourceListUrl || ref.name !== card.name ||
+    if (!card || !rawCard || ref.sourceCardUrl !== (rawCard.sourceCardUrl ?? null) ||
+        ref.sourceListUrl !== (rawCard.sourceListUrl ?? null) || ref.name !== rawCard.name ||
         ref.text !== (rawCard.text || '') || ref.description !== (rawCard.description || '') ||
-        ref.faction !== card.faction || ref.unitAbility !== card.unitAbility ||
-        ref.level !== card.level || ref.ap !== card.ap || ref.dp !== card.dp || ref.hp !== card.hp) {
+        ref.faction !== (rawCard.faction ?? null) || ref.unitAbility !== (rawCard.unitAbility ?? null) ||
+        ref.level !== (rawCard.level ?? null) || ref.ap !== (rawCard.ap ?? null) ||
+        ref.dp !== (rawCard.dp ?? null) || ref.hp !== (rawCard.hp ?? null)) {
       throw new Error('Skill2 card raw evidence link/text mismatch: ' + String(ref.cardId));
     }
   }
