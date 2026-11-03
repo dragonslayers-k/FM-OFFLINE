@@ -86,3 +86,8 @@ This is an implementation schema, **not a confirmed export schema from the origi
 지형의 실제 생산량은 `SoulType`이나 `MuSoul`에서 추정하지 않고 `EarnSoulList`와 `Enum+EarnSoul`로 해석한다. 일반 색상 심볼, 두 색 조합 심볼, `ALL`(7색 각 1개), `MU01/02/03`(무소울 1/2/3개)를 토큰 단위로 저장한다. `SPELL`은 일반 소울이 아니라 매직랜드 특수 효과 표시이므로, 일반 지형처럼 소울을 만들어내지 않는다. 매직랜드는 별도 발동 규칙이 구현되기 전까지 게임 엔진에서 일반 지형으로 설치하지 않는다.
 
 현재 데이터팩은 원본 토큰·아이콘·원문 텍스트를 보존한다. 설치 비용 미해석 및 매직랜드 효과 미구현은 정상 완료가 아니라 검증 대기 상태로 표시한다.
+
+
+## 1.1.1 converter validation source
+
+The 1.1.1 Android pack conversion is pinned to the audited T Release `fm1-carddb-26`. Its source asset hashes are checked before conversion. Land installation now requires both verified LP and a parsed `RequireSoul` cost; land production uses `EarnSoulList` with the live `Enum+EarnSoul` symbols. MagicLand (`SPELL`) records remain preserved but cannot be played as ordinary producing terrain until their card-specific soul-cost effects are implemented.
