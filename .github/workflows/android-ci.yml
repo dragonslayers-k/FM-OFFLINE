@@ -62,7 +62,7 @@ jobs:
       - name: Inspect source soul-production enum and land data
         if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, 'inspect-source-fields') }}
         env:
-          CARD_DB_RELEASE: https://github.com/dragonslayers-k/T/releases/download/fm1-carddb-25
+          CARD_DB_RELEASE: https://github.com/dragonslayers-k/T/releases/download/fm1-carddb-26
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/fm1-inspect"
@@ -79,7 +79,7 @@ jobs:
       - name: Download the existing card DB release and build Android data ZIP
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.build_card_pack == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[build-card-pack]')) }}
         env:
-          CARD_DB_RELEASE: https://github.com/dragonslayers-k/T/releases/download/fm1-carddb-25
+          CARD_DB_RELEASE: https://github.com/dragonslayers-k/T/releases/download/fm1-carddb-26
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/fm1-source" release-package
@@ -90,9 +90,9 @@ jobs:
           curl --fail --location --retry 3 --retry-delay 2 --retry-all-errors \
             "$CARD_DB_RELEASE/images.tar.gz.part-aa" -o "$RUNNER_TEMP/fm1-source/images.tar.gz.part-aa"
 
-          echo "9f0e615c6f9d46d6a7688902ee5d086232b985a2554195f05dc10b4de05ec193  $RUNNER_TEMP/fm1-source/cards.jsonl.gz" | sha256sum --check
+          echo "f5ff57e79d02bd208fd4ccb8b7d47e0429d2d63ddf01775cb598731f58a2e003  $RUNNER_TEMP/fm1-source/cards.jsonl.gz" | sha256sum --check
           echo "c2dee3748d592679f707c160b37ccc4c3c489d849a69df198675da46e13aac48  $RUNNER_TEMP/fm1-source/enumtable.json" | sha256sum --check
-          echo "06cbc320de83897121b0eecd64ede67f2c37978bc15d00217b3d22c3b9da4643  $RUNNER_TEMP/fm1-source/images.tar.gz.part-aa" | sha256sum --check
+          echo "c4c5440d365470f9a18abd9444c2d3fb103c015f56d652bae930482f0b1d568c  $RUNNER_TEMP/fm1-source/images.tar.gz.part-aa" | sha256sum --check
 
           cat "$RUNNER_TEMP"/fm1-source/images.tar.gz.part-* > "$RUNNER_TEMP/fm1-source/images.tar.gz"
           tar -tzf "$RUNNER_TEMP/fm1-source/images.tar.gz" >/dev/null
@@ -106,7 +106,7 @@ jobs:
 
           test -s release-package/FM1-CardData-v1.1.1.zip
           rm -rf "$RUNNER_TEMP/fm1-pack" "$RUNNER_TEMP/fm1-source"
-          echo "FM1_DATA_PACK_STATUS=built-from-fm1-carddb-25" >> "$GITHUB_ENV"
+          echo "FM1_DATA_PACK_STATUS=built-from-fm1-carddb-26" >> "$GITHUB_ENV"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v6
@@ -243,7 +243,7 @@ jobs:
             echo "Signed release APK: ${RELEASE_APK_STATUS:-not-configured}"
             echo "Emulator installation/launch: ${EMULATOR_OUTCOME:-not-run}"
             echo "Android card ZIP: ${FM1_DATA_PACK_STATUS:-not-built-in-this-run}"
-            echo "Source DB release: https://github.com/dragonslayers-k/T/releases/tag/fm1-carddb-25"
+            echo "Source DB release: https://github.com/dragonslayers-k/T/releases/tag/fm1-carddb-26"
             echo "Card counts: Land 289 / Unit 8633 / Magic 3857 / Item 1748 / Enchant 823"
             echo "Unknown or mixed costs are not treated as free."
           } > release-package/build-status.txt

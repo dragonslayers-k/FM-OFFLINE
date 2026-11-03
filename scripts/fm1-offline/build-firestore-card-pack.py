@@ -437,7 +437,7 @@ def convert(a):
           "enchantIsOfficialFifthType":True},
         "source":{"listUrl":"https://fmlunatic.com/cardlist",
           "cardUrlPattern":"https://fmlunatic.com/card/{documentId}",
-          "databaseRelease":"https://github.com/dragonslayers-k/T/releases/tag/fm1-carddb-25"},
+          "databaseRelease":"https://github.com/dragonslayers-k/T/releases/tag/fm1-carddb-26"},
         "costReview":{
           "knownNonLandCosts":known,"needsReviewNonLandCosts":needs_review,
           "knownLandInstallationSoulCosts":land_cost_known,
