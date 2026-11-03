@@ -543,12 +543,24 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
         "specialSkill1EnumValue":f.get("Skill1") if typ=="unit" else None,
         "specialSkill2EnumValue":f.get("Skill2") if typ=="unit" else None,
         "specialSkill2MappingStatus":(
+            "source_card_verified" if typ=="unit" and skill2_name in SKILL2_SOURCE_VERIFIED_RULES
+            else (source_skill2.get("mappingStatus","no_special_skill") if typ=="unit" and source_skill2 else "no_special_skill")
+        ),
+        "specialSkill2SourceMappingStatus":(
             source_skill2.get("mappingStatus","no_special_skill") if typ=="unit" and source_skill2 else "no_special_skill"
         ),
-        "specialSkill2RuleId":None,
+        "specialSkill2RuleId":(
+            SKILL2_SOURCE_VERIFIED_RULES[skill2_name]["ruleId"]
+            if typ=="unit" and skill2_name in SKILL2_SOURCE_VERIFIED_RULES else None
+        ),
+        "specialSkill2RuleAuthority":(
+            SKILL2_SOURCE_VERIFIED_RULES[skill2_name]["ruleAuthority"]
+            if typ=="unit" and skill2_name in SKILL2_SOURCE_VERIFIED_RULES else None
+        ),
         "specialSkill2ExecutionStatus":(
-            "no-skill" if typ!="unit" or not skill2_name or skill2_name=="없음"
-            else "disabled-until-skill2-rule-review"
+            "source-card-rule-implemented" if typ=="unit" and skill2_name in SKILL2_SOURCE_VERIFIED_RULES
+            else ("no-skill" if typ!="unit" or not skill2_name or skill2_name=="없음"
+                  else "disabled-until-skill2-rule-review")
         ),
         "specialSkillMappingStatus":(
             source_skill1.get("mappingStatus","no_special_skill") if typ=="unit" and source_skill1 else "no_special_skill"
@@ -741,8 +753,40 @@ def self_test():
     assert magic_many["known"] and magic_many["magicLand"] is True
     print("converter self-test: PASS")
 
+SKILL2_SOURCE_VERIFIED_RULES = {
+    "기선제압": {
+        "ruleId":"skill2_tactical_initiative",
+        "ruleAuthority":"card_source",
+        "trigger":"before_incoming_damage",
+        "mechanic":"방어시 공격 유닛 레벨이 방어 유닛 레벨 이하이면 받는 데미지 1 감소",
+        "evidenceNeedle":"데미지를 1 덜 받는다",
+    },
+    "헌신방어": {
+        "ruleId":"skill2_devoted_defense",
+        "ruleAuthority":"card_source",
+        "trigger":"on_self_destroyed",
+        "mechanic":"자신이 파괴되면 아군 필드 다음 유닛의 AP/DP/HP를 각각 1 증가",
+        "evidenceNeedle":"아군 필드 다음 유닛 공방체 +1",
+    },
+    "격노": {
+        "ruleId":"skill2_frenzy_defense",
+        "ruleAuthority":"card_source",
+        "trigger":"after_incoming_damage",
+        "mechanic":"방어시 공격을 받아 감소한 HP만큼 자신의 AP 증가",
+        "evidenceNeedle":"자신의 HP가 깎인 수치만큼 AP 상승",
+    },
+    "홀리오오라": {
+        "ruleId":"skill2_holy_aura",
+        "ruleAuthority":"card_source",
+        "trigger":"before_incoming_damage",
+        "mechanic":"방어시 공격 유닛 AP가 자신의 DP+HP 합의 절반(내림) 이하이면 받는 데미지 무효",
+        "evidenceNeedle":"방/체 합 1/2 이하",
+    },
+}
+
+
 def build_skill2_catalogue(mapping_records, cards, release_tag):
-    """Create a distinct, source-linked Skill2 inventory; never make Skill2 executable by alias."""
+    """Build Skill2 inventory; only exact card-source-described rules with tests are executable."""
     card_by_id={str(card.get("id")):card for card in cards}
     grouped={}
     status_counts=Counter()
@@ -771,6 +815,7 @@ def build_skill2_catalogue(mapping_records, cards, release_tag):
             entry["sourceCandidateRuleIds"].add(str(mapping["ruleId"]))
 
     records=[]
+    executable_rules=set()
     for key,entry in sorted(grouped.items(),key=lambda item:(
         int(item[0][0]) if item[0][0].isdigit() else 10**9,item[0][1])):
         card_ids=sorted(set(entry["cardIds"]))
@@ -791,26 +836,50 @@ def build_skill2_catalogue(mapping_records, cards, release_tag):
             })
         source_name=entry["name"]
         no_skill=source_name in ("","없음") or entry["sourceMappingStatuses"]=={"no_special_skill"}
+        spec=SKILL2_SOURCE_VERIFIED_RULES.get(source_name) if not no_skill else None
+        if spec:
+            evidence_refs=[ref for ref in refs if spec["evidenceNeedle"] in (ref.get("description") or "")]
+            if not evidence_refs:
+                raise RuntimeError("Skill2 rule has no matching exact card-source evidence: "+source_name)
+            executable_rules.add(spec["ruleId"])
+            verification="source_card_verified"
+            execution="source-card-rule-implemented"
+            rule_id=spec["ruleId"]
+            authority=spec["ruleAuthority"]
+            evidence_card_ids=[ref["cardId"] for ref in evidence_refs]
+            mechanic=spec["mechanic"]
+            trigger=spec["trigger"]
+        else:
+            verification="no_special_skill" if no_skill else "extracted_unverified"
+            execution="no-skill" if no_skill else "disabled-until-skill2-rule-review"
+            rule_id=None
+            authority=None
+            evidence_card_ids=[]
+            mechanic=None
+            trigger=None
         records.append({
             "sourceField":"Skill2","enumValue":entry["enumValue"],"name":source_name,
             "cardCount":len(card_ids),"cardIds":card_ids,"cardReferences":refs,
             "sourceMappingStatuses":sorted(entry["sourceMappingStatuses"]),
             "sourceCandidateRuleIds":sorted(entry["sourceCandidateRuleIds"]),
-            "ruleId":None,"ruleAuthority":None,
-            "verificationStatus":"no_special_skill" if no_skill else "extracted_unverified",
-            "executionStatus":"no-skill" if no_skill else "disabled-until-skill2-rule-review"
+            "ruleId":rule_id,"ruleAuthority":authority,
+            "verificationStatus":verification,"executionStatus":execution,
+            "mechanic":mechanic,"trigger":trigger,
+            "evidenceSource":"fmlunatic-card-detail-description" if spec else None,
+            "evidenceCardIds":evidence_card_ids,
+            "evidenceUrl":"https://fmlunatic.com/cardlist" if spec else None
         })
     active_records=[x for x in records if x["verificationStatus"]!="no_special_skill"]
     return {
         "schemaVersion":1,"sourceDatabaseRelease":release_tag,"sourceField":"Skill2",
-        "description":"Independent Skill2 enum inventory with per-card URLs and text. It is not merged with Manual.zip Skill1 attack rules. Every Skill2 mechanic remains disabled until separately evidenced and test-verified.",
+        "description":"Independent Skill2 enum inventory with per-card source URLs and raw text. The four executable entries are exact, repeated card-detail descriptions with dedicated engine tests; all other active entries remain disabled until their own effect evidence and tests are reviewed.",
         "mappingRecordCount":sum(status_counts.values()),"entryCount":len(records),
         "activeSkillCount":len(active_records),"activeCardCount":len(active_card_ids),
         "noSkillCardCount":len(no_skill_card_ids),
         "mappingStatusCounts":dict(sorted(status_counts.items())),
-        "executableRuleCount":0,"records":records
+        "executableRuleCount":len(executable_rules),
+        "records":records
     }
-
 
 def convert(a):
     skill_catalogue_path=Path(a.skill_catalogue)
@@ -890,7 +959,7 @@ def convert(a):
     skill2_catalogue=build_skill2_catalogue(skill_mapping_records,cards,a.db_release_tag)
     if len(cards)==TOTAL and (
         skill2_catalogue["entryCount"]!=189 or skill2_catalogue["activeSkillCount"]!=188
-        or skill2_catalogue["activeCardCount"]!=1366 or skill2_catalogue["executableRuleCount"]!=0
+        or skill2_catalogue["activeCardCount"]!=1366 or skill2_catalogue["executableRuleCount"]!=4
     ):
         raise RuntimeError("DB29 Skill2 inventory validation failed: "+json.dumps({
             k:skill2_catalogue[k] for k in ("entryCount","activeSkillCount","activeCardCount","mappingStatusCounts")
@@ -1016,13 +1085,13 @@ def convert(a):
           "skill2EntryCount":skill2_catalogue["entryCount"],
           "skill2ActiveSkillCount":skill2_catalogue["activeSkillCount"],
           "skill2ActiveCardCount":skill2_catalogue["activeCardCount"],
-          "skill2ExecutableRuleCount":0,
+          "skill2ExecutableRuleCount":skill2_catalogue["executableRuleCount"],
           "effectCandidatesEntry":"card-effect-candidates.json",
           "effectCandidatesSha256":effect_candidate_sha256,
           "manualRuleSource":"Manual.zip / specialability.htm",
           "communitySource":"2017 Inven community reference",
           "communityRulesExecutable":False,
-          "executionPolicy":"Only manual_verified Skill1 mappings are eligible for Manual-baseline handlers. Skill2 is an independent enum inventory with per-card source links and text evidence; no Skill2 entry is executable until its own definition and engine tests are verified. Community candidates and unmapped values never trigger handlers."
+          "executionPolicy":"Manual-verified Skill1 mappings remain eligible for Manual-baseline handlers. Skill2 uses a separate allowlist: only exact card-source descriptions with dedicated engine tests are executable; all other Skill2 community candidates and unmapped values remain reference-only."
         },
         "landSoulProduction":{
           "source":"Firestore EarnSoulList + Enum+EarnSoul",
