@@ -59,6 +59,17 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Inspect source soul-production enum and land data
+        if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[inspect-source-fields]') }}
+        env:
+          CARD_DB_RELEASE: https://github.com/dragonslayers-k/T/releases/download/fm1-carddb-25
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/fm1-inspect"
+          curl --fail --location --retry 3 "$CARD_DB_RELEASE/cards.jsonl.gz" -o "$RUNNER_TEMP/fm1-inspect/cards.jsonl.gz"
+          curl --fail --location --retry 3 "$CARD_DB_RELEASE/enumtable.json" -o "$RUNNER_TEMP/fm1-inspect/enumtable.json"
+          python scripts/fm1-offline/inspect-source-fields.py "$RUNNER_TEMP/fm1-inspect/cards.jsonl.gz" "$RUNNER_TEMP/fm1-inspect/enumtable.json"
+
       - name: Check Firestore-to-Android converter
         run: |
           set -euo pipefail
