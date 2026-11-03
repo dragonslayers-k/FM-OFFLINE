@@ -499,7 +499,7 @@ test('keeps Skill1 and Skill2 separate and leaves Skill2 reference-only',()=>{
   assert.equal(card.specialSkill2ExecutionStatus,'disabled-until-skill2-rule-review');
 });
 
-test('retains only the four exact source-card verified Skill2 rules',()=>{
+test('retains only the eight exact source-card verified Skill2 rules',()=>{
   const card=Schema.normalize({
     id:'skill2-source-verified',name:'두랄의기사',type:'unit',
     specialSkill1:'일반공격기술',specialSkill2:'홀리오오라',
