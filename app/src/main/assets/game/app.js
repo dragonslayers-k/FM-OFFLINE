@@ -551,14 +551,10 @@
     const ruleWarning = costWarning + effectWarning;
     // Keep the exact per-card source page visible in the detail view. Do not
     // derive it from image/archive paths: those are separate provenance fields.
-    let sourceLink = '';
-    try {
-      const sourceUrl = new URL(String(card.sourceCardUrl || ''));
-      if (sourceUrl.protocol === 'https:' && sourceUrl.hostname === 'fmlunatic.com' &&
-          /^\/card\/[A-Za-z0-9_-]+\/?$/.test(sourceUrl.pathname)) {
-        sourceLink = `<section class="native-rule-panel"><h4>카드 원본</h4><a href="${escapeAttr(sourceUrl.href)}" target="_blank" rel="noopener noreferrer">fmlunatic 원본 카드 페이지 열기</a><div class="source-tab-row">${escapeHtml(sourceUrl.href)}</div></section>`;
-      }
-    } catch (_) { /* Missing or malformed source URL remains non-clickable. */ }
+    const safeSourceUrl = window.FMCardSchema.safeSourceCardUrl(card.sourceCardUrl);
+    const sourceLink = safeSourceUrl
+      ? `<section class="native-rule-panel"><h4>카드 원본</h4><a href="${escapeAttr(safeSourceUrl)}" target="_blank" rel="noopener noreferrer">fmlunatic 원본 카드 페이지 열기</a><div class="source-tab-row">${escapeHtml(safeSourceUrl)}</div></section>`
+      : '';
     el('card-detail-content').innerHTML = `<div class="detail-art">${art}</div><h3>${escapeHtml(card.name)}</h3><div class="card-meta">${escapeHtml(cardMeta(card))} · ${escapeHtml(card.rarity || '일반')}</div><div class="detail-cost">비용·설치 조건: ${escapeHtml(costLabel(card))}</div>${extra}${ruleWarning}${contentRows}${tabRows}${sourceLink}<small class="detail-id">카드 ID: ${escapeHtml(card.id)}</small>`;
     el('card-modal').classList.remove('hidden');
   }
