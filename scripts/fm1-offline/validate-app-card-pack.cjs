@@ -5,12 +5,40 @@ const Schema = require('../../app/src/main/assets/game/card-schema.js');
 const FM = require('../../app/src/main/assets/game/rules.js');
 
 const file = process.argv[2];
-if (!file || !fs.existsSync(file)) {
-  console.error('Usage: node validate-app-card-pack.cjs <cards.json>');
+const mappingFile = process.argv[3];
+const effectFile = process.argv[4];
+if (!file || !fs.existsSync(file) || !mappingFile || !fs.existsSync(mappingFile) ||
+    !effectFile || !fs.existsSync(effectFile)) {
+  console.error('Usage: node validate-app-card-pack.cjs <cards.json> <card-skill-mappings.json> <card-effect-candidates.json>');
   process.exit(2);
 }
 const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
 const cards = Schema.normalizeMany(raw);
+const mappingData = JSON.parse(fs.readFileSync(mappingFile, 'utf8'));
+if (mappingData.schemaVersion !== 1 || !Array.isArray(mappingData.records) ||
+    mappingData.recordCount !== mappingData.records.length) {
+  throw new Error('card-skill-mappings.json has an invalid schema or record count');
+}
+const effectData = JSON.parse(fs.readFileSync(effectFile, 'utf8'));
+if (effectData.schemaVersion !== 1 || !Array.isArray(effectData.records) ||
+    effectData.candidateCount !== effectData.records.length ||
+    effectData.clauseCount !== effectData.records.reduce((n,x)=>n+(Array.isArray(x.clauses)?x.clauses.length:0),0)) {
+  throw new Error('card-effect-candidates.json has an invalid schema or record count');
+}
+const skillMappingsByCard = new Map();
+for (const mapping of mappingData.records) {
+  const id = String(mapping.cardId || '');
+  if (!id) throw new Error('A card skill mapping has no cardId');
+  if (!skillMappingsByCard.has(id)) skillMappingsByCard.set(id, []);
+  skillMappingsByCard.get(id).push(mapping);
+}
+const effectCandidatesByCard = new Map();
+for (const candidate of effectData.records) {
+  const id = String(candidate.cardId || '');
+  if (!id) throw new Error('An effect candidate has no cardId');
+  if (!effectCandidatesByCard.has(id)) effectCandidatesByCard.set(id, []);
+  effectCandidatesByCard.get(id).push(candidate);
+}
 const EXPECTED = { land:289, unit:8633, spell:3857, item:1748, enchant:823 };
 const types = Object.create(null);
 const costKnown = Object.create(null);
@@ -49,7 +77,7 @@ for (const card of cards) {
     errors.push(card.id + ': extracted large-image SHA-256 differs from T SQLite');
   }
 
-  const skillMappings = Array.isArray(card.specialSkillMappings) ? card.specialSkillMappings : [];
+  const skillMappings = skillMappingsByCard.get(card.id) || [];
   skillAudit.mappingRows += skillMappings.length;
   let expectedSkill1RuleId = null;
   for (const mapping of skillMappings) {
@@ -69,7 +97,15 @@ for (const card of cards) {
       skillAudit.noSkill++;
     }
   }
+  const sourceSkill1 = skillMappings.find(x => x.sourceField === 'Skill1');
+  const expectedMappingStatus = sourceSkill1 ? sourceSkill1.mappingStatus : 'no_special_skill';
   if (card.type === 'unit') {
+    if (card.specialSkillMappingStatus !== expectedMappingStatus) {
+      errors.push(card.id + ': compact Skill1 mapping status does not match card-skill-mappings.json');
+    }
+    if (card.specialSkillRuleAuthority !== (sourceSkill1?.ruleAuthority || null)) {
+      errors.push(card.id + ': compact Skill1 authority does not match card-skill-mappings.json');
+    }
     if (card.specialSkillRuleId !== expectedSkill1RuleId) {
       errors.push(card.id + ': specialSkillRuleId does not match a Manual-verified Skill1 mapping');
     }
@@ -78,7 +114,10 @@ for (const card of cards) {
     errors.push(card.id + ': non-unit card has an executable unit special-skill rule ID');
   }
 
-  const effectCandidates = Array.isArray(card.effectCandidates) ? card.effectCandidates : [];
+  const effectCandidates = effectCandidatesByCard.get(card.id) || [];
+  if (Number(card.effectCandidateCount || 0) !== effectCandidates.length) {
+    errors.push(card.id + ': compact effect candidate count does not match external candidate file');
+  }
   for (const candidate of effectCandidates) {
     effectAudit.candidates++;
     if (candidate.verificationStatus !== 'pattern_candidate') {
@@ -108,6 +147,9 @@ for (const card of cards) {
   if (card.effectExecutionStatus === 'candidate-only' && card.effect) {
     effectAudit.unexpectedExecutableEffects++;
     errors.push(card.id + ': candidate-only effect is incorrectly executable');
+  }
+  if (effectCandidates.length && card.effectVerificationStatus !== 'pattern_candidate') {
+    errors.push(card.id + ': compact effect verification status does not match candidate file');
   }
 
   if (card.type === 'land') {

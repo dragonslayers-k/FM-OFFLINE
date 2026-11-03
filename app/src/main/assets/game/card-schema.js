@@ -271,14 +271,22 @@
       n.unitAbility=htmlToText(raw.unitAbility||raw.unitType||raw.abilityType||detail['유닛 능력']||detail['유닛 능력 타입']||'');n.unitAbilityTags=normalizeAbility(n.unitAbility);
       n.rank=raw.rank||detail['랭크']||'';
       n.skill=htmlToText(raw.specialSkill||raw.specialAbility||raw.attackSkill||raw.skill||detail['특수공격기술']||detail['특수 공격 기술']||detail['공격기술']||detail['특수 능력']||detail['특수능력']||detail['스킬']||detail['공격 능력']||'');
+      // Compact card metadata carries only the playable decision. Full per-card
+      // Skill1/Skill2 provenance lives in card-skill-mappings.json and the source SQLite DB.
       n.specialSkillMappings=Array.isArray(raw.specialSkillMappings)?raw.specialSkillMappings:[];
-      const primarySkillMapping=n.specialSkillMappings.find(x=>
+      n.specialSkillMappingStatus=String(raw.specialSkillMappingStatus||'');
+      n.specialSkillRuleAuthority=raw.specialSkillRuleAuthority||null;
+      const compactManual=raw.specialSkillMappingStatus==='manual_verified'&&
+        raw.specialSkillRuleAuthority==='manual'&&
+        typeof raw.specialSkillRuleId==='string'&&raw.specialSkillRuleId.length>0;
+      const legacyManual=n.specialSkillMappings.find(x=>
         x&&x.sourceField==='Skill1'&&x.mappingStatus==='manual_verified'&&
         x.ruleAuthority==='manual'&&typeof x.ruleId==='string'&&x.ruleId.length>0
       );
-      n.specialSkillRuleId=primarySkillMapping?primarySkillMapping.ruleId:null;
-      n.specialSkillExecutionStatus=primarySkillMapping?'manual-rule-catalogue-mapped':
-        (n.specialSkillMappings.some(x=>x&&x.mappingStatus==='community_documented_candidate')
+      n.specialSkillRuleId=compactManual?raw.specialSkillRuleId:(legacyManual?legacyManual.ruleId:null);
+      n.specialSkillExecutionStatus=compactManual||legacyManual?'manual-rule-catalogue-mapped':
+        (raw.specialSkillMappingStatus==='community_documented_candidate'||
+         n.specialSkillMappings.some(x=>x&&x.mappingStatus==='community_documented_candidate')
           ?'community-candidate-not-executable':'unmapped-or-no-skill');
       n.coinTech=statTech;n.ap=raw.ap!==undefined&&raw.ap!==null&&raw.ap!==''&&Number.isFinite(Number(raw.ap))?Number(raw.ap):statTech.stats.ap?.value;
       n.dp=raw.dp!==undefined&&raw.dp!==null&&raw.dp!==''&&Number.isFinite(Number(raw.dp))?Number(raw.dp):statTech.stats.dp?.value;

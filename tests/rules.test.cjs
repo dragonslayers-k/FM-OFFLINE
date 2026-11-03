@@ -776,3 +776,19 @@ test('candidate-only enchant effects are blocked until a verified handler exists
   assert.equal(result.ok,false);
   assert.match(result.reason,/검증되기 전까지 실행을 차단/);
 });
+
+test('compact DB29 community candidate status blocks source-name fallback',()=>{
+  const unit={skill:'강한공포',specialSkillRuleId:null,
+    specialSkillMappingStatus:'community_documented_candidate',
+    specialSkillRuleAuthority:'community'};
+  assert.equal(FM._test.normalizeSpecialSkillForEngine(unit,unit.skill),'');
+});
+
+test('compact DB29 Manual Skill1 fields activate only the mapped canonical rule ID',()=>{
+  const unit={skill:'기술봉쇄',specialSkillRuleId:'ability_seal',
+    specialSkillMappingStatus:'manual_verified',specialSkillRuleAuthority:'manual'};
+  assert.equal(FM._test.normalizeSpecialSkillForEngine(unit,unit.skill),'봉쇄공격');
+  const forged={skill:'강한공포',specialSkillRuleId:'strong_fear',
+    specialSkillMappingStatus:'manual_verified',specialSkillRuleAuthority:'community'};
+  assert.equal(FM._test.normalizeSpecialSkillForEngine(forged,forged.skill),'');
+});

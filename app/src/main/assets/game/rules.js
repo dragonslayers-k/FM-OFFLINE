@@ -129,8 +129,23 @@
   });
 
   function normalizeSpecialSkillForEngine(unit, rawSkill) {
-    // A DB29 card has a mapping array for every source Skill1/Skill2 field.
-    // Only an explicit Manual.zip Skill1 mapping may activate a rule.
+    // DB29/1.3 compact records contain the source Skill1 mapping decision.
+    // Only manual_verified + manual authority can execute; community candidates
+    // and unmapped enum names must never fall through to string aliases.
+    if (unit && typeof unit.specialSkillMappingStatus === 'string' &&
+        unit.specialSkillMappingStatus.length) {
+      if (unit.tempSkill && String(unit.tempSkill).trim()) {
+        const temp = String(unit.tempSkill).replace(/\\s+/g, '');
+        return SPECIAL_SKILL_NAME_ALIASES[temp] || temp;
+      }
+      const allowed = unit.specialSkillMappingStatus === 'manual_verified' &&
+        unit.specialSkillRuleAuthority === 'manual';
+      const ruleId = allowed ? unit.specialSkillRuleId : null;
+      return ruleId && SPECIAL_SKILL_RULE_KEYWORDS[ruleId]
+        ? SPECIAL_SKILL_RULE_KEYWORDS[ruleId]
+        : '';
+    }
+    // Compatibility for pre-1.3 transitional records that still bundle mappings.
     if (unit && Array.isArray(unit.specialSkillMappings)) {
       if (unit.tempSkill && String(unit.tempSkill).trim()) {
         const temp = String(unit.tempSkill).replace(/\\s+/g, '');

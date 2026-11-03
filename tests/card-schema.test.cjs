@@ -449,3 +449,30 @@ test('community-only candidate Skill1 mappings remain visible but have no execut
   assert.equal(card.specialSkillRuleId,null);
   assert.equal(card.specialSkillExecutionStatus,'community-candidate-not-executable');
 });
+
+test('uses compact Manual-only Skill1 fields without embedding full source mappings in cards.json',()=>{
+  const card=Schema.normalize({
+    id:'compact-manual-skill',name:'기술봉쇄 유닛',type:'unit',faction:'dark',
+    specialSkill:'기술봉쇄',
+    specialSkillMappingStatus:'manual_verified',
+    specialSkillRuleAuthority:'manual',
+    specialSkillRuleId:'ability_seal'
+  });
+  assert.equal(card.specialSkillRuleId,'ability_seal');
+  assert.equal(card.specialSkillMappingStatus,'manual_verified');
+  assert.equal(card.specialSkillExecutionStatus,'manual-rule-catalogue-mapped');
+  assert.deepEqual(card.specialSkillMappings,[]);
+});
+
+test('compact community-only skill metadata cannot become an executable Manual rule',()=>{
+  const card=Schema.normalize({
+    id:'compact-community-skill',name:'강한공포 유닛',type:'unit',faction:'fire',
+    specialSkill:'강한공포',
+    specialSkillMappingStatus:'community_documented_candidate',
+    specialSkillRuleAuthority:'community',
+    specialSkillRuleId:null
+  });
+  assert.equal(card.specialSkillRuleId,null);
+  assert.equal(card.specialSkillMappingStatus,'community_documented_candidate');
+  assert.equal(card.specialSkillExecutionStatus,'community-candidate-not-executable');
+});

@@ -85,3 +85,7 @@ Expected verified/review cost counts are 14,244 / 817 for non-land cards and 275
 T Release `fm1-carddb-29` adds `game_rule_catalog`, `card_rule_mappings` and `skill_enum_inventory` to the normalized SQLite DB. The Android pack preserves every Skill1/Skill2 source enum and its mapping evidence. Only `Skill1` mappings with `manual_verified` and `source_authority=manual` populate `specialSkillRuleId`. Later community rules remain non-executable, and unmapped source values remain visible rather than being guessed into another rule.
 
 The engine maps the real current enum names (e.g. `기술봉쇄`, `주문봉쇄`, `무기봉쇄`, `공격복제`, `조롱공격`, `방어변환`) through the canonical Manual rule IDs. The original source field and enum value remain preserved in the DB/card pack.
+
+## Android 데이터팩 파일 분리
+
+Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance is not dropped: `card-skill-mappings.json` carries all Skill1/Skill2 mappings and `card-effect-candidates.json` carries all effect pattern candidates and exact clause spans. The manifest records each file's SHA-256 and row counts. The runtime consumes the compact `specialSkillRuleId` / mapping status on unit cards; detailed records remain available as a separate reference library in the ZIP.
