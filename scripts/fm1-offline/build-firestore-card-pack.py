@@ -461,7 +461,6 @@ def load_normalized_database(db_path, expected_count=TOTAL):
             "normalized_cost":db_cost_to_app(cost_rows.get(cid)),
             "effect_candidates":effect_rows.get(cid,[]),
             "skill_mappings":skill_mappings.get(cid,[]),
-            "skill_mappings":skill_mappings.get(cid,[]),
         }
         records.append(record)
     fk=connection.execute("PRAGMA foreign_key_check").fetchall()
@@ -474,7 +473,7 @@ def load_normalized_database(db_path, expected_count=TOTAL):
         raise RuntimeError(
             f"T SQLite cost/image parent counts mismatch: costs={len(cost_rows)} images={len(image_rows)} expected={expected_count}"
         )
-    if len(skill_mappings)<1000:
+    if expected_count==TOTAL and len(skill_mappings)<1000:
         raise RuntimeError(f"T SQLite card rule mapping coverage too low: {len(skill_mappings)}")
     return records
 
