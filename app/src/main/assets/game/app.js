@@ -16,7 +16,6 @@
   let authoritativeCardPack = false;
   let cardDataReadError = '';
   let cardById = new Map();
-  let cardSearchIndex = new Map();
   let libraryVisibleCount = 60;
   let catalogueVisibleCount = 100;
 
@@ -126,9 +125,6 @@
       catch (e) { console.warn('카드 데이터 로딩 상태를 Native에 전달하지 못했습니다.', e); }
     }
     cardById = new Map(cards.map(c => [c.id, c]));
-    cardSearchIndex = new Map(cards.map(c => [c.id,
-      `${c.name || ''} ${c.text || ''} ${c.description || ''} ${c.sourceDescription || ''} ${c.rules?.cardText || ''} ${Object.values(c.rules?.classification || {}).join(' ')} ${Object.values(c.rules?.metadata || {}).join(' ')} ${c.faction || ''} ${c.type || ''} ${c.skill || ''} ${c.unitAbility || ''} ${(c.unitAbilityTags || []).join(' ')} ${c.affiliation || ''} ${c.race || ''} ${c.episode || ''} ${c.rarity || ''} ${c.purchaseRank || ''} ${c.deckLimitText || ''} ${c.triggerTiming || ''} ${c.durationText || ''} ${c.slotLocation || ''} ${c.equipAbility || ''} ${(c.allowedUnitAbilities || []).join(' ')} ${c.itemConditions?.race || ''} ${c.itemConditions?.affiliation || ''}`.toLocaleLowerCase()
-    ]));
     window.FM_ALL_CARDS = cards;
 
     if (authoritativeCardPack && data.deckCounts &&
@@ -137,6 +133,26 @@
       safeWrite();
     }
   }
+  // Build search text only for an active query. The old eager index duplicated
+  // long source descriptions for all 15,350 cards and caused avoidable memory
+  // pressure immediately after importing the full database.
+  function matchesCardSearch(card, query) {
+    if (!query) return true;
+    const rules = card.rules || {};
+    const fields = [
+      card.name, card.text, card.description, card.sourceDescription, rules.cardText,
+      ...Object.values(rules.classification || {}),
+      ...Object.values(rules.metadata || {}),
+      card.faction, card.type, card.skill, card.unitAbility,
+      ...(card.unitAbilityTags || []), card.affiliation, card.race, card.episode,
+      card.rarity, card.purchaseRank, card.deckLimitText, card.triggerTiming,
+      card.durationText, card.slotLocation, card.equipAbility,
+      ...(card.allowedUnitAbilities || []), card.itemConditions?.race,
+      card.itemConditions?.affiliation
+    ];
+    return fields.filter(value => value != null).join(' ').toLocaleLowerCase().includes(query);
+  }
+
   function cardArtUrl(path) {
     if (typeof path !== 'string' || !path) return '';
     const match = path.match(/([a-zA-Z0-9_-]+\.(?:png|jpg|jpeg|webp))$/i);
@@ -570,7 +586,7 @@
     if (reset) catalogueVisibleCount = 100;
     const query = (el('deck-search').value || '').trim().toLocaleLowerCase();
     const counts = currentDeckCounts();
-    const visible = cards.filter(c => !query || (cardSearchIndex.get(c.id) || '').includes(query));
+    const visible = cards.filter(c => !query || matchesCardSearch(c, query));
     const page = visible.slice(0, catalogueVisibleCount);
     el('deck-catalogue').innerHTML = page.map(c => {
       const art = cardArtUrl(c.artImage);
