@@ -77,7 +77,7 @@
     spell_suppression: '마법봉쇄공격',
     weapon_suppression: '무기뺏기공격',
     copy_attack: '복제공격',
-    shield_break: '방패파괴',
+    shield_break: '방패파괴공격',
     curse_attack: '저주공격',
     defensive_use: '방어이용',
     taunt_attack: '조롱',
@@ -823,22 +823,25 @@ if (card.type === 'unit') {
       if(sacrifice>0&&change(attacker,attackerStats,'hp',-sacrifice))frenzyBonus=sacrifice;
     }
     if(skill.includes('재생능력')||skill.includes('재생공격'))change(attacker,attackerStats,'hp',1);
-    let damage;
-    if(skill.includes('방어무시'))damage=Math.max(0,Number(attackRoll.value||0));
-    else if(skill.includes('관통공격')){
-      const dpBefore=Number(defenseRoll.value||0),requested=Math.min(Math.max(0,dpBefore),Math.max(0,Number(attackRoll.value||0)));
-      const applied=requested>0&&change(defender,defenderStats,'dp',-requested)?requested:0;
-      damage=Math.max(0,Number(attackRoll.value||0)-applied);
-    }else if(skill.includes('치명공격')&&canAffectDefender)damage=Math.max(0,Number(defender.hp||0)-1);
-    else if(skill.includes('돌진공격'))damage=Math.max(0,Number(attackRoll.value||0)+Number(attackerStats.dp?.value||0)-Number(defenseRoll.value||0));
-    else if(skill.includes('광분공격'))damage=Math.max(0,Number(attackRoll.value||0)+frenzyBonus-Number(defenseRoll.value||0));
-    else if(skill.includes('연속공격'))damage=Math.max(0,(Number(attackRoll.value||0)-1)*2-Number(defenseRoll.value||0));
-    else if(skill.includes('복제공격')&&canAffectDefender)damage=Math.max(0,Number(defenderStats.ap?.value||0)-Number(defenseRoll.value||0));
-    else if(skill.includes('방어이용')&&canAffectDefender)damage=Math.max(0,Number(attackRoll.value||0)+Number(defenseRoll.value||0));
-    else damage=Math.max(0,Number(attackRoll.value||0)-Number(defenseRoll.value||0));
+    // Manual.zip defines bravery/fear as extra attack damage added to AP before
+    // normal damage calculation. These two rules still add one damage at AP=0.
     const attackerLevel=Number(attacker.level||0),defenderLevel=Number(defender.level||0);
-    if(canAffectDefender&&skill.includes('용맹공격')&&attackerLevel>=defenderLevel)damage+=1;
-    if(canAffectDefender&&skill.includes('공포공격')&&attackerLevel<=defenderLevel)damage+=1;
+    let attackPower=Number(attackRoll.value||0);
+    if(skill.includes('용맹공격')&&defenderLevel>=attackerLevel)attackPower+=1;
+    if(skill.includes('공포공격')&&defenderLevel<=attackerLevel)attackPower+=1;
+    let damage;
+    if(skill.includes('방어무시'))damage=Math.max(0,attackPower);
+    else if(skill.includes('관통공격')){
+      const dpBefore=Number(defenseRoll.value||0),requested=Math.min(Math.max(0,dpBefore),Math.max(0,attackPower));
+      const applied=requested>0&&change(defender,defenderStats,'dp',-requested)?requested:0;
+      damage=Math.max(0,attackPower-applied);
+    }else if(skill.includes('치명공격')&&canAffectDefender)damage=Math.max(0,Number(defender.hp||0)-1);
+    else if(skill.includes('돌진공격'))damage=Math.max(0,attackPower+Number(attackerStats.dp?.value||0)-Number(defenseRoll.value||0));
+    else if(skill.includes('광분공격'))damage=Math.max(0,attackPower+frenzyBonus-Number(defenseRoll.value||0));
+    else if(skill.includes('연속공격'))damage=Math.max(0,(attackPower-1)*2-Number(defenseRoll.value||0));
+    else if(skill.includes('복제공격')&&canAffectDefender)damage=Math.max(0,Number(defenderStats.ap?.value||0)-Number(defenseRoll.value||0));
+    else if(skill.includes('방어이용')&&canAffectDefender)damage=Math.max(0,attackPower+Number(defenseRoll.value||0));
+    else damage=Math.max(0,attackPower-Number(defenseRoll.value||0));
     if(canAffectDefender&&skill.includes('약화공격')){change(defender,defenderStats,'ap',-1);change(defender,defenderStats,'dp',-1);}
     if(canAffectDefender&&skill.includes('석화공격')){set(defender,defenderStats,'ap',0);change(defender,defenderStats,'dp',1);}
     if(canAffectDefender&&skill.includes('노화공격'))change(defender,defenderStats,'ap',-2);
