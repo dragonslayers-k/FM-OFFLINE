@@ -573,18 +573,20 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
         "specialSkillMappings":row.get("skill_mappings") or [],
         "specialSkillRuleIds":[
             m["ruleId"] for m in (row.get("skill_mappings") or [])
-            if m.get("sourceField")=="Skill1" and m.get("mappingStatus")=="manual_verified"
-            and m.get("ruleAuthority")=="manual" and m.get("rulePlayableByDefault") is False
+            if typ=="unit" and m.get("sourceField")=="Skill1"
+            and m.get("mappingStatus")=="manual_verified" and m.get("ruleAuthority")=="manual"
         ],
         "specialSkillRuleId":next((
             m["ruleId"] for m in (row.get("skill_mappings") or [])
-            if m.get("sourceField")=="Skill1" and m.get("mappingStatus")=="manual_verified"
-            and m.get("ruleAuthority")=="manual" and m.get("rulePlayableByDefault") is False
+            if typ=="unit" and m.get("sourceField")=="Skill1"
+            and m.get("mappingStatus")=="manual_verified" and m.get("ruleAuthority")=="manual"
         ),None),
-        "specialSkillExecutionStatus":"manual-rule-catalogue-mapped" if any(
-            m.get("sourceField")=="Skill1" and m.get("mappingStatus")=="manual_verified"
-            and m.get("ruleAuthority")=="manual" for m in (row.get("skill_mappings") or [])
-        ) else "unmapped-or-community-candidate",
+        "specialSkillExecutionStatus":(
+            "manual-rule-catalogue-mapped" if typ=="unit" and any(
+                m.get("sourceField")=="Skill1" and m.get("mappingStatus")=="manual_verified"
+                and m.get("ruleAuthority")=="manual" for m in (row.get("skill_mappings") or [])
+            ) else ("metadata-only" if typ!="unit" else "unmapped-or-community-candidate")
+        ),
         "effectExecutionStatus":"candidate-only",
         "effectVerificationStatus":"pattern_candidate",
         "effect":None
