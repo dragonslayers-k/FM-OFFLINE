@@ -12,15 +12,29 @@ TEST_PACK_NAME="fm1-emulator-smoke.zip"
 test -s "$APK" || { echo "::error::No Debug APK found for emulator smoke test"; exit 1; }
 test -s "$PACK_ZIP" || { echo "::error::The generated FM1 card ZIP is missing"; exit 1; }
 adb wait-for-device
+# The Android emulator is a userdebug image. Root lets the failure handler
+# preserve native tombstones, which are the missing evidence for SIGTRAP.
+adb root >/dev/null 2>&1 || true
+adb wait-for-device
+adb logcat -G 16M >/dev/null 2>&1 || true
 adb logcat -c
 adb install -r "$APK"
 
 capture_failure_logs() {
-  adb logcat -d > emulator-launch-logcat-full.txt || true
+  adb logcat -b all -d -v threadtime > emulator-launch-logcat-full.txt || true
   adb shell dumpsys activity exit-info "$APP_ID" > emulator-process-exit-info.txt 2>&1 || true
+  adb shell dumpsys meminfo "$APP_ID" > emulator-app-meminfo.txt 2>&1 || true
+  adb shell dumpsys meminfo > emulator-system-meminfo.txt 2>&1 || true
+  adb shell 'ls -t /data/tombstones/tombstone_* 2>/dev/null | head -n 8' > emulator-tombstone-list.txt || true
+  while IFS= read -r tombstone; do
+    [ -n "$tombstone" ] || continue
+    name="$(basename "$tombstone")"
+    adb shell "cat '$tombstone'" > "emulator-$name.txt" 2>&1 || true
+  done < emulator-tombstone-list.txt
   {
-    grep -E "FATAL EXCEPTION|Fatal signal|am_crash|AndroidRuntime|Process .* has died|Killing .*fantasy.offline|OutOfMemory|lowmemorykiller|FM1CardData" emulator-launch-logcat-full.txt || true
+    grep -E "FATAL EXCEPTION|Fatal signal|am_crash|AndroidRuntime|Process .* has died|Killing .*fantasy.offline|OutOfMemory|lowmemorykiller|FM1CardData|chromium|crash_dump|tombstone" emulator-launch-logcat-full.txt || true
     cat emulator-process-exit-info.txt || true
+    cat emulator-app-meminfo.txt || true
   } > emulator-launch-log.txt
   cat emulator-launch-log.txt || true
 }
