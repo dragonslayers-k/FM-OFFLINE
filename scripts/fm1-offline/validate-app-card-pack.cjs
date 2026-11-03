@@ -70,6 +70,11 @@ for (const [key, expected] of skill2Expected) {
   if (actual.cardCount !== expectedIds.length || JSON.stringify(actualIds) !== JSON.stringify(expectedIds)) {
     throw new Error('Skill2 card coverage mismatch: ' + key);
   }
+  const referenceIds = Array.isArray(actual.cardReferences)
+    ? actual.cardReferences.map(x => String(x.cardId || '')).sort() : [];
+  if (JSON.stringify(referenceIds) !== JSON.stringify(expectedIds)) {
+    throw new Error('Skill2 card evidence references do not cover the exact mapped cards: ' + key);
+  }
   const expectedStatuses = [...expected.statuses].sort();
   if (JSON.stringify(actual.sourceMappingStatuses) !== JSON.stringify(expectedStatuses)) {
     throw new Error('Skill2 source mapping statuses differ: ' + key);
@@ -96,11 +101,19 @@ for (const [key, expected] of skill2Expected) {
     }
   }
 }
+const activeSkill2CardIds = new Set(skill2Data.records
+  .filter(x => x.verificationStatus !== 'no_special_skill')
+  .flatMap(x => x.cardIds || []));
+const noSkill2CardIds = new Set(skill2Data.records
+  .filter(x => x.verificationStatus === 'no_special_skill')
+  .flatMap(x => x.cardIds || []));
+skill2Audit.activeCards = activeSkill2CardIds.size;
 if (skill2Audit.sourceMappings !== skill2Data.mappingRecordCount ||
     skill2Audit.executableRules !== 0 || skill2Data.activeSkillCount !== skill2Audit.activeSkills ||
-    skill2Data.activeCardCount !== new Set(skill2Data.records
-      .filter(x => x.verificationStatus !== 'no_special_skill')
-      .flatMap(x => x.cardIds || [])).size) {
+    skill2Data.activeCardCount !== skill2Audit.activeCards ||
+    skill2Data.noSkillCardCount !== noSkill2CardIds.size ||
+    skill2Data.mappingStatusCounts == null ||
+    Object.values(skill2Data.mappingStatusCounts).reduce((n,v)=>n+Number(v||0),0) !== skill2Data.mappingRecordCount) {
   throw new Error('Skill2 catalogue summary counts mismatch: ' + JSON.stringify(skill2Audit));
 }
 const effectCandidatesByCard = new Map();
