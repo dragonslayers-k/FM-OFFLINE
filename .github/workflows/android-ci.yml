@@ -4,9 +4,12 @@ on:
   push:
     branches:
       - main
+      - fix/data-pack-schema-import-2026-11-04
+# Add [run-emulator] to a PR title to request the long import/emulator validation.
   pull_request:
     branches:
       - main
+    types: [opened, synchronize, reopened, edited]
   workflow_dispatch:
     inputs:
       build_card_pack:
@@ -78,7 +81,7 @@ jobs:
           python scripts/fm1-offline/audit-enchant-cards.py --self-test
 
       - name: Download the audited T SQLite DB release and build Android data ZIP
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.build_card_pack == true) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-card-pack]') || contains(github.event.head_commit.message, '[run-emulator]'))) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.build_card_pack == true) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-card-pack]') || contains(github.event.head_commit.message, '[run-emulator]'))) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]')) }}
         env:
           CARD_DB_RELEASE: https://github.com/dragonslayers-k/T/releases/download/${{ env.CARD_DB_RELEASE_TAG }}
           SOURCE_DIR: ${{ runner.temp }}/fm1-source
@@ -179,7 +182,8 @@ jobs:
           unzip -p release-package/FM1-CardData-v1.3.0.zip skill2-catalogue.json > "$RUNNER_TEMP/fm1-app-skill2-catalogue.json"
           node scripts/fm1-offline/validate-app-card-pack.cjs "$RUNNER_TEMP/fm1-app-cards.json" "$RUNNER_TEMP/fm1-app-skill-mappings.json" "$RUNNER_TEMP/fm1-app-effect-candidates.json" "$RUNNER_TEMP/fm1-app-skill2-catalogue.json"
           rm -f "$RUNNER_TEMP/fm1-app-cards.json" "$RUNNER_TEMP/fm1-app-skill-mappings.json" "$RUNNER_TEMP/fm1-app-effect-candidates.json" "$RUNNER_TEMP/fm1-app-skill2-catalogue.json"
-          rm -rf "$RUNNER_TEMP/fm1-pack" "$RUNNER_TEMP/fm1-source"
+          # Keep the unpacked payload until upload-artifact creates a directly importable ZIP.
+          rm -rf "$RUNNER_TEMP/fm1-source"
           echo "FM1_DATA_PACK_STATUS=built-from-$CARD_DB_RELEASE_TAG" >> "$GITHUB_ENV"
 
       - name: Set up JDK 17
@@ -205,7 +209,7 @@ jobs:
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Install Android emulator components
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]')) }}
         run: |
           set -euo pipefail
           sdkmanager "platforms;android-34" "emulator" "system-images;android-34;google_apis;x86_64"
@@ -259,8 +263,24 @@ jobs:
             unzip -tq "$APK"
           done
 
+      - name: Prepare Android emulator KVM permissions
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]')) }}
+        run: |
+          set -euo pipefail
+          if [ -e /dev/kvm ]; then
+            sudo chmod a+rw /dev/kvm
+            ls -l /dev/kvm
+            if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+              echo "::error::/dev/kvm exists but remains inaccessible after permission repair"
+              exit 1
+            fi
+          else
+            echo "::error::/dev/kvm is not exposed by this runner; refusing to waste time on an emulator boot that cannot use KVM"
+            exit 1
+          fi
+
       - name: Install and launch APK in Android emulator
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]')) }}
         id: emulator
         timeout-minutes: 25
         uses: reactivecircus/android-emulator-runner@v2.38.0
@@ -303,14 +323,17 @@ jobs:
             echo "Unknown or mixed costs are not treated as free."
           } > release-package/build-status.txt
 
-      - name: Upload standalone Android card data ZIP
-        if: always() && hashFiles('release-package/FM1-CardData-v1.3.0.zip') != ''
+      - name: Upload directly importable Android card data archive
+        if: always() && env.FM1_DATA_PACK_STATUS != ''
         uses: actions/upload-artifact@v7
         with:
-          name: FM1-CardData-v1.3.0-DB29
-          path: release-package/FM1-CardData-v1.3.0.zip
+          name: FM1-CardData-v1.3.0-IMPORT-DB29
+          # Upload the payload directory, not a ZIP containing another ZIP.
+          # The downloaded artifact ZIP therefore has cards.json, manifest.json,
+          # and images/ at its root and can be selected directly in the APK.
+          path: ${{ runner.temp }}/fm1-pack/
           if-no-files-found: error
-          compression-level: 0
+          compression-level: 6
           retention-days: 90
 
       - name: Upload APK and build report

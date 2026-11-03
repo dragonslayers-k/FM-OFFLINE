@@ -366,11 +366,13 @@ public final class MainActivity extends Activity {
         int images = countFiles(imagesDir);
         int declaredCards = m.optInt("cardsCount", 0);
         int declaredImages = m.optInt("imagesCount", 0);
-        if (declaredCards != 15350 || declaredImages != 15350 || images != declaredImages) {
+        if (declaredCards < 1 || declaredImages != declaredCards || images != declaredImages) {
             deleteTree(staging);
-            throw new IOException("FM1 원본 데이터팩은 카드 15,350장과 일러스트 15,350개가 필요합니다.");
+            throw new IOException("데이터팩 manifest의 카드 수와 이미지 수가 일치하지 않거나 이미지 파일이 누락되었습니다.");
         }
-        validateCardRecords(cards, imagesDir, declaredCards);
+        JSONObject classification = m.optJSONObject("classification");
+        JSONObject expectedTypes = classification == null ? null : classification.optJSONObject("types");
+        validateCardRecords(cards, imagesDir, declaredCards, expectedTypes);
         m.put("installedCards", declaredCards);
         m.put("installedImages", images);
         try (FileOutputStream fos = new FileOutputStream(manifest)) {
@@ -398,10 +400,32 @@ public final class MainActivity extends Activity {
         if (backup.exists()) deleteTree(backup);
     }
 
-    private static void validateCardRecords(File cardsFile, File imagesDir, int expectedCount) throws Exception {
+    private static void validateCardRecords(File cardsFile, File imagesDir, int expectedCount,
+                                              JSONObject expectedTypes) throws Exception {
+        if (expectedTypes == null) {
+            throw new IOException("manifest.json에 classification.types 분류별 카드 수가 없습니다.");
+        }
         HashSet<String> ids = new HashSet<>(expectedCount * 2);
         int[] typeCounts = new int[5]; // land, unit, item, spell, enchant
         String[] types = new String[]{"land", "unit", "item", "spell", "enchant"};
+        int expectedTypeTotal = 0;
+        for (int i = 0; i < types.length; i++) {
+            int expectedTypeCount = expectedTypes.optInt(types[i], -1);
+            if (expectedTypeCount < 0) {
+                throw new IOException("manifest.json에 유효한 " + types[i] + " 카드 수가 없습니다.");
+            }
+            expectedTypeTotal += expectedTypeCount;
+        }
+        java.util.Iterator<String> typeKeys = expectedTypes.keys();
+        while (typeKeys.hasNext()) {
+            String key = typeKeys.next();
+            boolean supported = false;
+            for (String type : types) if (type.equals(key)) supported = true;
+            if (!supported) throw new IOException("지원하지 않는 카드 분류가 manifest.json에 있습니다: " + key);
+        }
+        if (expectedTypeTotal != expectedCount) {
+            throw new IOException("manifest.json의 분류별 카드 수 합계가 cardsCount와 일치하지 않습니다.");
+        }
         int total = 0;
         String imageRoot = imagesDir.getCanonicalPath() + File.separator;
 
@@ -479,10 +503,11 @@ public final class MainActivity extends Activity {
         if (total != expectedCount || ids.size() != expectedCount) {
             throw new IOException("카드 엔트리 수가 맞지 않습니다. 확인 " + total + " / 기준 " + expectedCount);
         }
-        int[] expectedTypes = new int[]{289, 8633, 1748, 3857, 823};
         for (int i = 0; i < types.length; i++) {
-            if (typeCounts[i] != expectedTypes[i]) {
-                throw new IOException(types[i] + " 카드 수량이 원본 기준과 다릅니다: " + typeCounts[i] + " / " + expectedTypes[i]);
+            int expectedTypeCount = expectedTypes.optInt(types[i], -1);
+            if (typeCounts[i] != expectedTypeCount) {
+                throw new IOException(types[i] + " 카드 수량이 manifest 기준과 다릅니다: " +
+                    typeCounts[i] + " / " + expectedTypeCount);
             }
         }
     }
