@@ -272,7 +272,7 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 900
           force-avd-creation: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data -camera-back none -memory 4096
           # This action runs each script line in a separate shell. Keep the
           # multiline smoke test in a checked-in script and invoke it as one command.
           script: bash scripts/fm1-offline/emulator-smoke-test.sh
