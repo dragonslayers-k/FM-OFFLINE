@@ -183,7 +183,7 @@
       showDataMessage('다운로드 페이지를 열지 못했습니다: ' + (e && e.message ? e.message : e), true);
     }
   }
-  window.onNativeDataPackResult = function(status, message) {
+  window.onNativeDataPackResult = async function(status, message) {
     const packStatus = document.getElementById('data-pack-status');
     if (status === 'working') {
       if (packStatus) packStatus.textContent = message;
@@ -191,7 +191,9 @@
       return;
     }
     if (status === 'success') {
-      mergeCards();
+      // mergeCards pages through all 15,350 records asynchronously. Wait for
+      // it before comparing cards.length or rendering the success/error state.
+      await mergeCards();
       libraryVisibleCount = 60;
       catalogueVisibleCount = 100;
       renderData(); renderDeck(); renderLibrary();
