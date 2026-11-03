@@ -131,3 +131,14 @@ The 1.3.0 adapter additionally consumes `game_rule_catalog`, `card_rule_mappings
 The pack includes `specialSkillMappings` on cards and a separate `skill-catalogue.json` entry. Each mapping retains source field, original enum value/name, rule ID, mapping status, confidence and evidence reference. Only a unit's Skill1 mapping with `mapping_status=manual_verified` and `source_authority=manual` becomes `specialSkillRuleId`. Skill2 remains source metadata; community candidates and unmapped values do not execute.
 
 The Manual.zip catalogue has 27 base rules. The 41 additional rules from a 2017 community reference remain `community_documented_candidate`, not confirmed original rules. Where that later reference differs from Manual.zip, the Manual baseline wins until a game-version-specific reference or test resolves the discrepancy.
+
+## Android 128MiB card payload split (1.3.0)
+
+The card JSON stays below the existing Android 128MiB import limit. To retain full analysis detail without bloating every runtime card object, the ZIP stores:
+
+- `cards.json`: compact runtime card fields, the verified Manual Skill1 rule ID, and review-state counters/flags.
+- `skill-catalogue.json`: source-versioned rule definitions and conflicts.
+- `card-skill-mappings.json`: complete per-card Skill1/Skill2 mappings, original enum values, rule IDs, source authority, confidence and evidence references.
+- `card-effect-candidates.json`: all 17,407 candidate records, their analysis and 48,281 exact source clause spans. They remain non-executable candidates.
+
+The Android importer accepts these as additional safe ZIP files. The build verifies their SHA-256 and row counts independently of the compact card array. The app only executes a Manual-verified Skill1 mapping; separate provenance files do not implicitly activate any effect.
