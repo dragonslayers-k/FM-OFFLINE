@@ -277,6 +277,7 @@ def load_normalized_database(db_path):
         }
     effect_rows={}
     candidate_ids={}
+    candidate_objects={}
     for item in connection.execute(
         "SELECT candidate_id,card_id,text_type,source_text_sha256,source_detail_url,"
         "source_text_class_candidate,topic_candidates_json,trigger_candidates_json,"
@@ -304,6 +305,7 @@ def load_normalized_database(db_path):
             "clauses":[],
         }
         effect_rows.setdefault(str(item["card_id"]),[]).append(entry)
+        candidate_objects[candidate_id]=entry
     effect_index={}
     for card_id,entries in effect_rows.items():
         for entry in entries:
@@ -317,11 +319,7 @@ def load_normalized_database(db_path):
         card_id=str(clause["card_id"])
         # Candidate text hashes are unique per card/text source row; candidate_id is resolved below.
         candidate_id=int(clause["candidate_id"])
-        parent=next((entry for entry in effect_rows.get(card_id,[]) if id(entry)==candidate_ids.get(candidate_id)),None)
-        if parent is None:
-            # Build a deterministic candidate lookup once when multiple text rows exist.
-            parent_by_id=_candidate_object_index.get(candidate_id) if "_candidate_object_index" in globals() else None
-            parent=parent_by_id
+        parent=candidate_objects.get(candidate_id)
         if parent is None:
             raise RuntimeError(f"SQLite effect clause has no candidate parent: {candidate_id}")
         parent["clauses"].append({
