@@ -531,7 +531,9 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
         "sourceImageMetadata":row.get("source_image_metadata") or {},
         "sourceFields":f,"sourceCollectedAt":row.get("collected_at"),
         "sourceDocumentId":cid,
-        "effectCandidates":row.get("effect_candidates") or [],
+        "effectCandidateCount":len(row.get("effect_candidates") or []),
+        "effectExecutionStatus":"candidate-only" if row.get("effect_candidates") else "no-effect-candidate",
+        "effectVerificationStatus":"pattern_candidate" if row.get("effect_candidates") else "no-effect-candidate",
         "specialSkillMappingStatus":(
             next((m["mappingStatus"] for m in (row.get("skill_mappings") or [])
                   if typ=="unit" and m.get("sourceField")=="Skill1"),"no_special_skill")
@@ -556,8 +558,6 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
                 and m.get("ruleAuthority")=="manual" for m in (row.get("skill_mappings") or [])
             ) else ("metadata-only" if typ!="unit" else "unmapped-or-community-candidate")
         ),
-        "effectExecutionStatus":"candidate-only",
-        "effectVerificationStatus":"pattern_candidate",
         "effect":None
     }
     if typ=="land":
@@ -757,6 +757,20 @@ def convert(a):
     }
     skill_mapping_bytes=json.dumps(skill_mapping_data,ensure_ascii=False,separators=(",",":")).encode("utf-8")
     skill_mapping_sha256=hashlib.sha256(skill_mapping_bytes).hexdigest()
+    effect_candidate_records=[
+        {"cardId":row["card_id"],**candidate}
+        for row in source_records for candidate in row.get("effect_candidates",[])
+    ]
+    effect_candidate_data={
+        "schemaVersion":1,
+        "sourceDatabaseRelease":a.db_release_tag,
+        "description":"Non-executable effect text pattern candidates and exact source clause spans. These records are references for later manual review and rule-handler implementation, not executable card effects.",
+        "candidateCount":len(effect_candidate_records),
+        "clauseCount":sum(len(x.get("clauses",[])) for x in effect_candidate_records),
+        "records":effect_candidate_records,
+    }
+    effect_candidate_bytes=json.dumps(effect_candidate_data,ensure_ascii=False,separators=(",",":")).encode("utf-8")
+    effect_candidate_sha256=hashlib.sha256(effect_candidate_bytes).hexdigest()
     for index,row in enumerate(source_records,1):
         card=build_card(row,enums,earn_soul_enum,require_soul_enum)
         for image_type in ("small","large"):
@@ -835,8 +849,8 @@ def convert(a):
     semantic_review_nonland=sum(1 for c in cards if c["type"]!="land" and c.get("costSemanticReview"))
     mapping_review_land=sum(1 for c in cards if c["type"]=="land" and c.get("costMappingReview"))
     semantic_review_land=sum(1 for c in cards if c["type"]=="land" and c.get("costSemanticReview"))
-    effect_candidate_count=sum(len(c.get("effectCandidates",[])) for c in cards)
-    effect_clause_count=sum(len(e.get("clauses",[])) for c in cards for e in c.get("effectCandidates",[]))
+    effect_candidate_count=len(effect_candidate_records)
+    effect_clause_count=effect_candidate_data["clauseCount"]
     land_magiclands=sum(1 for c in cards if c["type"]=="land" and c["isMagicLand"])
     land_production_review=sum(1 for c in cards if c["type"]=="land" and c["soulProductionStatus"]=="needs-review")
     land_token_counts=Counter(t.get("symbol") or "UNMAPPED" for c in cards if c["type"]=="land" for t in c["soulProductionTokens"])
@@ -864,6 +878,8 @@ def convert(a):
         "effectReview":{
           "candidateRows":effect_candidate_count,
           "clauseRows":effect_clause_count,
+          "candidateFile":"card-effect-candidates.json",
+          "candidateFileSha256":effect_candidate_sha256,
           "verificationStatus":"pattern_candidate",
           "executableEffectMappings":0,
           "policy":"Candidate extraction is reference data only. No candidate is treated as an executable game rule."
@@ -878,6 +894,8 @@ def convert(a):
           "cardSkillMappingsEntry":"card-skill-mappings.json",
           "cardSkillMappingsSha256":skill_mapping_sha256,
           "cardSkillMappingRecordCount":len(skill_mapping_records),
+          "effectCandidatesEntry":"card-effect-candidates.json",
+          "effectCandidatesSha256":effect_candidate_sha256,
           "manualRuleSource":"Manual.zip / specialability.htm",
           "communitySource":"2017 Inven community reference",
           "communityRulesExecutable":False,
@@ -896,9 +914,11 @@ def convert(a):
     (out/"manifest.json").write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding="utf-8")
     shutil.copy2(skill_catalogue_path,out/"skill-catalogue.json")
     (out/"card-skill-mappings.json").write_bytes(skill_mapping_bytes)
+    (out/"card-effect-candidates.json").write_bytes(effect_candidate_bytes)
     unpacked_bytes=(cards_bytes+image_bytes+(out/"manifest.json").stat().st_size
                     +(out/"skill-catalogue.json").stat().st_size
-                    +(out/"card-skill-mappings.json").stat().st_size)
+                    +(out/"card-skill-mappings.json").stat().st_size
+                    +(out/"card-effect-candidates.json").stat().st_size)
     if unpacked_bytes > 700*1024*1024:
         raise RuntimeError(f"FM1-CARD-DATA exceeds Android 700MB unpack limit: {unpacked_bytes} bytes")
     manifest["unpackedBytes"]=unpacked_bytes
@@ -910,12 +930,15 @@ def convert(a):
         archive.write(out/"manifest.json","manifest.json",compress_type=zipfile.ZIP_DEFLATED,compresslevel=6)
         archive.write(out/"skill-catalogue.json","skill-catalogue.json",compress_type=zipfile.ZIP_DEFLATED,compresslevel=6)
         archive.write(out/"card-skill-mappings.json","card-skill-mappings.json",compress_type=zipfile.ZIP_DEFLATED,compresslevel=6)
+        archive.write(out/"card-effect-candidates.json","card-effect-candidates.json",compress_type=zipfile.ZIP_DEFLATED,compresslevel=6)
         for img in sorted(images.glob("*.webp")):
             archive.write(img,"images/"+img.name,compress_type=zipfile.ZIP_STORED)
     with zipfile.ZipFile(z) as archive:
         if archive.testzip() is not None: raise RuntimeError("Generated ZIP CRC test failed")
         names=archive.namelist()
-        if "cards.json" not in names or "manifest.json" not in names or "skill-catalogue.json" not in names or "card-skill-mappings.json" not in names or sum(n.startswith("images/") for n in names)!=TOTAL:
+        if ("cards.json" not in names or "manifest.json" not in names or
+            "skill-catalogue.json" not in names or "card-skill-mappings.json" not in names or
+            "card-effect-candidates.json" not in names or sum(n.startswith("images/") for n in names)!=TOTAL):
             raise RuntimeError("Generated ZIP structure incomplete")
     print(json.dumps({"zip":str(z),"bytes":z.stat().st_size,"cards":TOTAL,"images":TOTAL,
       "types":dict(counts),"cardsSha256":digest,"cardsJsonBytes":cards_bytes,"imageBytes":image_bytes,
@@ -927,6 +950,8 @@ def convert(a):
       "specialSkillReview":skill_db_counts,
       "cardSkillMappingFileBytes":len(skill_mapping_bytes),
       "cardSkillMappingSha256":skill_mapping_sha256,
+      "effectCandidateFileBytes":len(effect_candidate_bytes),
+      "effectCandidateFileSha256":effect_candidate_sha256,
       "magicLandCount":land_magiclands,"landSoulProductionNeedsReview":land_production_review,
       "format":manifest["format"],"version":manifest["version"]},ensure_ascii=False,indent=2))
 
