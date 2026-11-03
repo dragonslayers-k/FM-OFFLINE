@@ -273,6 +273,7 @@ public final class MainActivity extends Activity {
 
         long total = 0;
         int entries = 0;
+        String currentEntryName = "<ZIP header>";
         byte[] buf = new byte[32768];
         InputStream raw = getContentResolver().openInputStream(uri);
         if (raw == null) throw new IOException("선택한 파일을 열 수 없습니다. 파일 앱에서 ZIP을 다시 선택해 주십시오.");
@@ -281,6 +282,7 @@ public final class MainActivity extends Activity {
              ZipInputStream zip = new ZipInputStream(new BufferedInputStream(input))) {
             ZipEntry entry;
             while ((entry = zip.getNextEntry()) != null) {
+                currentEntryName = entry.getName() == null ? "<unnamed>" : entry.getName();
                 if (++entries > MAX_ENTRIES) throw new IOException("ZIP 안의 파일 수가 허용 한도를 초과했습니다.");
                 String name = entry.getName();
                 if (name == null || name.trim().isEmpty() || name.indexOf('\0') >= 0 || name.indexOf('\\') >= 0) {
@@ -309,6 +311,11 @@ public final class MainActivity extends Activity {
             }
         } catch (Exception e) {
             deleteTree(staging);
+            if (e instanceof java.util.zip.ZipException ||
+                    (e.getMessage() != null && e.getMessage().toLowerCase(java.util.Locale.ROOT).contains("stored block lengths"))) {
+                throw new IOException("ZIP 압축 데이터 해제 오류: 항목=" + currentEntryName +
+                        ", 해제 누적=" + total + " bytes. 파일이 잘렸거나 압축 스트림이 손상되었습니다. 원본 데이터팩을 다시 다운로드해 주십시오.", e);
+            }
             throw e;
         }
 
