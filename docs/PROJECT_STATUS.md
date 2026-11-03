@@ -72,3 +72,9 @@ APK 빌드가 성공해도 데이터팩 설치, 앱 기동, 실제 Android 기�
 6. **실전 검증** — 고정 시드 시나리오, 슬롯별 전투, 효과 상호작용, 장시간 라운드 및 실제 Android 설치·실행 검증을 통과시킨다.
 
 각 단계의 성공 여부를 구분해 기록한다. APK 빌드나 ZIP 생성 성공만으로 원작 게임 구현 완료라고 표기하지 않는다.
+
+## SQLite 통합 데이터 기준
+
+The Android adapter consumes the normalized `cards`, `card_costs`, `card_images`, `card_effect_candidate_summaries` and `card_effect_clauses` tables from T Release `fm1-carddb-28`. It does not reconstruct costs from the raw JSONL.
+
+Expected verified/review cost counts are 14,244 / 817 for non-land cards and 275 / 14 for land installation. The 17,407 effect candidates and 48,281 clause segments are preserved as reference data only; no pattern candidate is treated as an executable game rule.
