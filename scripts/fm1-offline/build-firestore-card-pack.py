@@ -311,6 +311,62 @@ def load_normalized_database(db_path, expected_count=TOTAL):
             "SELECT COUNT(*) FROM game_rule_catalog WHERE source_authority='community' AND playable_by_default=1"
         ).fetchone()[0],
     }
+    if (skill_db_counts["manualRuleCount"]!=27 or skill_db_counts["communityRuleCandidateCount"]!=41
+        or skill_db_counts["cardRuleMappingRows"]<15000
+        or skill_db_counts["manualSkillMappingRows"]<1000
+        or skill_db_counts["communitySkillCandidateRows"]<100
+        or skill_db_counts["skillEnumInventoryRows"]<100
+        or skill_db_counts["playableCommunityRuleRows"]!=0):
+        connection.close()
+        raise RuntimeError("T SQLite card-level skill mapping validation failed: "+json.dumps(skill_db_counts,ensure_ascii=False))
+    skill_rule_rows={
+        row["rule_id"]:row
+        for row in connection.execute("SELECT * FROM game_rule_catalog")
+    }
+    skill_mappings={}
+    for mapping in connection.execute("""
+        SELECT card_id,source_field,source_enum_value,source_name,rule_id,
+               mapping_status,confidence,evidence_references_json
+        FROM card_rule_mappings
+        ORDER BY card_id,source_field
+    """):
+        rule=skill_rule_rows.get(mapping["rule_id"])
+        skill_mappings.setdefault(str(mapping["card_id"]),[]).append({
+            "sourceField":mapping["source_field"],
+            "sourceEnumValue":mapping["source_enum_value"],
+            "sourceName":mapping["source_name"],
+            "ruleId":mapping["rule_id"],
+            "mappingStatus":mapping["mapping_status"],
+            "confidence":mapping["confidence"],
+            "evidenceReferences":json.loads(mapping["evidence_references_json"] or "[]"),
+            "ruleName":rule["canonical_name"] if rule else None,
+            "ruleAuthority":rule["source_authority"] if rule else None,
+            "ruleVerificationStatus":rule["verification_status"] if rule else None,
+            "ruleImplementationStatus":rule["implementation_status"] if rule else None,
+            "rulePlayableByDefault":bool(rule["playable_by_default"]) if rule else False,
+        })
+    skill_db_counts={
+        "manualRuleCount":connection.execute(
+            "SELECT COUNT(*) FROM game_rule_catalog WHERE source_authority='manual'"
+        ).fetchone()[0],
+        "communityRuleCandidateCount":connection.execute(
+            "SELECT COUNT(*) FROM game_rule_catalog WHERE source_authority='community'"
+        ).fetchone()[0],
+        "cardRuleMappingRows":connection.execute("SELECT COUNT(*) FROM card_rule_mappings").fetchone()[0],
+        "manualSkillMappingRows":connection.execute(
+            "SELECT COUNT(*) FROM card_rule_mappings WHERE mapping_status='manual_verified'"
+        ).fetchone()[0],
+        "communitySkillCandidateRows":connection.execute(
+            "SELECT COUNT(*) FROM card_rule_mappings WHERE mapping_status='community_documented_candidate'"
+        ).fetchone()[0],
+        "unmappedSkillRows":connection.execute(
+            "SELECT COUNT(*) FROM card_rule_mappings WHERE mapping_status='unmapped'"
+        ).fetchone()[0],
+        "skillEnumInventoryRows":connection.execute("SELECT COUNT(*) FROM skill_enum_inventory").fetchone()[0],
+        "playableCommunityRuleRows":connection.execute(
+            "SELECT COUNT(*) FROM game_rule_catalog WHERE source_authority='community' AND playable_by_default=1"
+        ).fetchone()[0],
+    }
     expected_skill_counts={
         "manualRuleCount":27,
         "communityRuleCandidateCount":41,
@@ -437,6 +493,7 @@ def load_normalized_database(db_path, expected_count=TOTAL):
             "collected_at":item["collected_at"],
             "normalized_cost":db_cost_to_app(cost_rows.get(cid)),
             "effect_candidates":effect_rows.get(cid,[]),
+            "skill_mappings":skill_mappings.get(cid,[]),
             "skill_mappings":skill_mappings.get(cid,[]),
         }
         records.append(record)
@@ -815,6 +872,13 @@ def convert(a):
           "verificationStatus":"pattern_candidate",
           "executableEffectMappings":0,
           "policy":"Candidate extraction is reference data only. No candidate is treated as an executable game rule."
+        },
+        "specialSkillReview":{
+          **skill_db_counts,
+          "manualRuleSource":"Manual.zip / specialability.htm",
+          "communitySource":"2017 Inven community reference",
+          "communityRulesExecutable":False,
+          "executionPolicy":"Only manual_verified Skill1 mappings are eligible for Manual-baseline handlers. Skill2 remains reference metadata. Community candidates and unmapped values never trigger handlers."
         },
         "specialSkillReview":{
           **skill_db_counts,
