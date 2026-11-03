@@ -105,6 +105,9 @@ jobs:
             --zip-output "release-package/FM1-CardData-v1.1.1.zip"
 
           test -s release-package/FM1-CardData-v1.1.1.zip
+          unzip -p release-package/FM1-CardData-v1.1.1.zip cards.json > "$RUNNER_TEMP/fm1-app-cards.json"
+          node scripts/fm1-offline/validate-app-card-pack.cjs "$RUNNER_TEMP/fm1-app-cards.json"
+          rm -f "$RUNNER_TEMP/fm1-app-cards.json"
           rm -rf "$RUNNER_TEMP/fm1-pack" "$RUNNER_TEMP/fm1-source"
           echo "FM1_DATA_PACK_STATUS=built-from-fm1-carddb-26" >> "$GITHUB_ENV"
 
