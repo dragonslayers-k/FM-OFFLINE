@@ -900,7 +900,7 @@ def build_skill2_catalogue(mapping_records, cards, release_tag):
     active_records=[x for x in records if x["verificationStatus"]!="no_special_skill"]
     return {
         "schemaVersion":1,"sourceDatabaseRelease":release_tag,"sourceField":"Skill2",
-        "description":"Independent Skill2 enum inventory with per-card source URLs and raw text. The four executable entries are exact, repeated card-detail descriptions with dedicated engine tests; all other active entries remain disabled until their own effect evidence and tests are reviewed.",
+        "description":"Independent Skill2 enum inventory with per-card source URLs and raw text. The eight executable entries are exact, repeated card-detail descriptions with dedicated engine tests; all other active entries remain disabled until their own effect evidence and tests are reviewed.",
         "mappingRecordCount":sum(status_counts.values()),"entryCount":len(records),
         "activeSkillCount":len(active_records),"activeCardCount":len(active_card_ids),
         "noSkillCardCount":len(no_skill_card_ids),
