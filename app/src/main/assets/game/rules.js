@@ -161,6 +161,22 @@
     return SPECIAL_SKILL_NAME_ALIASES[normalized] || normalized;
   }
 
+  const SKILL2_SOURCE_RULE_NAMES = Object.freeze({
+    skill2_tactical_initiative:'기선제압',
+    skill2_devoted_defense:'헌신방어',
+    skill2_frenzy_defense:'격노',
+    skill2_holy_aura:'홀리오오라'
+  });
+
+  function normalizeSpecialSkill2ForEngine(unit) {
+    if (!unit || unit.specialSkill2MappingStatus !== 'source_card_verified' ||
+        unit.specialSkill2RuleAuthority !== 'card_source' ||
+        unit.specialSkill2ExecutionStatus !== 'source-card-rule-implemented') return '';
+    const ruleId=String(unit.specialSkill2RuleId||'');
+    const name=SKILL2_SOURCE_RULE_NAMES[ruleId];
+    return name && String(unit.specialSkill2||'').replace(/\\s+/g,'')===name ? name : '';
+  }
+
   function itemMatchesUnit(card, unit, ownerId, targetOwnerId) {
     const condition = card && card.itemConditions;
     if (!condition) return true;
@@ -688,6 +704,17 @@ if (card.type === 'unit') {
       (gone.equipmentCards || []).forEach(item => owner.graveyard.push(item));
       owner.graveyard.push(gone);
       addLog(state,owner.name + '의 ' + gone.name + '이(가) 파괴되었습니다. 장착 아이템도 함께 소멸했습니다.');
+      if (normalizeSpecialSkill2ForEngine(gone) === '헌신방어') {
+        // The unit now occupying the destroyed unit's field position is the
+        // "next" friendly unit. The benefit is temporary for this battle.
+        const nextUnit=owner.units[idx]||null;
+        if (nextUnit) {
+          changeUnitStat(nextUnit,'ap',1);
+          changeUnitStat(nextUnit,'dp',1);
+          changeUnitStat(nextUnit,'hp',1);
+          addLog(state,gone.name+'의 헌신방어! 다음 아군 유닛의 공·방·체가 각각 1 증가했습니다.');
+        }
+      }
     }
   }
 
@@ -821,6 +848,7 @@ if (card.type === 'unit') {
     }
     const defenderStats=rolledStats.defender||rollCombatStats(defender,rng),defenseRoll=defenderStats.dp;
     const skill=normalizeSpecialSkillForEngine(attacker,attacker.tempSkill||attacker.skill||'');
+    const defenderSkill2=normalizeSpecialSkill2ForEngine(defender);
     const targetAbilities=Array.isArray(defender.unitAbilityTags)&&defender.unitAbilityTags.length?defender.unitAbilityTags:[String(defender.unitAbility||'')];
     const change=(unit,stats,stat,delta)=>{
       const ok=changeUnitStat(unit,stat,delta);
@@ -876,8 +904,19 @@ if (card.type === 'unit') {
     }
     if(canAffectDefender&&skill.includes('방어전환공격')&&Number(defenseRoll.value||0)>0)
       set(defender,defenderStats,'dp',-Math.abs(Number(defenseRoll.value||0)));
+    // Skill2 is a defensive, separate rule channel. These exact card-source
+    // effects modify incoming damage before HP is reduced.
+    if(defenderSkill2==='기선제압'&&attackerLevel<=defenderLevel)
+      damage=Math.max(0,Number(damage||0)-1);
+    if(defenderSkill2==='홀리오오라'&&Number(attackRoll.value||0)<=
+        Math.floor((Number(defenseRoll.value||0)+Number(defender.hp||0))/2))
+      damage=0;
     const amount=Math.min(Math.max(0,Number(defender.hp||0)),Math.max(0,Number(damage||0)));
     const actual=amount>0&&change(defender,defenderStats,'hp',-amount)?amount:0;
+    // Wrath converts actual HP lost while defending into AP immediately, so
+    // it is available to the defender's retaliation in this same battle slot.
+    if(defenderSkill2==='격노'&&actual>0&&Number(defender.hp||0)>0)
+      change(defender,defenderStats,'ap',actual);
     if(skill.includes('흡혈공격')&&actual>0)change(attacker,attackerStats,'hp',Math.ceil(actual/2));
     if(skill.includes('은폐공격'))change(attacker,attackerStats,'dp',1);
     if(canAffectDefender&&skill.includes('조롱')&&defender.hp>1){
@@ -1061,7 +1100,7 @@ if (card.type === 'unit') {
     COLORS, COLOR_NAMES, TYPE_NAMES, clone, uid, sumCost, costText, colorName,
     newGame, buildStarterDeck, drawToSix, canPay, spendSoul, totalPower, validateCardForPlay,
     playCard, discardCard, reshuffleHand, endPhase, resolveBattle, runAIPhase, checkWinner, cardArtClass,
-    _test: { makePlayer, beginPhase, rollStat, coinProfile, chooseBlocker, createUnit, applyEffect, resolveUnitAttack, productionOf, readCost, validateCardForPlay, itemMatchesUnit, resolveSpellSlot, statMarker, canChangeStat, changeUnitStat, setUnitStat, normalizeSpecialSkillForEngine, SPECIAL_SKILL_RULE_KEYWORDS }
+    _test: { makePlayer, beginPhase, rollStat, coinProfile, chooseBlocker, createUnit, applyEffect, resolveUnitAttack, destroyUnit, productionOf, readCost, validateCardForPlay, itemMatchesUnit, resolveSpellSlot, statMarker, canChangeStat, changeUnitStat, setUnitStat, normalizeSpecialSkillForEngine, normalizeSpecialSkill2ForEngine, SPECIAL_SKILL_RULE_KEYWORDS, SKILL2_SOURCE_RULE_NAMES }
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.FM = api;
