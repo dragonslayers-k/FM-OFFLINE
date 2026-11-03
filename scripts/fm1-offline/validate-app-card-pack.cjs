@@ -6,8 +6,10 @@ const FM = require('../../app/src/main/assets/game/rules.js');
 
 const file = process.argv[2];
 const mappingFile = process.argv[3];
-if (!file || !fs.existsSync(file) || !mappingFile || !fs.existsSync(mappingFile)) {
-  console.error('Usage: node validate-app-card-pack.cjs <cards.json> <card-skill-mappings.json>');
+const effectFile = process.argv[4];
+if (!file || !fs.existsSync(file) || !mappingFile || !fs.existsSync(mappingFile) ||
+    !effectFile || !fs.existsSync(effectFile)) {
+  console.error('Usage: node validate-app-card-pack.cjs <cards.json> <card-skill-mappings.json> <card-effect-candidates.json>');
   process.exit(2);
 }
 const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -17,12 +19,25 @@ if (mappingData.schemaVersion !== 1 || !Array.isArray(mappingData.records) ||
     mappingData.recordCount !== mappingData.records.length) {
   throw new Error('card-skill-mappings.json has an invalid schema or record count');
 }
+const effectData = JSON.parse(fs.readFileSync(effectFile, 'utf8'));
+if (effectData.schemaVersion !== 1 || !Array.isArray(effectData.records) ||
+    effectData.candidateCount !== effectData.records.length ||
+    effectData.clauseCount !== effectData.records.reduce((n,x)=>n+(Array.isArray(x.clauses)?x.clauses.length:0),0)) {
+  throw new Error('card-effect-candidates.json has an invalid schema or record count');
+}
 const skillMappingsByCard = new Map();
 for (const mapping of mappingData.records) {
   const id = String(mapping.cardId || '');
   if (!id) throw new Error('A card skill mapping has no cardId');
   if (!skillMappingsByCard.has(id)) skillMappingsByCard.set(id, []);
   skillMappingsByCard.get(id).push(mapping);
+}
+const effectCandidatesByCard = new Map();
+for (const candidate of effectData.records) {
+  const id = String(candidate.cardId || '');
+  if (!id) throw new Error('An effect candidate has no cardId');
+  if (!effectCandidatesByCard.has(id)) effectCandidatesByCard.set(id, []);
+  effectCandidatesByCard.get(id).push(candidate);
 }
 const EXPECTED = { land:289, unit:8633, spell:3857, item:1748, enchant:823 };
 const types = Object.create(null);
@@ -99,7 +114,10 @@ for (const card of cards) {
     errors.push(card.id + ': non-unit card has an executable unit special-skill rule ID');
   }
 
-  const effectCandidates = Array.isArray(card.effectCandidates) ? card.effectCandidates : [];
+  const effectCandidates = effectCandidatesByCard.get(card.id) || [];
+  if (Number(card.effectCandidateCount || 0) !== effectCandidates.length) {
+    errors.push(card.id + ': compact effect candidate count does not match external candidate file');
+  }
   for (const candidate of effectCandidates) {
     effectAudit.candidates++;
     if (candidate.verificationStatus !== 'pattern_candidate') {
@@ -129,6 +147,9 @@ for (const card of cards) {
   if (card.effectExecutionStatus === 'candidate-only' && card.effect) {
     effectAudit.unexpectedExecutableEffects++;
     errors.push(card.id + ': candidate-only effect is incorrectly executable');
+  }
+  if (effectCandidates.length && card.effectVerificationStatus !== 'pattern_candidate') {
+    errors.push(card.id + ': compact effect verification status does not match candidate file');
   }
 
   if (card.type === 'land') {
