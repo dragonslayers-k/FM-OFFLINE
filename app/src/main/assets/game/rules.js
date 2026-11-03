@@ -174,7 +174,7 @@
         unit.specialSkill2ExecutionStatus !== 'source-card-rule-implemented') return '';
     const ruleId=String(unit.specialSkill2RuleId||'');
     const name=SKILL2_SOURCE_RULE_NAMES[ruleId];
-    return name && String(unit.specialSkill2||'').replace(/\\s+/g,'')===name ? name : '';
+    return name && String(unit.specialSkill2||'').replace(/\s+/g,'')===name ? name : '';
   }
 
   function itemMatchesUnit(card, unit, ownerId, targetOwnerId) {
