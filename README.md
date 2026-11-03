@@ -64,7 +64,7 @@ Settings → Secrets and variables → Actions에 다음 Repository secrets를 �
 
 DB 변환 결과는 다음을 포함합니다.
 
-- cards.json: 카드 15,350건, Firestore Document ID 기준
+- cards.json: 카드 15,350건, Firestore Document ID 기준 (T normalized SQLite v2)
 - manifest.json: 데이터팩 형식 / 버전, 카드·이미지 수, 카드 JSON SHA-256
 - images/{documentId}.webp: 카드별 원본 대형 이미지
 - 카드별 sourceCardUrl, sourceListUrl, sourceImageUrls, 원본 필드 sourceFields 보존
@@ -82,3 +82,10 @@ DB 변환 결과는 다음을 포함합니다.
 ## 저작권
 
 본 프로젝트는 판타지 마스터즈 원작사의 공식 앱이나 제휴 프로젝트가 아닙니다. 원작 카드 이미지·데이터의 재배포 권리는 별도로 확인해야 하며, 실제 공개 배포 전에는 권리자의 허가 또는 명시적 라이선스를 확인해야 합니다.
+
+## 데이터 기준 및 효과 실행 경계
+
+- Android 데이터팩 1.2.0은 T SQLite Release `fm1-carddb-28`에서만 생성한다. APK 저장소에서 JSONL 비용을 다시 해석하지 않는다.
+- 카드 ID와 상세 URL이 다르거나 이미지 SHA-256이 SQLite와 다르면 변환을 중단한다.
+- 혼합 소울 비용과 NCS/BONUS는 T DB의 검토 상태를 그대로 전달하며, 무료 비용으로 바꾸지 않는다.
+- T DB의 효과 후보와 절 단위 원문 위치는 보존하지만 `pattern_candidate`는 실행하지 않는다. 매뉴얼·카드별 검증 및 게임 엔진 테스트를 통과한 핸들러만 실행 가능하다.
