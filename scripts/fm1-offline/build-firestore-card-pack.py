@@ -532,7 +532,14 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
         "sourceFields":f,"sourceCollectedAt":row.get("collected_at"),
         "sourceDocumentId":cid,
         "effectCandidates":row.get("effect_candidates") or [],
-        "specialSkillMappings":row.get("skill_mappings") or [],
+        "specialSkillMappingStatus":(
+            next((m["mappingStatus"] for m in (row.get("skill_mappings") or [])
+                  if typ=="unit" and m.get("sourceField")=="Skill1"),"no_special_skill")
+        ),
+        "specialSkillRuleAuthority":(
+            next((m["ruleAuthority"] for m in (row.get("skill_mappings") or [])
+                  if typ=="unit" and m.get("sourceField")=="Skill1" and m.get("mappingStatus")=="manual_verified"),None)
+        ),
         "specialSkillRuleIds":[
             m["ruleId"] for m in (row.get("skill_mappings") or [])
             if typ=="unit" and m.get("sourceField")=="Skill1"
@@ -737,6 +744,19 @@ def convert(a):
     cards=[]
     source_records=load_normalized_database(a.db_sqlite)
     source_db_counts={"cards":len(source_records),"databaseRelease":a.db_release_tag}
+    skill_mapping_records=[
+        {"cardId":row["card_id"],**mapping}
+        for row in source_records for mapping in row.get("skill_mappings",[])
+    ]
+    skill_mapping_data={
+        "schemaVersion":1,
+        "sourceDatabaseRelease":a.db_release_tag,
+        "description":"Per-card Skill1/Skill2 source mappings, including original enum values, authority, confidence and evidence. Only manual-verified Skill1 mappings are eligible for the Manual baseline engine.",
+        "recordCount":len(skill_mapping_records),
+        "records":skill_mapping_records,
+    }
+    skill_mapping_bytes=json.dumps(skill_mapping_data,ensure_ascii=False,separators=(",",":")).encode("utf-8")
+    skill_mapping_sha256=hashlib.sha256(skill_mapping_bytes).hexdigest()
     for index,row in enumerate(source_records,1):
         card=build_card(row,enums,earn_soul_enum,require_soul_enum)
         for image_type in ("small","large"):
@@ -855,6 +875,9 @@ def convert(a):
           "catalogueCommunityCandidates":len(community_catalogue_rules),
           "catalogueSha256":skill_catalogue_sha256,
           "catalogueEntry":"skill-catalogue.json",
+          "cardSkillMappingsEntry":"card-skill-mappings.json",
+          "cardSkillMappingsSha256":skill_mapping_sha256,
+          "cardSkillMappingRecordCount":len(skill_mapping_records),
           "manualRuleSource":"Manual.zip / specialability.htm",
           "communitySource":"2017 Inven community reference",
           "communityRulesExecutable":False,
@@ -879,7 +902,10 @@ def convert(a):
     }
     (out/"manifest.json").write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding="utf-8")
     shutil.copy2(skill_catalogue_path,out/"skill-catalogue.json")
-    unpacked_bytes=cards_bytes+image_bytes+(out/"manifest.json").stat().st_size+(out/"skill-catalogue.json").stat().st_size
+    (out/"card-skill-mappings.json").write_bytes(skill_mapping_bytes)
+    unpacked_bytes=(cards_bytes+image_bytes+(out/"manifest.json").stat().st_size
+                    +(out/"skill-catalogue.json").stat().st_size
+                    +(out/"card-skill-mappings.json").stat().st_size)
     if unpacked_bytes > 700*1024*1024:
         raise RuntimeError(f"FM1-CARD-DATA exceeds Android 700MB unpack limit: {unpacked_bytes} bytes")
     manifest["unpackedBytes"]=unpacked_bytes
@@ -890,12 +916,13 @@ def convert(a):
         archive.write(cards_path,"cards.json",compress_type=zipfile.ZIP_DEFLATED,compresslevel=6)
         archive.write(out/"manifest.json","manifest.json",compress_type=zipfile.ZIP_DEFLATED,compresslevel=6)
         archive.write(out/"skill-catalogue.json","skill-catalogue.json",compress_type=zipfile.ZIP_DEFLATED,compresslevel=6)
+        archive.write(out/"card-skill-mappings.json","card-skill-mappings.json",compress_type=zipfile.ZIP_DEFLATED,compresslevel=6)
         for img in sorted(images.glob("*.webp")):
             archive.write(img,"images/"+img.name,compress_type=zipfile.ZIP_STORED)
     with zipfile.ZipFile(z) as archive:
         if archive.testzip() is not None: raise RuntimeError("Generated ZIP CRC test failed")
         names=archive.namelist()
-        if "cards.json" not in names or "manifest.json" not in names or "skill-catalogue.json" not in names or sum(n.startswith("images/") for n in names)!=TOTAL:
+        if "cards.json" not in names or "manifest.json" not in names or "skill-catalogue.json" not in names or "card-skill-mappings.json" not in names or sum(n.startswith("images/") for n in names)!=TOTAL:
             raise RuntimeError("Generated ZIP structure incomplete")
     print(json.dumps({"zip":str(z),"bytes":z.stat().st_size,"cards":TOTAL,"images":TOTAL,
       "types":dict(counts),"cardsSha256":digest,"cardsJsonBytes":cards_bytes,"imageBytes":image_bytes,
@@ -905,6 +932,8 @@ def convert(a):
       "mappingReviewLandInstallCost":mapping_review_land,"semanticReviewLandInstallCost":semantic_review_land,
       "effectCandidateRows":effect_candidate_count,"effectClauseRows":effect_clause_count,
       "specialSkillReview":skill_db_counts,
+      "cardSkillMappingFileBytes":len(skill_mapping_bytes),
+      "cardSkillMappingSha256":skill_mapping_sha256,
       "magicLandCount":land_magiclands,"landSoulProductionNeedsReview":land_production_review,
       "format":manifest["format"],"version":manifest["version"]},ensure_ascii=False,indent=2))
 
