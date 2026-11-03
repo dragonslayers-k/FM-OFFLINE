@@ -62,12 +62,12 @@ for (const [type, count] of Object.entries(EXPECTED)) {
 if (cards.length !== 15350) errors.push('Total card count mismatch: ' + cards.length);
 if ((landStatus['source-decoded'] || 0) !== 239) errors.push('Expected 239 decoded standard lands');
 if ((landStatus['magicland-effect'] || 0) !== 50) errors.push('Expected 50 MagicLand special-effect records');
-if (landInstallCost.known !== 275 || landInstallCost.review !== 14) {
+if (landInstallCost.known !== 289 || landInstallCost.review !== 0) {
   errors.push('Land install-cost accounting mismatch: ' + JSON.stringify(landInstallCost));
 }
 const nonLandKnown = Object.values(costKnown).reduce((s,x) => s + x.known, 0);
 const nonLandReview = Object.values(costKnown).reduce((s,x) => s + x.review, 0);
-if (nonLandKnown !== 14244 || nonLandReview !== 817) {
+if (nonLandKnown !== 14282 || nonLandReview !== 779) {
   errors.push('Non-land cost accounting mismatch: ' + JSON.stringify(costKnown));
 }
 if (errors.length) {

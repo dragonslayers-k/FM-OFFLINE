@@ -91,3 +91,10 @@ This is an implementation schema, **not a confirmed export schema from the origi
 ## 1.1.1 converter validation source
 
 The 1.1.1 Android pack conversion is pinned to the audited T Release `fm1-carddb-26`. Its source asset hashes are checked before conversion. Land installation now requires both verified LP and a parsed `RequireSoul` cost; land production uses `EarnSoulList` with the live `Enum+EarnSoul` symbols. MagicLand (`SPELL`) records remain preserved but cannot be played as ordinary producing terrain until their card-specific soul-cost effects are implemented.
+
+
+## RequireSoul 복합 속성 토큰 보정 (FM1-CARD-DATA 1.1.2)
+
+`RequireSoul`은 `Enum+RequireSoul`의 코드 심볼을 기준으로 해석한다. 단일 속성 심볼은 해당 속성 요구량으로, `DARK_EARTH` 등 복합 심볼은 명시된 각 속성 요구량으로 분해한다. 예를 들어 `12011101`은 `DARK_EARTH` 1개와 `DARK` 1개 토큰이므로 암흑 2, 대지 1이다. 해당 카드는 원문 추가 설명과도 대조했다.
+
+`MU`는 무소울 요구량, `NONE`은 수량 0일 때 명시적 무비용으로 보존한다. `NCS`와 `BONUS`는 기존 enum 이름 및 카드 원문을 보존하되 결제 규칙이 충분히 검증되지 않아 계속 `manual_review`로 남긴다. 이를 일반 무소울이나 무료 비용으로 바꾸지 않는다.

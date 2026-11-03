@@ -102,10 +102,10 @@ jobs:
             --enumtable "$RUNNER_TEMP/fm1-source/enumtable.json" \
             --images-tar-gz "$RUNNER_TEMP/fm1-source/images.tar.gz" \
             --output "$RUNNER_TEMP/fm1-pack" \
-            --zip-output "release-package/FM1-CardData-v1.1.1.zip"
+            --zip-output "release-package/FM1-CardData-v1.1.2.zip"
 
-          test -s release-package/FM1-CardData-v1.1.1.zip
-          unzip -p release-package/FM1-CardData-v1.1.1.zip cards.json > "$RUNNER_TEMP/fm1-app-cards.json"
+          test -s release-package/FM1-CardData-v1.1.2.zip
+          unzip -p release-package/FM1-CardData-v1.1.2.zip cards.json > "$RUNNER_TEMP/fm1-app-cards.json"
           node scripts/fm1-offline/validate-app-card-pack.cjs "$RUNNER_TEMP/fm1-app-cards.json"
           rm -f "$RUNNER_TEMP/fm1-app-cards.json"
           rm -rf "$RUNNER_TEMP/fm1-pack" "$RUNNER_TEMP/fm1-source"

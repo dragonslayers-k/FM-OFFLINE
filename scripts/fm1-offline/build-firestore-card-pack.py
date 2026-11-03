@@ -64,25 +64,52 @@ def faction(label_text):
         if any(n in s for n in needles): return color
     return "neutral"
 
-def parse_cost(raw):
-    # RequireSoul is a concatenation of 4-char tokens: 2-char type + 2-char count.
-    out={"cost":{},"known":False,"review":[],"raw":raw}
+def parse_cost(raw, require_soul_enum):
+    """Decode RequireSoul codes, including documented two-colour tokens.
+    NCS and BONUS remain review-only until their payment rules are verified.
+    """
+    out={"cost":{},"known":False,"review":[],"raw":raw,"tokens":[]}
     if not isinstance(raw,str) or not raw:
         out["review"].append("source-cost-missing"); return out
     if len(raw)%4:
         out["review"].append("invalid-token-width"); return out
     values={}
+    colors={"DARK":"dark","FIRE":"fire","WATER":"water","FOREST":"forest",
+            "IRON":"metal","EARTH":"earth","LIGHT":"light"}
     for i in range(0,len(raw),4):
         token=raw[i:i+4]
         if not token.isdigit():
             out["review"].append("non-numeric-token:"+token); continue
         code,amount=int(token[:2]),int(token[2:])
-        if code in PURE_SOUL:
-            color=PURE_SOUL[code]; values[color]=values.get(color,0)+amount
-        elif code==1 and amount==0:
-            values.setdefault("neutral",0)
+        meta=require_soul_enum.get(str(code))
+        if not meta:
+            out["review"].append("unresolved-requiresoul-code:"+token)
+            out["tokens"].append({"raw":token,"code":code,"amount":amount,"symbol":None,"status":"manual_review"})
+            continue
+        symbol=meta["symbol"]
+        record={"raw":token,"code":code,"amount":amount,"symbol":symbol,
+                "icon":meta.get("icon",""),"status":"enum-decoded"}
+        if symbol=="NONE":
+            if amount==0:
+                values.setdefault("neutral",0)
+                record["kind"]="no-cost"
+            else:
+                record["status"]="manual_review"
+                out["review"].append("nonzero-none-token:"+token)
+        elif symbol=="MU":
+            values["neutral"]=values.get("neutral",0)+amount
+            record["kind"]="neutral"
         else:
-            out["review"].append("unresolved-soul-code:"+token)
+            components=symbol.split("_")
+            if components and all(part in colors for part in components):
+                record["kind"]="colored"
+                record["colors"]=[colors[part] for part in components]
+                for color in record["colors"]:
+                    values[color]=values.get(color,0)+amount
+            else:
+                record["status"]="manual_review"
+                out["review"].append("unresolved-requiresoul-symbol:"+symbol)
+        out["tokens"].append(record)
     if not out["review"] and values:
         out["cost"]=values;out["known"]=True
     elif not out["review"]:
@@ -167,7 +194,7 @@ def add(tabs, group, label_text, value):
     if value is None or value=="": return
     tabs.setdefault(group,[]).append({"label":label_text,"text":f"{label_text} : {value}"})
 
-def build_card(row, enums, earn_soul_enum):
+def build_card(row, enums, earn_soul_enum, require_soul_enum):
     f=row.get("raw_payload") or {}
     cid=str(row.get("card_id") or f.get("ID") or "")
     name=str(row.get("name") or f.get("Name") or "")
@@ -197,7 +224,7 @@ def build_card(row, enums, earn_soul_enum):
         add(tabs,"분류별","카드 텍스트",base)
     if extra: tabs["텍스트"].append({"label":"추가 설명","text":extra})
 
-    c=parse_cost(f.get("RequireSoul"))
+    c=parse_cost(f.get("RequireSoul"),require_soul_enum)
     cost_known=(c["known"] and typ!="land")
     card={
         "id":cid,"name":name,"type":typ,"faction":color,
@@ -324,10 +351,24 @@ def large_image_card_id(archive_member_name):
 
 
 def self_test():
-    assert parse_cost("11012102")["cost"]=={"dark":1,"fire":2}
-    assert parse_cost("8301")["known"] is False
-    assert parse_cost("0100")["cost"]=={"neutral":0}
-    assert parse_cost("")["known"] is False
+    require_soul_enum={
+        "1":{"symbol":"NONE","icon":"/none.webp"},
+        "11":{"symbol":"DARK","icon":"/dark.webp"},
+        "12":{"symbol":"DARK_EARTH","icon":"/dark_earth.webp"},
+        "13":{"symbol":"DARK_FIRE","icon":"/dark_fire.webp"},
+        "21":{"symbol":"FIRE","icon":"/fire.webp"},
+        "81":{"symbol":"MU","icon":"/mu.webp"},
+        "82":{"symbol":"NCS","icon":"/ncs.webp"},
+        "83":{"symbol":"BONUS","icon":"/bonus.webp"}
+    }
+    assert parse_cost("11012102",require_soul_enum)["cost"]=={"dark":1,"fire":2}
+    assert parse_cost("12011101",require_soul_enum)["cost"]=={"dark":2,"earth":1}
+    assert parse_cost("1302",require_soul_enum)["cost"]=={"dark":2,"fire":2}
+    assert parse_cost("8102",require_soul_enum)["cost"]=={"neutral":2}
+    assert parse_cost("8301",require_soul_enum)["known"] is False
+    assert parse_cost("8201",require_soul_enum)["known"] is False
+    assert parse_cost("0100",require_soul_enum)["cost"]=={"neutral":0}
+    assert parse_cost("",require_soul_enum)["known"] is False
     assert CATEGORY[5]=="enchant" and sum(EXPECTED.values())==TOTAL
     assert expected_large_image_name({"id":"land-card","sourceFields":{"Category":1,"KIND":5}})=="L00005L.webp"
     assert expected_large_image_name({"id":"magic-card","sourceFields":{"Category":3,"KIND":3861}})=="M03861L.webp"
@@ -366,12 +407,15 @@ def convert(a):
     enum_data=json.loads(Path(a.enumtable).read_text(encoding="utf-8"))
     enums=enum_lookup(enum_data)
     earn_soul_enum=enum_symbol_map(enum_data,"EarnSoul")
+    require_soul_enum=enum_symbol_map(enum_data,"RequireSoul")
     if not earn_soul_enum:
         raise RuntimeError("enumtable is missing Enum+EarnSoul; refusing to guess land soul production")
+    if not require_soul_enum:
+        raise RuntimeError("enumtable is missing Enum+RequireSoul; refusing to guess soul payment costs")
     cards=[]
     with gzip.open(a.cards_jsonl_gz,"rt",encoding="utf-8") as src:
         for lineno,line in enumerate(src,1):
-            if line.strip(): cards.append(build_card(json.loads(line),enums,earn_soul_enum))
+            if line.strip(): cards.append(build_card(json.loads(line),enums,earn_soul_enum,require_soul_enum))
             if lineno%3000==0: print(f"converted {lineno} source lines",flush=True)
     counts=Counter(c["type"] for c in cards)
     if len(cards)!=TOTAL or counts!=EXPECTED: raise RuntimeError(f"Card counts differ: {len(cards)} {dict(counts)}")
@@ -437,7 +481,7 @@ def convert(a):
     land_production_review=sum(1 for c in cards if c["type"]=="land" and c["soulProductionStatus"]=="needs-review")
     land_token_counts=Counter(t.get("symbol") or "UNMAPPED" for c in cards if c["type"]=="land" for t in c["soulProductionTokens"])
     manifest={
-        "format":"FM1-CARD-DATA","version":"1.1.1",
+        "format":"FM1-CARD-DATA","version":"1.1.2",
         "cardsCount":TOTAL,"imagesCount":TOTAL,"cardsSha256":digest,
         "classification":{"source":"current FMLunatic Firestore Category enum + current five-type reference",
           "types":{"land":289,"unit":8633,"spell":3857,"item":1748,"enchant":823},
@@ -449,7 +493,8 @@ def convert(a):
           "knownNonLandCosts":known,"needsReviewNonLandCosts":needs_review,
           "knownLandInstallationSoulCosts":land_cost_known,
           "needsReviewLandInstallationSoulCosts":land_cost_review,
-          "policy":"LP and RequireSoul are separate land installation requirements. Unknown mixed/NCS/BONUS tokens are never treated as free."
+          "nonLandNeedsReviewByType":dict(Counter(c["type"] for c in cards if c["type"]!="land" and not c["costKnown"])),
+          "policy":"RequireSoul pure and compound color enum symbols are decoded as one soul per named color. NCS and BONUS remain review-only until payment rules are verified. LP and RequireSoul are separate land installation requirements."
         },
         "landSoulProduction":{
           "source":"Firestore EarnSoulList + Enum+EarnSoul",
