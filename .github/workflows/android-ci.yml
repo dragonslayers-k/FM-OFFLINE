@@ -73,8 +73,9 @@ jobs:
       - name: Check Firestore-to-Android converter
         run: |
           set -euo pipefail
-          python -m py_compile scripts/fm1-offline/build-firestore-card-pack.py
+          python -m py_compile scripts/fm1-offline/build-firestore-card-pack.py scripts/fm1-offline/audit-enchant-cards.py
           python scripts/fm1-offline/build-firestore-card-pack.py --self-test
+          python scripts/fm1-offline/audit-enchant-cards.py --self-test
 
       - name: Download the existing card DB release and build Android data ZIP
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.build_card_pack == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[build-card-pack]')) }}
@@ -105,6 +106,10 @@ jobs:
             --zip-output "release-package/FM1-CardData-v1.1.2.zip"
 
           test -s release-package/FM1-CardData-v1.1.2.zip
+          python scripts/fm1-offline/audit-enchant-cards.py \
+            --cards-json "$RUNNER_TEMP/fm1-pack/cards.json" \
+            --summary "release-package/enchant-effect-audit.json" \
+            --csv "release-package/enchant-effect-audit.csv"
           unzip -p release-package/FM1-CardData-v1.1.2.zip cards.json > "$RUNNER_TEMP/fm1-app-cards.json"
           node scripts/fm1-offline/validate-app-card-pack.cjs "$RUNNER_TEMP/fm1-app-cards.json"
           rm -f "$RUNNER_TEMP/fm1-app-cards.json"
@@ -270,6 +275,8 @@ jobs:
             release-package/FantasyMastersOffline-debug.apk
             release-package/FantasyMastersOffline-release.apk
             release-package/build-status.txt
+            release-package/enchant-effect-audit.json
+            release-package/enchant-effect-audit.csv
             release-package/emulator-screen.png
             release-package/emulator-launch-log.txt
           if-no-files-found: warn
