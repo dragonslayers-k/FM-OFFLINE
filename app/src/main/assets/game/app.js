@@ -30,7 +30,7 @@
     try { localStorage.setItem(STORE, JSON.stringify(data)); }
     catch (_) { showDataMessage('저장 공간이 부족합니다. 카드 데이터 크기를 줄여주십시오.', true); }
   }
-  function mergeCards() {
+  async function mergeCards() {
     let packInfo = {};
     let diagnostics = {};
     imageBaseUri = '';
@@ -88,6 +88,11 @@
             addNormalized(response.items);
             finished = response.hasMore !== true;
             pageIndex++;
+            // Yield periodically so WebView can service rendering and Android
+            // lifecycle events while normalizing the complete 15k-card pack.
+            if (!finished && pageIndex % 4 === 0) {
+              await new Promise(resolve => window.setTimeout(resolve, 0));
+            }
           }
         } else if (typeof window.FMNative.getCardsJson === 'function') {
           const parsedPack = JSON.parse(window.FMNative.getCardsJson() || '[]');
@@ -711,11 +716,11 @@
     });
   }
 
-  function init() {
+  async function init() {
     const saved = safeRead();
     data = Object.assign(data, saved);
     if (!['easy','normal','hard'].includes(data.difficulty)) data.difficulty = 'normal';
-    mergeCards();
+    await mergeCards();
     el('difficulty').value = data.difficulty;
     bindEvents();
     startMatch();
