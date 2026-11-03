@@ -39,12 +39,42 @@ capture_failure_logs() {
   cat emulator-launch-log.txt || true
 }
 
+COMPONENT="$APP_ID/com.fantasy.offline.MainActivity"
+
+# Short preflight: launch the APK without importing the 400MB-class data ZIP.
+# This separates a native app startup crash (SIGTRAP, etc.) from a later import failure.
+START_OUTPUT="$(adb shell am start -n "$COMPONENT" 2>&1 || true)"
+printf '%s\\n' "$START_OUTPUT"
+if grep -Eq 'Error type [0-9]+|Error: Activity class|Exception occurred' <<<"$START_OUTPUT"; then
+  echo "::error::Android activity could not be started during launch-only preflight"
+  capture_failure_logs
+  exit 1
+fi
+APP_SEEN=false
+for attempt in $(seq 1 20); do
+  APP_PID="$(adb shell pidof "$APP_ID" 2>/dev/null | tr -d '\\r\\n' || true)"
+  if [ -n "$APP_PID" ]; then
+    APP_SEEN=true
+  elif [ "$APP_SEEN" = true ]; then
+    echo "::error::Application exited during launch-only preflight (before card ZIP import)"
+    capture_failure_logs
+    exit 1
+  fi
+  sleep 1
+done
+APP_PID="$(adb shell pidof "$APP_ID" 2>/dev/null | tr -d '\\r\\n' || true)"
+if [ -z "$APP_PID" ]; then
+  echo "::error::Application did not remain alive during launch-only preflight"
+  capture_failure_logs
+  exit 1
+fi
+adb shell am force-stop "$APP_ID"
+
 # Stream the 400MB-class test ZIP directly into this Debug app's private files;
 # no storage permission or exported production import endpoint is introduced.
 adb shell "run-as '$APP_ID' sh -c 'mkdir -p files && cat > files/$TEST_PACK_NAME'" < "$PACK_ZIP"
 adb shell "run-as '$APP_ID' test -s 'files/$TEST_PACK_NAME'"
 
-COMPONENT="$APP_ID/com.fantasy.offline.MainActivity"
 # Do not use "am start -W": cold Android 14 emulator boots can exceed adb's
 # wait-for-fully-drawn timeout even while ActivityManager starts the app.
 START_OUTPUT="$(adb shell am start -n "$COMPONENT" --es fm1.testDataPackFile "$TEST_PACK_NAME" 2>&1 || true)"
