@@ -12,7 +12,10 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.util.JsonReader;
 import android.util.JsonToken;
+import android.util.Log;
+import org.json.JSONArray;
 import org.json.JSONObject;
+import java.math.BigDecimal;
 import java.io.*;
 import java.util.HashSet;
 import java.security.MessageDigest;
@@ -29,11 +32,30 @@ public final class MainActivity extends Activity {
     private static final int MAX_ENTRIES = 40000;
     private WebView webView;
     private File dataDir;
+    private File pendingDebugDataPack;
+    private JsonReader cardsPageReader;
+    private int nextCardsPageIndex = 0;
     private final ExecutorService dataPackExecutor = Executors.newSingleThreadExecutor();
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         dataDir = new File(getFilesDir(), "fm1-card-data");
+        if (BuildConfig.DEBUG) {
+            String testPackName = getIntent().getStringExtra("fm1.testDataPackFile");
+            if (testPackName != null && testPackName.matches("[A-Za-z0-9._-]+\\.zip")) {
+                try {
+                    File candidate = new File(getFilesDir(), testPackName).getCanonicalFile();
+                    String privateRoot = getFilesDir().getCanonicalPath() + File.separator;
+                    if (candidate.isFile() && candidate.getCanonicalPath().startsWith(privateRoot)) {
+                        pendingDebugDataPack = candidate;
+                    } else {
+                        Log.e("FM1CardData", "Debug card pack test file is missing or outside app storage");
+                    }
+                } catch (IOException e) {
+                    Log.e("FM1CardData", "Cannot resolve debug card pack test file", e);
+                }
+            }
+        }
         getWindow().setStatusBarColor(Color.rgb(12,17,27));
         getWindow().setNavigationBarColor(Color.rgb(12,17,27));
         webView = new WebView(this);
@@ -50,7 +72,12 @@ public final class MainActivity extends Activity {
         s.setSupportZoom(false);
         s.setBuiltInZoomControls(false);
         webView.addJavascriptInterface(new DataPackBridge(), "FMNative");
-        webView.setWebViewClient(new WebViewClient());
+        webView.setWebViewClient(new WebViewClient() {
+            @Override public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                startDebugDataPackImportIfRequested();
+            }
+        });
         webView.setWebChromeClient(new WebChromeClient());
         setContentView(webView);
         webView.loadUrl("file:///android_asset/game/index.html");
@@ -64,6 +91,72 @@ public final class MainActivity extends Activity {
                 return readText(f);
             } catch (Exception e) { return "[]"; }
         }
+        @JavascriptInterface public synchronized String getCardPageJson(int pageIndex, int pageSize) {
+            JSONObject response = new JSONObject();
+            try {
+                if (pageIndex < 0 || pageIndex > 10000 || pageSize < 1 || pageSize > 1000) {
+                    throw new IOException("Invalid card page request");
+                }
+                File f = new File(dataDir, "cards.json");
+                if (!f.isFile() || f.length() <= 0 || f.length() > MAX_CARDS_JSON) {
+                    throw new IOException("cards.json is missing, empty, or exceeds the bridge limit");
+                }
+                if (cardsPageReader == null || pageIndex != nextCardsPageIndex) {
+                    closeCardsPageReader();
+                    cardsPageReader = new JsonReader(new InputStreamReader(new FileInputStream(f), "UTF-8"));
+                    JsonToken root = cardsPageReader.peek();
+                    if (root == JsonToken.BEGIN_ARRAY) {
+                        cardsPageReader.beginArray();
+                    } else if (root == JsonToken.BEGIN_OBJECT) {
+                        cardsPageReader.beginObject();
+                        boolean foundCards = false;
+                        while (cardsPageReader.hasNext()) {
+                            String key = cardsPageReader.nextName();
+                            if ("cards".equals(key) && cardsPageReader.peek() == JsonToken.BEGIN_ARRAY) {
+                                cardsPageReader.beginArray();
+                                foundCards = true;
+                                break;
+                            }
+                            cardsPageReader.skipValue();
+                        }
+                        if (!foundCards) throw new IOException("cards.json object has no cards array");
+                    } else {
+                        throw new IOException("cards.json root is not an array or object");
+                    }
+                    long skip = (long) pageIndex * pageSize;
+                    while (skip > 0 && cardsPageReader.hasNext()) {
+                        cardsPageReader.skipValue();
+                        skip--;
+                    }
+                    if (skip > 0) throw new IOException("Card page starts beyond the end of cards.json");
+                    nextCardsPageIndex = pageIndex;
+                }
+
+                JSONArray items = new JSONArray();
+                while (cardsPageReader.hasNext() && items.length() < pageSize) {
+                    items.put(readJsonValue(cardsPageReader));
+                }
+                boolean hasMore = cardsPageReader.hasNext();
+                response.put("pageIndex", pageIndex);
+                response.put("items", items);
+                response.put("hasMore", hasMore);
+                nextCardsPageIndex = pageIndex + 1;
+                if (!hasMore) closeCardsPageReader();
+            } catch (Exception e) {
+                closeCardsPageReader();
+                try { response.put("error", safeMessage(e)); } catch (Exception ignored) {}
+            }
+            return response.toString();
+        }
+
+        @JavascriptInterface public void reportCardDataLoad(int loaded, int expected, String error) {
+            if (error == null || error.trim().isEmpty()) {
+                Log.i("FM1CardData", "WEBVIEW_CARDS_LOADED=" + loaded + "/" + expected);
+            } else {
+                Log.e("FM1CardData", "WEBVIEW_CARDS_FAILED=" + loaded + "/" + expected + " " + error);
+            }
+        }
+
         @JavascriptInterface public String getCardDataDiagnostics() {
             try {
                 File f = new File(dataDir, "cards.json");
@@ -146,6 +239,29 @@ public final class MainActivity extends Activity {
             });
         } catch (RuntimeException e) {
             notifyWeb("error", "데이터팩 작업을 시작하지 못했습니다: " + safeMessage(e));
+        }
+    }
+
+    private void startDebugDataPackImportIfRequested() {
+        if (!BuildConfig.DEBUG || pendingDebugDataPack == null) return;
+        final File pack = pendingDebugDataPack;
+        pendingDebugDataPack = null;
+        notifyWeb("working", "에뮬레이터 검증용 카드 데이터팩을 가져오는 중입니다.");
+        try {
+            dataPackExecutor.execute(() -> {
+                try {
+                    installDataPack(Uri.fromFile(pack));
+                    notifyWeb("success", "에뮬레이터 카드 데이터팩 설치 완료");
+                } catch (Exception e) {
+                    Log.e("FM1CardData", "DEBUG_PACK_IMPORT_FAILED", e);
+                    notifyWeb("error", safeMessage(e));
+                } finally {
+                    if (pack.exists() && !pack.delete()) Log.w("FM1CardData", "Could not delete test card ZIP");
+                }
+            });
+        } catch (RuntimeException e) {
+            Log.e("FM1CardData", "Cannot start debug card import", e);
+            notifyWeb("error", "에뮬레이터 데이터팩 검증을 시작하지 못했습니다: " + safeMessage(e));
         }
     }
 
@@ -378,6 +494,40 @@ public final class MainActivity extends Activity {
         view.post(() -> {
             if (webView != null) webView.evaluateJavascript(js, null);
         });
+    }
+
+    private synchronized void closeCardsPageReader() {
+        if (cardsPageReader != null) {
+            try { cardsPageReader.close(); } catch (IOException ignored) {}
+            cardsPageReader = null;
+        }
+        nextCardsPageIndex = 0;
+    }
+
+    private static Object readJsonValue(JsonReader reader) throws Exception {
+        JsonToken token = reader.peek();
+        if (token == JsonToken.BEGIN_OBJECT) {
+            JSONObject object = new JSONObject();
+            reader.beginObject();
+            while (reader.hasNext()) object.put(reader.nextName(), readJsonValue(reader));
+            reader.endObject();
+            return object;
+        }
+        if (token == JsonToken.BEGIN_ARRAY) {
+            JSONArray array = new JSONArray();
+            reader.beginArray();
+            while (reader.hasNext()) array.put(readJsonValue(reader));
+            reader.endArray();
+            return array;
+        }
+        if (token == JsonToken.STRING) return reader.nextString();
+        if (token == JsonToken.NUMBER) return new BigDecimal(reader.nextString());
+        if (token == JsonToken.BOOLEAN) return reader.nextBoolean();
+        if (token == JsonToken.NULL) {
+            reader.nextNull();
+            return JSONObject.NULL;
+        }
+        throw new IOException("Unexpected JSON token in cards.json: " + token);
     }
 
     private static String safeMessage(Exception e) {
