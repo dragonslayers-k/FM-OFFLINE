@@ -561,6 +561,23 @@ test('FM1 manual special attacks apply their named stat conditions',()=>{
 });
 
 
+test('Manual bravery/fear use the defender level relation and add AP before DP even at AP zero',()=>{
+  const run=(skill,attackerLevel,defenderLevel)=>{
+    const a=unit('rank-attacker',{instanceId:'rank-a',skill,ap:0,dp:0,hp:10,maxHp:10,level:attackerLevel});
+    const d=unit('rank-defender',{instanceId:'rank-d',ap:0,dp:0,hp:10,maxHp:10,level:defenderLevel});
+    const p=player('player',{units:[a]}),ai=player('ai',{units:[d]}),st=state(p,ai);
+    FM._test.resolveUnitAttack(st,p,ai,a,d,{
+      attacker:{ap:{value:0},dp:{value:0},hp:{value:10}},
+      defender:{ap:{value:0},dp:{value:0},hp:{value:10}}
+    });
+    return d.hp;
+  };
+  assert.equal(run('용맹공격기술',3,4),9,'bravery triggers when defender level is same or higher');
+  assert.equal(run('용맹공격기술',3,2),10,'bravery does not trigger against a lower-level defender');
+  assert.equal(run('공포공격기술',3,2),9,'fear triggers when defender level is same or lower');
+  assert.equal(run('공포공격기술',3,4),10,'fear does not trigger against a higher-level defender');
+});
+
 test('DB29 manual rule IDs normalize the actual Skill1 enum labels to Manual attack handlers',()=>{
   const normalize=FM._test.normalizeSpecialSkillForEngine;
   const cases={
