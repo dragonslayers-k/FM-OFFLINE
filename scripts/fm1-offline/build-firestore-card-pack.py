@@ -748,6 +748,26 @@ def convert(a):
         {"cardId":row["card_id"],**mapping}
         for row in source_records for mapping in row.get("skill_mappings",[])
     ]
+    skill_db_counts={
+        "manualRuleCount":len(manual_catalogue_rules),
+        "communityRuleCandidateCount":len(community_catalogue_rules),
+        "cardRuleMappingRows":len(skill_mapping_records),
+        "manualSkillMappingRows":sum(1 for m in skill_mapping_records if m.get("mappingStatus")=="manual_verified"),
+        "communitySkillCandidateRows":sum(1 for m in skill_mapping_records if m.get("mappingStatus")=="community_documented_candidate"),
+        "unmappedSkillRows":sum(1 for m in skill_mapping_records if m.get("mappingStatus")=="unmapped"),
+        "skillEnumInventoryRows":len({
+            (m.get("sourceField"),m.get("sourceEnumValue"),m.get("sourceName"))
+            for m in skill_mapping_records
+        }),
+        "playableCommunityRuleRows":sum(1 for m in community_catalogue_rules if m.get("playableByDefault") is True),
+    }
+    if (skill_db_counts["manualRuleCount"]!=27 or skill_db_counts["communityRuleCandidateCount"]!=41
+        or skill_db_counts["cardRuleMappingRows"]<15000
+        or skill_db_counts["manualSkillMappingRows"]<1000
+        or skill_db_counts["communitySkillCandidateRows"]<100
+        or skill_db_counts["skillEnumInventoryRows"]<100
+        or skill_db_counts["playableCommunityRuleRows"]!=0):
+        raise RuntimeError("Card-pack skill mapping review failed: "+json.dumps(skill_db_counts,ensure_ascii=False))
     skill_mapping_data={
         "schemaVersion":1,
         "sourceDatabaseRelease":a.db_release_tag,
