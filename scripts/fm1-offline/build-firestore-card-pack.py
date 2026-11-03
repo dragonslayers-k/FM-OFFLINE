@@ -878,8 +878,6 @@ def convert(a):
     }
     effect_candidate_bytes=json.dumps(effect_candidate_data,ensure_ascii=False,separators=(",",":")).encode("utf-8")
     effect_candidate_sha256=hashlib.sha256(effect_candidate_bytes).hexdigest()
-    skill2_catalogue_bytes=json.dumps(skill2_catalogue,ensure_ascii=False,separators=(",",":")).encode("utf-8")
-    skill2_catalogue_sha256=hashlib.sha256(skill2_catalogue_bytes).hexdigest()
     for index,row in enumerate(source_records,1):
         card=build_card(row,enums,earn_soul_enum,require_soul_enum)
         for image_type in ("small","large"):
@@ -890,13 +888,15 @@ def convert(a):
     counts=Counter(c["type"] for c in cards)
     if len(cards)!=TOTAL or counts!=EXPECTED: raise RuntimeError(f"Card counts differ: {len(cards)} {dict(counts)}")
     skill2_catalogue=build_skill2_catalogue(skill_mapping_records,cards,a.db_release_tag)
-    if expected_count==TOTAL and (
+    if len(cards)==TOTAL and (
         skill2_catalogue["entryCount"]!=189 or skill2_catalogue["activeSkillCount"]!=188
         or skill2_catalogue["activeCardCount"]!=1366 or skill2_catalogue["executableRuleCount"]!=0
     ):
         raise RuntimeError("DB29 Skill2 inventory validation failed: "+json.dumps({
             k:skill2_catalogue[k] for k in ("entryCount","activeSkillCount","activeCardCount","mappingStatusCounts")
         },ensure_ascii=False))
+    skill2_catalogue_bytes=json.dumps(skill2_catalogue,ensure_ascii=False,separators=(",",":")).encode("utf-8")
+    skill2_catalogue_sha256=hashlib.sha256(skill2_catalogue_bytes).hexdigest()
     ids=[c["id"] for c in cards]
     if len(set(ids))!=TOTAL: raise RuntimeError("Duplicate card IDs")
     out=Path(a.output)
