@@ -1155,7 +1155,10 @@ def convert(a):
     z=Path(a.zip_output);z.parent.mkdir(parents=True,exist_ok=True)
     if z.exists():z.unlink()
     with zipfile.ZipFile(z,"w",allowZip64=True) as archive:
-        archive.write(cards_path,"cards.json",compress_type=zipfile.ZIP_DEFLATED,compresslevel=6)
+        # Store the large canonical JSON payload without a DEFLATE stream. This avoids
+        # platform-specific inflater failures ("invalid stored block lengths") on Android;
+        # images are already stored, and cards.json remains SHA-256 verified after import.
+        archive.write(cards_path,"cards.json",compress_type=zipfile.ZIP_STORED)
         archive.write(out/"manifest.json","manifest.json",compress_type=zipfile.ZIP_DEFLATED,compresslevel=6)
         archive.write(out/"skill-catalogue.json","skill-catalogue.json",compress_type=zipfile.ZIP_DEFLATED,compresslevel=6)
         archive.write(out/"card-skill-mappings.json","card-skill-mappings.json",compress_type=zipfile.ZIP_DEFLATED,compresslevel=6)
