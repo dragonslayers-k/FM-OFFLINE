@@ -18,8 +18,8 @@
 ## 데이터팩 흐름
 
 1. 카드 원본 수집과 DB Release 생성은 dragonslayers-k/T에서만 수행한다.
-2. APK 저장소의 수동 CI에서 기존 DB Release fm1-carddb-27를 가져온다.
-3. 변환기가 FM1-CARD-DATA 1.1.2 ZIP을 생성한다.
+2. APK 저장소의 단일 Android CI에서 T의 정규화 SQLite DB Release fm1-carddb-28과 enum/image 자산을 가져온다.
+3. 변환기가 SQLite의 cards/costs/images/effect candidate 데이터를 FM1-CARD-DATA 1.2.0 ZIP으로 변환한다. JSONL을 재파싱해 DB 결과를 덮어쓰지 않는다.
 4. 앱 사용자가 데이터 관리 화면에서 ZIP을 직접 선택해 설치한다.
 5. 앱은 SHA-256, 카드 수, 이미지 수, 경로, 중복 ID, 카드 분류 및 이미지 파일을 검증한 후 기존 설치본을 백업하고 교체한다.
 
@@ -30,7 +30,8 @@
 - 카드 유형은 Land / Unit / Magic / Item / Enchant 5종이다.
 - Enchant는 정식 다섯 번째 분류이며, 효과 실행 여부와 분류 여부는 별도 문제다.
 - 명시적 LP 0과 LP 필드 누락/파싱 실패를 구분한다.
-- 빈 비용 객체, 혼합 비용, NCS, BONUS, 미상 비용을 무료로 해석하지 않는다.
+- 빈 비용 객체, `mapping_review`, `semantic_review`, NCS, BONUS, 미상 비용을 무료로 해석하지 않는다.
+- 효과 후보 `pattern_candidate`는 표시·검색용 참고 자료이며 실행 가능한 규칙으로 취급하지 않는다.
 - 카드 원문, 원본 Firestore 필드, 카드별 원본 URL 및 이미지 URL을 보존한다.
 - 효과가 매핑되지 않은 카드는 실행 가능한 것처럼 표현하지 않는다.
 - FM1 Manual.zip이 규칙의 우선 근거다. 다른 판본·팬 프로젝트는 UI 참고 외에 규칙 근거로 대체하지 않는다.
@@ -51,6 +52,14 @@
 APK 빌드가 성공해도 데이터팩 설치, 앱 기동, 실제 Android 기기 대전까지 검증된 것은 아니다. 각 결과를 따로 기록한다.
 
 
+## 현재 통합 데이터팩 1.2.0 상태
+
+- source: T 정규화 SQLite Release `fm1-carddb-28`
+- 비지형 비용: 14,244건 확정 / 817건 검토(혼합 38, NCS/BONUS 의미 779)
+- 지형 설치 비용: 275건 확정 / 14건 검토
+- 효과 후보: 17,407개, 절 구간 48,281개, 모두 `pattern_candidate`
+- APK 변환은 T SQLite의 카드 상세 URL과 대형 이미지 SHA-256을 그대로 대조한다.
+
 ## 단계별 복원 기준
 
 최종 목표는 카드가 목록에 표시되는 데 그치지 않고, FM1 매뉴얼 및 카드별 원문에 근거해 원작 동작을 재현하는 것이다. 다음 순서로 검증한다.
@@ -63,3 +72,9 @@ APK 빌드가 성공해도 데이터팩 설치, 앱 기동, 실제 Android 기�
 6. **실전 검증** — 고정 시드 시나리오, 슬롯별 전투, 효과 상호작용, 장시간 라운드 및 실제 Android 설치·실행 검증을 통과시킨다.
 
 각 단계의 성공 여부를 구분해 기록한다. APK 빌드나 ZIP 생성 성공만으로 원작 게임 구현 완료라고 표기하지 않는다.
+
+## SQLite 통합 데이터 기준
+
+The Android adapter consumes the normalized `cards`, `card_costs`, `card_images`, `card_effect_candidate_summaries` and `card_effect_clauses` tables from T Release `fm1-carddb-28`. It does not reconstruct costs from the raw JSONL.
+
+Expected verified/review cost counts are 14,244 / 817 for non-land cards and 275 / 14 for land installation. The 17,407 effect candidates and 48,281 clause segments are preserved as reference data only; no pattern candidate is treated as an executable game rule.

@@ -396,3 +396,25 @@ test('keeps unresolved Firestore soul cost unknown instead of turning it into a 
   assert.equal(card.rules.costStatus,'missing-from-card-image');
   assert.equal(card.sourceFields.RequireSoul,'8301');
 });
+
+test('keeps DB effect candidate records visible but does not auto-execute simple-looking source text',()=>{
+  const card=Schema.normalize({
+    id:'db-candidate-spell',name:'후보 검토 마법',type:'spell',faction:'fire',
+    cost:{fire:1},costKnown:true,costMapped:true,
+    text:'적 유닛에게 3의 피해를 준다.',
+    triggerTiming:'공격/방어',
+    effectExecutionStatus:'candidate-only',
+    effectVerificationStatus:'pattern_candidate',
+    effectCandidates:[{
+      verificationStatus:'pattern_candidate',
+      spanIntegrityStatus:'exact',
+      clauses:[{startChar:0,endChar:15,segmentType:'clause',text:'적 유닛에게 3의 피해를 준다.'}]
+    }]
+  });
+  assert.equal(card.effect,null);
+  assert.equal(card.effectExecutionStatus,'candidate-only');
+  assert.equal(card.effectVerificationStatus,'pattern_candidate');
+  assert.equal(card.effectCandidates.length,1);
+  assert.equal(card.rules.effectStatus,'pattern_candidate');
+  assert.equal(card.rules.status,'text-effect-only');
+});

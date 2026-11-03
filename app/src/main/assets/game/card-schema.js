@@ -299,8 +299,16 @@
     }else if(type==='spell'||type==='enchant'){
       n.triggerTiming=detail['발동 시점']||detail['발동시점']||meta['발동 시점']||'';
       n.durationText=detail['지속 턴']||detail['지속턴']||'';n.durationTurns=integer(n.durationText);
-      n.rules.cardText=cardText;n.effect=raw.effect||parseCardTextEffect(cardText);
-      n.rules.effectStatus=n.effect?'simple-text-mapped':'unmapped-text-effect';
+      n.rules.cardText=cardText;
+      n.effectCandidates=Array.isArray(raw.effectCandidates)?raw.effectCandidates:[];
+      const candidateOnly=raw.effectExecutionStatus==='candidate-only'||
+        raw.effectVerificationStatus==='pattern_candidate'||
+        n.effectCandidates.some(x=>x&&x.verificationStatus==='pattern_candidate');
+      n.effectExecutionStatus=candidateOnly?'candidate-only':(raw.effectExecutionStatus||'unmapped');
+      n.effectVerificationStatus=candidateOnly?'pattern_candidate':
+        (raw.effectVerificationStatus||((raw.effectVerified===true)?'verified':'unmapped'));
+      n.effect=candidateOnly?null:(raw.effectVerified===true?raw.effect:(raw.effect||parseCardTextEffect(cardText)));
+      n.rules.effectStatus=candidateOnly?'pattern_candidate':(n.effect?'simple-text-mapped':'unmapped-text-effect');
       if(type==='enchant'){
         n.slotLocation=detail['슬롯 위치']||detail['슬롯위치']||'';
         const sm=String(n.slotLocation).match(/슬롯\s*(\d+)/);n.slotIndex=sm?Number(sm[1]):null;

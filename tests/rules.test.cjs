@@ -661,3 +661,13 @@ test('explicit LP 0 terrain remains free to install at zero current LP',()=>{
   assert.equal(p.lands.length,1);
   assert.equal(p.lands[0].id,'explicit-lp-zero');
 });
+
+test('candidate-only enchant effects are blocked until a verified handler exists',()=>{
+  const card={id:'candidate-enchant',instanceId:'candidate-enchant-1',name:'후보 인챈트',type:'enchant',
+    cost:{fire:1},costKnown:true,costMapped:true,slotIndex:1,slotOwner:'own',
+    effectExecutionStatus:'candidate-only',effectVerificationStatus:'pattern_candidate',
+    effectCandidates:[{verificationStatus:'pattern_candidate'}]};
+  const result=FM.validateCardForPlay(card);
+  assert.equal(result.ok,false);
+  assert.match(result.reason,/검증되기 전까지 실행을 차단/);
+});
