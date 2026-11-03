@@ -782,6 +782,34 @@ SKILL2_SOURCE_VERIFIED_RULES = {
         "mechanic":"방어시 공격 유닛 AP가 자신의 DP+HP 합의 절반(내림) 이하이면 받는 데미지 무효",
         "evidenceNeedle":"방/체 합 1/2 이하",
     },
+    "얼라이디펜스": {
+        "ruleId":"skill2_alliance_defense",
+        "ruleAuthority":"card_source",
+        "trigger":"before_incoming_damage",
+        "mechanic":"방어 시 자신을 제외한 동일 소속 아군 필드 유닛 수만큼 받는 데미지 감소",
+        "evidenceNeedle":"자신과 동일한 소속의 필드 유닛 수 만큼 받는 데미지 감소",
+    },
+    "레이셜디펜스": {
+        "ruleId":"skill2_racial_defense",
+        "ruleAuthority":"card_source",
+        "trigger":"before_incoming_damage",
+        "mechanic":"방어 시 자신을 제외한 동일 종족 아군 필드 유닛 수만큼 받는 데미지 감소",
+        "evidenceNeedle":"자신과 동일한 종족의 필드 유닛 수 만큼 받는 데미지 감소",
+    },
+    "강한헌신방어": {
+        "ruleId":"skill2_strong_devoted_defense",
+        "ruleAuthority":"card_source",
+        "trigger":"on_self_destroyed",
+        "mechanic":"자신이 파괴되면 남은 아군 필드 유닛 전체의 AP/DP/HP를 각각 1 증가",
+        "evidenceNeedle":"아군 필드 유닛 전체의 공방체가 1증가한다",
+    },
+    "프레셔": {
+        "ruleId":"skill2_pressure_defense",
+        "ruleAuthority":"card_source",
+        "trigger":"before_incoming_damage",
+        "mechanic":"방어 시 아군 필드 빈 슬롯 수의 절반(내림)만큼 받는 데미지 감소",
+        "evidenceNeedle":"아군 필드 빈공간수 절반(내림) 만큼 받은 데미지를 감소시킨다",
+    },
 }
 
 
@@ -959,7 +987,7 @@ def convert(a):
     skill2_catalogue=build_skill2_catalogue(skill_mapping_records,cards,a.db_release_tag)
     if len(cards)==TOTAL and (
         skill2_catalogue["entryCount"]!=189 or skill2_catalogue["activeSkillCount"]!=188
-        or skill2_catalogue["activeCardCount"]!=1366 or skill2_catalogue["executableRuleCount"]!=4
+        or skill2_catalogue["activeCardCount"]!=1366 or skill2_catalogue["executableRuleCount"]!=8
     ):
         raise RuntimeError("DB29 Skill2 inventory validation failed: "+json.dumps({
             k:skill2_catalogue[k] for k in ("entryCount","activeSkillCount","activeCardCount","mappingStatusCounts")
