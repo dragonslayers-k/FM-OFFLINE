@@ -283,7 +283,11 @@
         skill2_tactical_initiative:'기선제압',
         skill2_devoted_defense:'헌신방어',
         skill2_frenzy_defense:'격노',
-        skill2_holy_aura:'홀리오오라'
+        skill2_holy_aura:'홀리오오라',
+        skill2_alliance_defense:'얼라이디펜스',
+        skill2_racial_defense:'레이셜디펜스',
+        skill2_strong_devoted_defense:'강한헌신방어',
+        skill2_pressure_defense:'프레셔'
       };
       const skill2RuleId=raw.specialSkill2RuleId==null?null:String(raw.specialSkill2RuleId);
       const skill2RuleAllowed=raw.specialSkill2MappingStatus==='source_card_verified'&&
