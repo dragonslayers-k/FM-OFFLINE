@@ -578,20 +578,38 @@ test('Manual bravery/fear use the defender level relation and add AP before DP e
   assert.equal(run('공포공격기술',3,4),10,'fear does not trigger against a higher-level defender');
 });
 
-test('DB29 manual rule IDs normalize the actual Skill1 enum labels to Manual attack handlers',()=>{
+test('DB29 Manual catalogue exposes all 27 rule IDs with their actual source Skill1 labels',()=>{
   const normalize=FM._test.normalizeSpecialSkillForEngine;
   const cases={
+    normal_attack:'일반공격',
     defense_bypass:'방어무시',
     fatal_attack:'치명공격',
     piercing_attack:'관통공격',
+    weaken_attack:'약화공격',
+    petrify_attack:'석화공격',
+    vampiric_attack:'흡혈공격',
+    aging_attack:'노화공격',
+    charge_attack:'돌진공격',
+    beast_tamer:'야수조련공격',
+    bravery_attack:'용맹공격',
+    regeneration:'재생능력',
+    frenzy_attack:'광분공격',
+    consecutive_attack:'연속공격',
+    fear_attack:'공포공격',
+    charm_attack:'매료공격',
     ability_seal:'봉쇄공격',
     spell_suppression:'마법봉쇄공격',
     weapon_suppression:'무기뺏기공격',
     copy_attack:'복제공격',
+    shield_break:'방패파괴공격',
+    curse_attack:'저주공격',
+    defensive_use:'방어이용',
     taunt_attack:'조롱',
-    defense_convert:'방어전환공격',
-    beast_tamer:'야수조련공격'
+    confusion_attack:'혼란공격',
+    stealth_attack:'은폐공격',
+    defense_convert:'방어전환공격'
   };
+  assert.equal(Object.keys(FM._test.SPECIAL_SKILL_RULE_KEYWORDS).length,27);
   for(const [ruleId,expected] of Object.entries(cases)){
     const cardUnit={specialSkillRuleId:ruleId,specialSkillMappings:[{
       sourceField:'Skill1',mappingStatus:'manual_verified',ruleAuthority:'manual',ruleId
