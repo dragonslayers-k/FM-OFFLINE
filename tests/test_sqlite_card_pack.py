@@ -242,6 +242,43 @@ class SqliteCardPackTests(unittest.TestCase):
         self.assertEqual(entry["cardReferences"][0]["sourceCardUrl"], self.detail)
         self.assertEqual(entry["cardReferences"][0]["skill1"], "방어무시")
 
+
+    def test_four_card_source_verified_skill2_rules_require_exact_description_evidence(self):
+        cases = [
+            ("701","기선제압","데미지를 1 덜 받는다","skill2_tactical_initiative"),
+            ("702","헌신방어","아군 필드 다음 유닛 공방체 +1","skill2_devoted_defense"),
+            ("703","격노","자신의 HP가 깎인 수치만큼 AP 상승","skill2_frenzy_defense"),
+            ("704","홀리오오라","방/체 합 1/2 이하","skill2_holy_aura"),
+        ]
+        mappings = []
+        cards = []
+        for enum_value, name, evidence, _rule_id in cases:
+            card_id = "card-skill2-" + enum_value
+            mappings.append({
+                "cardId":card_id,"sourceField":"Skill2","sourceEnumValue":enum_value,
+                "sourceName":name,"mappingStatus":"unmapped","ruleId":None
+            })
+            cards.append({
+                "id":card_id,"name":"검증 카드 "+name,
+                "sourceCardUrl":"https://fmlunatic.com/card/"+card_id,
+                "sourceListUrl":"https://fmlunatic.com/cardlist",
+                "specialSkill1":"일반공격기술","text":"",
+                "description":name+"<br>"+evidence,
+                "ap":3,"dp":2,"hp":5
+            })
+        catalogue = CONVERTER.build_skill2_catalogue(mappings,cards,"test-release")
+        self.assertEqual(catalogue["entryCount"],4)
+        self.assertEqual(catalogue["executableRuleCount"],4)
+        entries = {x["name"]:x for x in catalogue["records"]}
+        for _enum_value,name,evidence,rule_id in cases:
+            entry = entries[name]
+            self.assertEqual(entry["ruleId"],rule_id)
+            self.assertEqual(entry["ruleAuthority"],"card_source")
+            self.assertEqual(entry["verificationStatus"],"source_card_verified")
+            self.assertEqual(entry["executionStatus"],"source-card-rule-implemented")
+            self.assertEqual(entry["cardReferences"][0]["sourceCardUrl"],cards[cases.index((_enum_value,name,evidence,rule_id))]["sourceCardUrl"])
+            self.assertTrue(any(evidence in ref["description"] for ref in entry["cardReferences"]))
+
     def test_load_refuses_missing_or_fabricated_card_url(self):
         self.db.execute("UPDATE cards SET source_card_url=? WHERE card_id=?", (
             "https://fmlunatic.com/card/other-id", self.card_id
