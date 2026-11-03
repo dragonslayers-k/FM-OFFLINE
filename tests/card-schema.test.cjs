@@ -476,3 +476,25 @@ test('compact community-only skill metadata cannot become an executable Manual r
   assert.equal(card.specialSkillMappingStatus,'community_documented_candidate');
   assert.equal(card.specialSkillExecutionStatus,'community-candidate-not-executable');
 });
+
+
+test('keeps Skill1 and Skill2 separate and leaves Skill2 reference-only',()=>{
+  const card=Schema.normalize({
+    id:'skill-fields-independent',name:'기술 분리 유닛',type:'unit',
+    specialSkill:'방어무시 / 헌신방어',
+    specialSkill1:'방어무시',specialSkill2:'헌신방어',
+    specialSkill1EnumValue:'243',specialSkill2EnumValue:'175',
+    specialSkillMappingStatus:'manual_verified',specialSkillRuleAuthority:'manual',
+    specialSkillRuleId:'defense_bypass',
+    specialSkill2MappingStatus:'unmapped',specialSkill2RuleId:'defense_bypass',
+    specialSkill2ExecutionStatus:'manual-rule-catalogue-mapped',
+    ap:3,dp:2,hp:5,cost:{fire:1},costKnown:true,costMapped:true
+  });
+  assert.equal(card.specialSkill1,'방어무시');
+  assert.equal(card.specialSkill2,'헌신방어');
+  assert.equal(card.specialSkill1EnumValue,'243');
+  assert.equal(card.specialSkill2EnumValue,'175');
+  assert.equal(card.specialSkillRuleId,'defense_bypass');
+  assert.equal(card.specialSkill2RuleId,null);
+  assert.equal(card.specialSkill2ExecutionStatus,'disabled-until-skill2-rule-review');
+});
