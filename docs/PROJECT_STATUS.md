@@ -18,8 +18,8 @@
 ## 데이터팩 흐름
 
 1. 카드 원본 수집과 DB Release 생성은 dragonslayers-k/T에서만 수행한다.
-2. APK 저장소의 수동 CI에서 기존 DB Release fm1-carddb-25를 가져온다.
-3. 변환기가 FM1-CARD-DATA 1.1.0 ZIP을 생성한다.
+2. APK 저장소의 수동 CI에서 기존 DB Release fm1-carddb-27를 가져온다.
+3. 변환기가 FM1-CARD-DATA 1.1.2 ZIP을 생성한다.
 4. 앱 사용자가 데이터 관리 화면에서 ZIP을 직접 선택해 설치한다.
 5. 앱은 SHA-256, 카드 수, 이미지 수, 경로, 중복 ID, 카드 분류 및 이미지 파일을 검증한 후 기존 설치본을 백업하고 교체한다.
 
