@@ -43,7 +43,8 @@ Android 앱 저장소입니다. 카드 데이터 원본/크롤링/정규화 DB�
 - 자동 테스트 실행: 커밋 메시지에 `[build-card-pack]`을 포함한 main push는 카드팩 변환까지 실행
 - 수동 실행: 필요할 때 Android 에뮬레이터 설치 / 실행 검사 선택
 - Release 서명 Secret 4개가 모두 설정된 경우에만 서명된 Release APK도 생성
-- APK와 카드 데이터 ZIP은 하나의 결과 Artifact에 별도 파일로 담김
+- 카드 데이터는 `FM1-CardData-v1.3.0-IMPORT-DB29` Artifact로 별도 제공한다. 다운로드 ZIP 최상위에 `cards.json`, `manifest.json`, `images/`가 있으므로 압축을 다시 풀거나 안쪽 ZIP을 찾지 않고 APK에서 바로 선택할 수 있다.
+- APK와 빌드 보고서는 `FantasyMastersOffline-build-output` Artifact로 별도 제공한다.
 
 ### 수동 실행
 
