@@ -77,7 +77,12 @@ public final class MainActivity extends Activity {
                     (f.length() > MAX_CARDS_JSON ? "cards.json exceeds WebView bridge limit" : "ready")));
                 return result.toString();
             } catch (Exception e) {
-                return "{\"exists\":false,\"bytes\":0,\"withinLimit\":false,\"reason\":\"diagnostics failed\"}";
+                JSONObject fallback = new JSONObject();
+                fallback.put("exists", false);
+                fallback.put("bytes", 0);
+                fallback.put("withinLimit", false);
+                fallback.put("reason", "diagnostics failed");
+                return fallback.toString();
             }
         }
         @JavascriptInterface public String getImageBaseUri() {
