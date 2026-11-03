@@ -848,7 +848,7 @@ test('source Skill2 Holy Aura prevents damage when attacker AP is at or below ha
   const ai=player('ai',{units:[attacker]});
   const s=state(ai,p);
   const result=FM._test.resolveUnitAttack(s,ai,p,attacker,defender,{
-    attacker:combatStats(3,0,5),defender:combatStats(2,3,5)
+    attacker:combatStats(3,0,5),defender:combatStats(2,1,5)
   });
   assert.equal(result.damage,0);
   assert.equal(defender.hp,5);
