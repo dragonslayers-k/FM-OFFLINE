@@ -17,7 +17,7 @@ adb install -r "$APK"
 
 # Stream the 400MB-class test ZIP directly into this Debug app's private files;
 # no storage permission or exported production import endpoint is introduced.
-adb shell "run-as '$APP_ID' sh -c 'cat > files/$TEST_PACK_NAME'" < "$PACK_ZIP"
+adb shell "run-as '$APP_ID' sh -c 'mkdir -p files && cat > files/$TEST_PACK_NAME'" < "$PACK_ZIP"
 adb shell "run-as '$APP_ID' test -s 'files/$TEST_PACK_NAME'"
 
 COMPONENT="$APP_ID/com.fantasy.offline.MainActivity"
