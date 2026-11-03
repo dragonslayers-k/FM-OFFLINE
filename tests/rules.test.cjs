@@ -527,7 +527,7 @@ test('FM1 manual special attacks apply their named stat conditions',()=>{
   x=run('야수조련공격기술',{ap:1},{ap:4,dp:0,hp:10,unitAbility:'야수능력',unitAbilityTags:['야수']});
   assert.equal(FM.totalPower(x.d,'ap'),0);
   x=run('용맹공격기술',{ap:0,level:5},{dp:5,hp:10,level:4});
-  assert.equal(x.d.hp,9);
+  assert.equal(x.d.hp,10);
   x=run('재생공격기술',{ap:1,hp:2,maxHp:5},{dp:5,hp:10});
   assert.equal(x.a.hp,3);
   x=run('광분공격기술',{ap:3,hp:5,maxHp:5},{dp:1,hp:10});
@@ -535,7 +535,7 @@ test('FM1 manual special attacks apply their named stat conditions',()=>{
   x=run('연속공격기술',{ap:3},{dp:1,hp:10});
   assert.equal(x.d.hp,7);
   x=run('공포공격기술',{ap:0,level:3},{dp:5,hp:10,level:4});
-  assert.equal(x.d.hp,9);
+  assert.equal(x.d.hp,10);
   x=run('매료공격기술',{ap:1},{dp:3,hp:10,ap:4});
   assert.equal(FM.totalPower(x.d,'ap'),0);
   x=run('마법봉쇄공격기술',{ap:1},{ap:4,dp:0,hp:10,unitAbility:'마법능력',unitAbilityTags:['마법']});
@@ -557,6 +557,111 @@ test('FM1 manual special attacks apply their named stat conditions',()=>{
   x=run('은폐공격기술',{ap:1,dp:2},{dp:0,hp:10});
   assert.equal(FM.totalPower(x.a,'dp'),3);
   x=run('방어전환공격기술',{ap:1},{dp:3,hp:10});
+  assert.equal(FM.totalPower(x.d,'dp'),-3);
+});
+
+
+test('Manual bravery/fear use the defender level relation and add AP before DP even at AP zero',()=>{
+  const run=(skill,attackerLevel,defenderLevel)=>{
+    const a=unit('rank-attacker',{instanceId:'rank-a',skill,ap:0,dp:0,hp:10,maxHp:10,level:attackerLevel});
+    const d=unit('rank-defender',{instanceId:'rank-d',ap:0,dp:0,hp:10,maxHp:10,level:defenderLevel});
+    const p=player('player',{units:[a]}),ai=player('ai',{units:[d]}),st=state(p,ai);
+    FM._test.resolveUnitAttack(st,p,ai,a,d,{
+      attacker:{ap:{value:0},dp:{value:0},hp:{value:10}},
+      defender:{ap:{value:0},dp:{value:0},hp:{value:10}}
+    });
+    return d.hp;
+  };
+  assert.equal(run('용맹공격기술',3,4),9,'bravery triggers when defender level is same or higher');
+  assert.equal(run('용맹공격기술',3,2),10,'bravery does not trigger against a lower-level defender');
+  assert.equal(run('공포공격기술',3,2),9,'fear triggers when defender level is same or lower');
+  assert.equal(run('공포공격기술',3,4),10,'fear does not trigger against a higher-level defender');
+});
+
+test('DB29 Manual catalogue exposes all 27 rule IDs with their actual source Skill1 labels',()=>{
+  const normalize=FM._test.normalizeSpecialSkillForEngine;
+  const cases={
+    normal_attack:'일반공격',
+    defense_bypass:'방어무시',
+    fatal_attack:'치명공격',
+    piercing_attack:'관통공격',
+    weaken_attack:'약화공격',
+    petrify_attack:'석화공격',
+    vampiric_attack:'흡혈공격',
+    aging_attack:'노화공격',
+    charge_attack:'돌진공격',
+    beast_tamer:'야수조련공격',
+    bravery_attack:'용맹공격',
+    regeneration:'재생능력',
+    frenzy_attack:'광분공격',
+    consecutive_attack:'연속공격',
+    fear_attack:'공포공격',
+    charm_attack:'매료공격',
+    ability_seal:'봉쇄공격',
+    spell_suppression:'마법봉쇄공격',
+    weapon_suppression:'무기뺏기공격',
+    copy_attack:'복제공격',
+    shield_break:'방패파괴공격',
+    curse_attack:'저주공격',
+    defensive_use:'방어이용',
+    taunt_attack:'조롱',
+    confusion_attack:'혼란공격',
+    stealth_attack:'은폐공격',
+    defense_convert:'방어전환공격'
+  };
+  assert.equal(Object.keys(FM._test.SPECIAL_SKILL_RULE_KEYWORDS).length,27);
+  for(const [ruleId,expected] of Object.entries(cases)){
+    const cardUnit={specialSkillRuleId:ruleId,specialSkillMappings:[{
+      sourceField:'Skill1',mappingStatus:'manual_verified',ruleAuthority:'manual',ruleId
+    }]};
+    assert.equal(normalize(cardUnit,''),expected,ruleId);
+  }
+});
+
+test('community-only DB29 skill candidates remain non-executable even if their source names resemble skills',()=>{
+  const candidateMetadata={skill:'강한공포',specialSkillRuleId:null,specialSkillMappings:[{
+    sourceField:'Skill1',sourceName:'강한공포',mappingStatus:'community_documented_candidate',
+    ruleAuthority:'community',ruleId:'strong_fear'
+  }]};
+  assert.equal(FM._test.normalizeSpecialSkillForEngine(candidateMetadata,candidateMetadata.skill),'');
+  const d=unit('community-defender',{instanceId:'community-d',ap:1,dp:0,hp:10,maxHp:10});
+  const a=unit('community-attacker',{instanceId:'community-a',ap:3,dp:0,hp:10,maxHp:10,...candidateMetadata});
+  const p=player('player',{units:[a]}),ai=player('ai',{units:[d]}),st=state(p,ai);
+  FM._test.resolveUnitAttack(st,p,ai,a,d,{
+    attacker:{ap:{value:3},dp:{value:0},hp:{value:10}},
+    defender:{ap:{value:1},dp:{value:0},hp:{value:10}}
+  });
+  assert.equal(d.hp,7,'only ordinary AP damage is applied; community bonus is not run');
+});
+
+test('actual Skill1 aliases for source enum names execute the mapped Manual baseline rules',()=>{
+  const runMapped=(ruleId,skill,attackerOptions,defenderOptions,rolls)=>{
+    const a=unit('mapped-a',{instanceId:'mapped-a',skill,...attackerOptions,
+      specialSkillRuleId:ruleId,specialSkillMappings:[{
+        sourceField:'Skill1',mappingStatus:'manual_verified',ruleAuthority:'manual',ruleId
+      }]});
+    const d=unit('mapped-d',{instanceId:'mapped-d',...defenderOptions});
+    const p=player('player',{units:[a]}),ai=player('ai',{units:[d]}),st=state(p,ai);
+    const result=FM._test.resolveUnitAttack(st,p,ai,a,d,rolls||{
+      attacker:{ap:{value:a.ap},dp:{value:a.dp},hp:{value:a.maxHp}},
+      defender:{ap:{value:d.ap},dp:{value:d.dp},hp:{value:d.maxHp}}
+    });
+    return {a,d,result};
+  };
+  let x=runMapped('defense_bypass','방어무시',{ap:2},{dp:5,hp:10});
+  assert.equal(x.d.hp,8);
+  x=runMapped('ability_seal','기술봉쇄',{ap:1},{ap:3,dp:0,hp:10,skill:'방어무시'});
+  assert.equal(x.d.skill,'일반공격기술');
+  x=runMapped('spell_suppression','주문봉쇄',{ap:1},{ap:3,dp:0,hp:10,unitAbility:'마법능력',unitAbilityTags:['마법']});
+  assert.equal(FM.totalPower(x.d,'ap'),0);
+  x=runMapped('weapon_suppression','무기봉쇄',{ap:1},{ap:3,dp:0,hp:10,unitAbility:'장비능력',unitAbilityTags:['장비']});
+  assert.equal(FM.totalPower(x.d,'ap'),0);
+  x=runMapped('copy_attack','공격복제',{ap:1},{ap:4,dp:1,hp:10},{
+    attacker:{ap:{value:1},dp:{value:0},hp:{value:10}},
+    defender:{ap:{value:5},dp:{value:1},hp:{value:10}}
+  });
+  assert.equal(x.d.hp,6);
+  x=runMapped('defense_convert','방어변환',{ap:1},{dp:3,hp:10});
   assert.equal(FM.totalPower(x.d,'dp'),-3);
 });
 

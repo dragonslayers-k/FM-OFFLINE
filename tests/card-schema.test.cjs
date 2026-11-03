@@ -418,3 +418,34 @@ test('keeps DB effect candidate records visible but does not auto-execute simple
   assert.equal(card.rules.effectStatus,'pattern_candidate');
   assert.equal(card.rules.status,'text-effect-only');
 });
+
+test('uses only a Manual-verified Skill1 mapping for the executable special-skill rule ID',()=>{
+  const card=Schema.normalize({
+    id:'manual-skill-card',name:'기술봉쇄 유닛',type:'unit',faction:'dark',
+    specialSkill:'기술봉쇄',
+    specialSkillMappings:[
+      {sourceField:'Skill1',sourceEnumValue:'82',sourceName:'기술봉쇄',
+        ruleId:'ability_seal',mappingStatus:'manual_verified',ruleAuthority:'manual'},
+      {sourceField:'Skill2',sourceEnumValue:'999',sourceName:'헌신방어',
+        ruleId:null,mappingStatus:'unmapped',ruleAuthority:null}
+    ]
+  });
+  assert.equal(card.skill,'기술봉쇄');
+  assert.equal(card.specialSkillRuleId,'ability_seal');
+  assert.equal(card.specialSkillExecutionStatus,'manual-rule-catalogue-mapped');
+  assert.equal(card.specialSkillMappings.length,2);
+});
+
+test('community-only candidate Skill1 mappings remain visible but have no executable rule ID',()=>{
+  const card=Schema.normalize({
+    id:'community-skill-card',name:'강한공포 유닛',type:'unit',faction:'fire',
+    specialSkill:'강한공포',
+    specialSkillMappings:[
+      {sourceField:'Skill1',sourceEnumValue:'800',sourceName:'강한공포',
+        ruleId:'strong_fear',mappingStatus:'community_documented_candidate',ruleAuthority:'community'}
+    ]
+  });
+  assert.equal(card.specialSkillMappings[0].ruleId,'strong_fear');
+  assert.equal(card.specialSkillRuleId,null);
+  assert.equal(card.specialSkillExecutionStatus,'community-candidate-not-executable');
+});

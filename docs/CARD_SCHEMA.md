@@ -41,7 +41,7 @@ The import screen accepts a JSON array. Supported values:
 - Spell: `effect` object. Currently supported `damage`, `heal`, `buff`, `draw`, `mill` (drain not fully implemented). Targets: `ownUnit`, `enemyUnit`.
 
 
-## T normalized SQLite → Android import adapter (FM1-CARD-DATA 1.2.0)
+## T normalized SQLite → Android import adapter (FM1-CARD-DATA 1.3.0)
 
 The current app import contract remains a ZIP with three required entries:
 
@@ -80,7 +80,7 @@ The converter enforces the existing Android importer limits: cards.json ≤128 M
 This is an implementation schema, **not a confirmed export schema from the original game or FAN-MADE MASTERS**. Translate source data into it only after checking the original card behavior. Special effects require a new explicit effect handler and test before they should be considered implemented.
 
 
-## 지형 비용 및 생산 데이터 (FM1-CARD-DATA 1.2.0)
+## 지형 비용 및 생산 데이터 (FM1-CARD-DATA 1.3.0)
 
 지형 설치에는 `RequireLP`와 `RequireSoul`이 별도 적용된다. LP만으로 설치할 수 있는 지형도 있지만, 예를 들어 구름도시는 LP 2와 빛 유소울 1, 무소울 1을 함께 요구한다. 앱 데이터팩에는 `requiredLP`, `landInstallCost`, 각 필드의 확인 상태를 따로 저장한다. 비용이 원문에서 해석되지 않은 지형은 무료로 간주하지 않는다.
 
@@ -91,10 +91,10 @@ This is an implementation schema, **not a confirmed export schema from the origi
 
 ## 1.2.0 normalized SQLite source and integrity validation
 
-The 1.2.0 Android pack conversion is pinned to T's normalized SQLite Release `fm1-carddb-28`. The converter checks the database integrity summary, exact card detail URLs, image metadata and source asset SHA-256 values before conversion. Land installation now requires both verified LP and a parsed `RequireSoul` cost; land production uses `EarnSoulList` with the live `Enum+EarnSoul` symbols. MagicLand (`SPELL`) records remain preserved but cannot be played as ordinary producing terrain until their card-specific soul-cost effects are implemented.
+The 1.2.0 Android pack conversion is pinned to T's normalized SQLite Release `fm1-carddb-29`. The converter checks the database integrity summary, exact card detail URLs, image metadata and source asset SHA-256 values before conversion. Land installation now requires both verified LP and a parsed `RequireSoul` cost; land production uses `EarnSoulList` with the live `Enum+EarnSoul` symbols. MagicLand (`SPELL`) records remain preserved but cannot be played as ordinary producing terrain until their card-specific soul-cost effects are implemented.
 
 
-## RequireSoul 및 효과 후보 검증 (FM1-CARD-DATA 1.2.0)
+## RequireSoul 및 효과 후보 검증 (FM1-CARD-DATA 1.3.0)
 
 `RequireSoul`은 `Enum+RequireSoul`의 코드 심볼을 기준으로 해석한다. 단일 속성 심볼은 해당 속성 요구량으로, `DARK_EARTH` 등 복합 심볼은 명시된 각 속성 요구량으로 분해한다. 예를 들어 `12011101`은 `DARK_EARTH` 1개와 `DARK` 1개 토큰이므로 암흑 2, 대지 1이다. 해당 카드는 원문 추가 설명과도 대조했다.
 
@@ -102,9 +102,9 @@ The 1.2.0 Android pack conversion is pinned to T's normalized SQLite Release `fm
 
 T SQLite의 `card_effect_candidate_summaries`와 `card_effect_clauses`는 카드별 효과 표현 후보 17,407건과 절 구간 48,281건을 제공한다. 절 구간은 원문과 정확히 재구성됨을 검증했지만 모든 항목은 `pattern_candidate`다. 이를 실행 가능한 효과로 자동 변환하지 않는다. 앱의 효과 실행은 검증된 개별 핸들러와 테스트가 추가된 경우에만 허용한다.
 
-## T SQLite → FM1-CARD-DATA 1.2.0 source contract
+## T SQLite → FM1-CARD-DATA 1.3.0 source contract
 
-The Android converter reads the following normalized SQLite tables from T Release `fm1-carddb-28`:
+The Android converter reads the following normalized SQLite tables from T Release `fm1-carddb-29`:
 
 - `cards`: Firestore document ID, original name/category/faction, exact list/detail URL and full `raw_payload_json`.
 - `card_costs` and `card_soul_cost_tokens`: source RequireSoul, normalized candidates and `soul_known` / `mapping_review` / `semantic_review`.
@@ -123,3 +123,11 @@ Current Release 28 review accounting is expected to be:
 | Land installation RequireSoul | 275 | 14 |
 
 The effects database contains 17,407 candidate summaries and 48,281 lossless clause segments. All are `pattern_candidate`; the adapter preserves them for reference and does not convert them to executable card effects. Spell and enchant execution remains blocked until an explicit manual/engine handler is verified by tests.
+
+## T SQLite → FM1-CARD-DATA 1.3.0 special-skill contract
+
+The 1.3.0 adapter additionally consumes `game_rule_catalog`, `card_rule_mappings` and `skill_enum_inventory` from T Release `fm1-carddb-29`.
+
+The pack includes `specialSkillMappings` on cards and a separate `skill-catalogue.json` entry. Each mapping retains source field, original enum value/name, rule ID, mapping status, confidence and evidence reference. Only a unit's Skill1 mapping with `mapping_status=manual_verified` and `source_authority=manual` becomes `specialSkillRuleId`. Skill2 remains source metadata; community candidates and unmapped values do not execute.
+
+The Manual.zip catalogue has 27 base rules. The 41 additional rules from a 2017 community reference remain `community_documented_candidate`, not confirmed original rules. Where that later reference differs from Manual.zip, the Manual baseline wins until a game-version-specific reference or test resolves the discrepancy.

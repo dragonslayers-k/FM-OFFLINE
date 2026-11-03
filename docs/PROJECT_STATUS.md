@@ -18,8 +18,8 @@
 ## 데이터팩 흐름
 
 1. 카드 원본 수집과 DB Release 생성은 dragonslayers-k/T에서만 수행한다.
-2. APK 저장소의 단일 Android CI에서 T의 정규화 SQLite DB Release fm1-carddb-28과 enum/image 자산을 가져온다.
-3. 변환기가 SQLite의 cards/costs/images/effect candidate 데이터를 FM1-CARD-DATA 1.2.0 ZIP으로 변환한다. JSONL을 재파싱해 DB 결과를 덮어쓰지 않는다.
+2. APK 저장소의 단일 Android CI에서 T의 정규화 SQLite DB Release fm1-carddb-29과 enum/image 자산을 가져온다.
+3. 변환기가 SQLite의 cards/costs/images/effect candidate 데이터를 FM1-CARD-DATA 1.3.0 ZIP으로 변환한다. JSONL을 재파싱해 DB 결과를 덮어쓰지 않는다.
 4. 앱 사용자가 데이터 관리 화면에서 ZIP을 직접 선택해 설치한다.
 5. 앱은 SHA-256, 카드 수, 이미지 수, 경로, 중복 ID, 카드 분류 및 이미지 파일을 검증한 후 기존 설치본을 백업하고 교체한다.
 
@@ -32,6 +32,7 @@
 - 명시적 LP 0과 LP 필드 누락/파싱 실패를 구분한다.
 - 빈 비용 객체, `mapping_review`, `semantic_review`, NCS, BONUS, 미상 비용을 무료로 해석하지 않는다.
 - 효과 후보 `pattern_candidate`는 표시·검색용 참고 자료이며 실행 가능한 규칙으로 취급하지 않는다.
+- Manual.zip에서 확인된 27개 기본 공격 기술은 카드의 `Skill1`이 `manual_verified`로 매핑되고 개별 엔진 핸들러 테스트가 통과한 경우에만 실행한다. 후대 커뮤니티 후보 41개와 `Skill2`는 기본적으로 실행하지 않는다.
 - 카드 원문, 원본 Firestore 필드, 카드별 원본 URL 및 이미지 URL을 보존한다.
 - 효과가 매핑되지 않은 카드는 실행 가능한 것처럼 표현하지 않는다.
 - FM1 Manual.zip이 규칙의 우선 근거다. 다른 판본·팬 프로젝트는 UI 참고 외에 규칙 근거로 대체하지 않는다.
@@ -52,9 +53,9 @@
 APK 빌드가 성공해도 데이터팩 설치, 앱 기동, 실제 Android 기기 대전까지 검증된 것은 아니다. 각 결과를 따로 기록한다.
 
 
-## 현재 통합 데이터팩 1.2.0 상태
+## 현재 통합 데이터팩 1.3.0 상태
 
-- source: T 정규화 SQLite Release `fm1-carddb-28`
+- source: T 정규화 SQLite Release `fm1-carddb-29`
 - 비지형 비용: 14,244건 확정 / 817건 검토(혼합 38, NCS/BONUS 의미 779)
 - 지형 설치 비용: 275건 확정 / 14건 검토
 - 효과 후보: 17,407개, 절 구간 48,281개, 모두 `pattern_candidate`
@@ -75,6 +76,12 @@ APK 빌드가 성공해도 데이터팩 설치, 앱 기동, 실제 Android 기�
 
 ## SQLite 통합 데이터 기준
 
-The Android adapter consumes the normalized `cards`, `card_costs`, `card_images`, `card_effect_candidate_summaries` and `card_effect_clauses` tables from T Release `fm1-carddb-28`. It does not reconstruct costs from the raw JSONL.
+The Android adapter consumes the normalized `cards`, `card_costs`, `card_images`, `card_effect_candidate_summaries` and `card_effect_clauses` tables from T Release `fm1-carddb-29`. It does not reconstruct costs from the raw JSONL.
 
 Expected verified/review cost counts are 14,244 / 817 for non-land cards and 275 / 14 for land installation. The 17,407 effect candidates and 48,281 clause segments are preserved as reference data only; no pattern candidate is treated as an executable game rule.
+
+## DB29 특수기술 매핑 및 실행 경계
+
+T Release `fm1-carddb-29` adds `game_rule_catalog`, `card_rule_mappings` and `skill_enum_inventory` to the normalized SQLite DB. The Android pack preserves every Skill1/Skill2 source enum and its mapping evidence. Only `Skill1` mappings with `manual_verified` and `source_authority=manual` populate `specialSkillRuleId`. Later community rules remain non-executable, and unmapped source values remain visible rather than being guessed into another rule.
+
+The engine maps the real current enum names (e.g. `기술봉쇄`, `주문봉쇄`, `무기봉쇄`, `공격복제`, `조롱공격`, `방어변환`) through the canonical Manual rule IDs. The original source field and enum value remain preserved in the DB/card pack.

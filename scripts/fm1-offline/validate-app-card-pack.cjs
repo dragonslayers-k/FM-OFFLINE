@@ -19,6 +19,8 @@ const blocked = Object.create(null);
 const landStatus = Object.create(null);
 const landInstallCost = { known:0, review:0, mappingReview:0, semanticReview:0 };
 const effectAudit = { candidates:0, clauses:0, candidateOnlyCards:0, unexpectedExecutableEffects:0, spanErrors:0 };
+const skillAudit = { mappingRows:0, manualVerifiedMappings:0, communityCandidates:0, unmapped:0,
+  noSkill:0, communityRuleExecution:0, manualRuleCards:0 };
 const errors = [];
 
 for (const card of cards) {
@@ -45,6 +47,35 @@ for (const card of cards) {
   if (card.artImageSha256 && card.sourceImageSha256 &&
       card.artImageSha256 !== card.sourceImageSha256.large) {
     errors.push(card.id + ': extracted large-image SHA-256 differs from T SQLite');
+  }
+
+  const skillMappings = Array.isArray(card.specialSkillMappings) ? card.specialSkillMappings : [];
+  skillAudit.mappingRows += skillMappings.length;
+  let expectedSkill1RuleId = null;
+  for (const mapping of skillMappings) {
+    if (mapping.mappingStatus === 'manual_verified' && mapping.ruleAuthority === 'manual' &&
+        mapping.sourceField === 'Skill1' && mapping.ruleId) {
+      expectedSkill1RuleId = mapping.ruleId;
+      skillAudit.manualVerifiedMappings++;
+    } else if (mapping.mappingStatus === 'community_documented_candidate') {
+      skillAudit.communityCandidates++;
+      if (mapping.sourceField === 'Skill1' && card.specialSkillRuleId === mapping.ruleId) {
+        skillAudit.communityRuleExecution++;
+        errors.push(card.id + ': community-only Skill1 candidate is marked executable');
+      }
+    } else if (mapping.mappingStatus === 'unmapped') {
+      skillAudit.unmapped++;
+    } else if (mapping.mappingStatus === 'no_special_skill') {
+      skillAudit.noSkill++;
+    }
+  }
+  if (card.type === 'unit') {
+    if (card.specialSkillRuleId !== expectedSkill1RuleId) {
+      errors.push(card.id + ': specialSkillRuleId does not match a Manual-verified Skill1 mapping');
+    }
+    if (expectedSkill1RuleId) skillAudit.manualRuleCards++;
+  } else if (card.specialSkillRuleId) {
+    errors.push(card.id + ': non-unit card has an executable unit special-skill rule ID');
   }
 
   const effectCandidates = Array.isArray(card.effectCandidates) ? card.effectCandidates : [];
@@ -135,8 +166,12 @@ if (effectAudit.candidates !== 17407 || effectAudit.clauses !== 48281 ||
     effectAudit.spanErrors !== 0 || effectAudit.unexpectedExecutableEffects !== 0) {
   errors.push('Effect candidate audit mismatch: ' + JSON.stringify(effectAudit));
 }
+if (skillAudit.mappingRows < 15000 || skillAudit.manualVerifiedMappings < 1000 ||
+    skillAudit.communityCandidates < 100 || skillAudit.communityRuleExecution !== 0) {
+  errors.push('Special-skill mapping validation mismatch: ' + JSON.stringify(skillAudit));
+}
 if (errors.length) {
-  console.error(JSON.stringify({errors:errors.slice(0,50),errorCount:errors.length,types,landStatus,landInstallCost,costKnown,playable,effectAudit},null,2));
+  console.error(JSON.stringify({errors:errors.slice(0,50),errorCount:errors.length,types,landStatus,landInstallCost,costKnown,playable,effectAudit,skillAudit},null,2));
   process.exit(1);
 }
 console.log(JSON.stringify({
@@ -153,5 +188,6 @@ console.log(JSON.stringify({
   landInstallCost,
   playableByType:playable,
   blockedReasons:blocked,
-  effectAudit
+  effectAudit,
+  skillAudit
 },null,2));
