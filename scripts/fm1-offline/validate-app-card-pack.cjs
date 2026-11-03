@@ -17,7 +17,8 @@ const costKnown = Object.create(null);
 const playable = Object.create(null);
 const blocked = Object.create(null);
 const landStatus = Object.create(null);
-const landInstallCost = { known:0, review:0 };
+const landInstallCost = { known:0, review:0, mappingReview:0, semanticReview:0 };
+const effectAudit = { candidates:0, clauses:0, candidateOnlyCards:0, unexpectedExecutableEffects:0, spanErrors:0 };
 const errors = [];
 
 for (const card of cards) {
@@ -31,11 +32,60 @@ for (const card of cards) {
     blocked[reason] = (blocked[reason] || 0) + 1;
   }
 
+  if (card.sourceCardUrl !== 'https://fmlunatic.com/card/' + card.id) {
+    errors.push(card.id + ': sourceCardUrl does not match the T SQLite document ID');
+  }
+  if (!card.sourceListUrl || !card.sourceImageUrls ||
+      !card.sourceImageUrls.large || !card.sourceImageUrls.small) {
+    errors.push(card.id + ': exact source list/image URLs are missing');
+  }
+  if (!card.sourceImageSha256 || !/^[a-f0-9]{64}$/i.test(card.sourceImageSha256.large || '')) {
+    errors.push(card.id + ': large-image SHA-256 from T SQLite is missing');
+  }
+  if (card.artImageSha256 && card.sourceImageSha256 &&
+      card.artImageSha256 !== card.sourceImageSha256.large) {
+    errors.push(card.id + ': extracted large-image SHA-256 differs from T SQLite');
+  }
+
+  const effectCandidates = Array.isArray(card.effectCandidates) ? card.effectCandidates : [];
+  for (const candidate of effectCandidates) {
+    effectAudit.candidates++;
+    if (candidate.verificationStatus !== 'pattern_candidate') {
+      errors.push(card.id + ': effect candidate was promoted without rule verification');
+    }
+    if (!['exact','not_split'].includes(candidate.spanIntegrityStatus)) {
+      effectAudit.spanErrors++;
+      errors.push(card.id + ': effect source span has no integrity proof');
+    }
+    if (candidate.sourceCardUrl !== card.sourceCardUrl) {
+      errors.push(card.id + ': effect candidate source URL does not match its card');
+    }
+    const clauses = Array.isArray(candidate.clauses) ? candidate.clauses : [];
+    effectAudit.clauses += clauses.length;
+    if (candidate.spanIntegrityStatus === 'exact') {
+      const expectedText = Array.isArray(candidate.analysis?.clause_candidates)
+        ? candidate.analysis.clause_candidates.map(x => String(x.text || '')).join('')
+        : null;
+      const actualText = clauses.map(x => String(x.text || '')).join('');
+      if (expectedText === null || expectedText !== actualText) {
+        effectAudit.spanErrors++;
+        errors.push(card.id + ': effect clause text is not lossless');
+      }
+    }
+  }
+  if (card.effectExecutionStatus === 'candidate-only') effectAudit.candidateOnlyCards++;
+  if (card.effectExecutionStatus === 'candidate-only' && card.effect) {
+    effectAudit.unexpectedExecutableEffects++;
+    errors.push(card.id + ': candidate-only effect is incorrectly executable');
+  }
+
   if (card.type === 'land') {
     landStatus[card.soulProductionStatus || 'missing'] =
       (landStatus[card.soulProductionStatus || 'missing'] || 0) + 1;
     if (card.landInstallCostKnown === true) landInstallCost.known++;
     else landInstallCost.review++;
+    if (card.costMappingReview) landInstallCost.mappingReview++;
+    if (card.costSemanticReview) landInstallCost.semanticReview++;
     if (card.requiredLPKnown !== true) errors.push(card.id + ': LP source value not marked known');
     if (card.soulProductionStatus === 'magicland-effect' && validation.ok) {
       errors.push(card.id + ': MagicLand incorrectly accepted as ordinary terrain');
@@ -48,30 +98,45 @@ for (const card of cards) {
       errors.push(card.id + ': unknown land installation cost incorrectly accepted');
     }
   } else {
-    costKnown[card.type] = costKnown[card.type] || { known:0, review:0 };
-    if (card.costKnown === true && card.costMapped === true) costKnown[card.type].known++;
-    else {
+    costKnown[card.type] = costKnown[card.type] || { known:0, review:0, mappingReview:0, semanticReview:0 };
+    if (card.costKnown === true && card.costMapped === true) {
+      costKnown[card.type].known++;
+      if (card.costMappingReview || card.costSemanticReview) {
+        errors.push(card.id + ': reviewed cost is incorrectly marked playable');
+      }
+    } else {
       costKnown[card.type].review++;
-      if (validation.ok) errors.push(card.id + ': unresolved soul cost incorrectly accepted');
+      if (card.costMappingReview) costKnown[card.type].mappingReview++;
+      if (card.costSemanticReview) costKnown[card.type].semanticReview++;
+      if (validation.ok) errors.push(card.id + ': unresolved or review-required soul cost incorrectly accepted');
     }
   }
 }
+
 for (const [type, count] of Object.entries(EXPECTED)) {
   if (types[type] !== count) errors.push(type + ' count mismatch: ' + types[type] + ' / ' + count);
 }
 if (cards.length !== 15350) errors.push('Total card count mismatch: ' + cards.length);
 if ((landStatus['source-decoded'] || 0) !== 239) errors.push('Expected 239 decoded standard lands');
 if ((landStatus['magicland-effect'] || 0) !== 50) errors.push('Expected 50 MagicLand special-effect records');
-if (landInstallCost.known !== 289 || landInstallCost.review !== 0) {
-  errors.push('Land install-cost accounting mismatch: ' + JSON.stringify(landInstallCost));
+if (landInstallCost.known !== 275 || landInstallCost.review !== 14 ||
+    landInstallCost.mappingReview !== 14 || landInstallCost.semanticReview !== 0) {
+  errors.push('Land install-cost review accounting mismatch: ' + JSON.stringify(landInstallCost));
 }
 const nonLandKnown = Object.values(costKnown).reduce((s,x) => s + x.known, 0);
 const nonLandReview = Object.values(costKnown).reduce((s,x) => s + x.review, 0);
-if (nonLandKnown !== 14282 || nonLandReview !== 779) {
-  errors.push('Non-land cost accounting mismatch: ' + JSON.stringify(costKnown));
+const mappingReviewNonLand = Object.values(costKnown).reduce((s,x) => s + x.mappingReview, 0);
+const semanticReviewNonLand = Object.values(costKnown).reduce((s,x) => s + x.semanticReview, 0);
+if (nonLandKnown !== 14244 || nonLandReview !== 817 ||
+    mappingReviewNonLand !== 38 || semanticReviewNonLand !== 779) {
+  errors.push('Non-land cost status accounting mismatch: ' + JSON.stringify(costKnown));
+}
+if (effectAudit.candidates !== 17407 || effectAudit.clauses !== 48281 ||
+    effectAudit.spanErrors !== 0 || effectAudit.unexpectedExecutableEffects !== 0) {
+  errors.push('Effect candidate audit mismatch: ' + JSON.stringify(effectAudit));
 }
 if (errors.length) {
-  console.error(JSON.stringify({errors:errors.slice(0,50),errorCount:errors.length,types,landStatus,landInstallCost,costKnown,playable},null,2));
+  console.error(JSON.stringify({errors:errors.slice(0,50),errorCount:errors.length,types,landStatus,landInstallCost,costKnown,playable,effectAudit},null,2));
   process.exit(1);
 }
 console.log(JSON.stringify({
@@ -80,10 +145,13 @@ console.log(JSON.stringify({
   categories:types,
   nonLandCostKnown:nonLandKnown,
   nonLandCostNeedsReview:nonLandReview,
+  nonLandMappingReview:mappingReviewNonLand,
+  nonLandSemanticReview:semanticReviewNonLand,
   nonLandCostsByType:costKnown,
   standardLands:landStatus['source-decoded'],
   magicLandEffectRecords:landStatus['magicland-effect'],
   landInstallCost,
   playableByType:playable,
-  blockedReasons:blocked
+  blockedReasons:blocked,
+  effectAudit
 },null,2));
