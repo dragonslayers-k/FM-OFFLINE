@@ -38,14 +38,15 @@ Android 앱 저장소입니다. 카드 데이터 원본/크롤링/정규화 DB�
 단일 워크플로우: [Android CI / APK Build](https://github.com/dragonslayers-k/FM-OFFLINE/actions/workflows/android-ci.yml)
 
 - main push: JavaScript 검사, 규칙 테스트, 변환기 자체 테스트, Debug APK 빌드와 APK 무결성 확인
-- 수동 실행: 필요할 때 기존 카드DB Release fm1-carddb-25에서 Android용 FM1-CardData-v1.1.0.zip 생성 선택
+- 수동 실행: 필요할 때 카드DB Release에서 Android용 FM1-CardData-v1.1.0.zip 생성 선택
+- 자동 테스트 실행: 커밋 메시지에 `[build-card-pack]`을 포함한 main push는 카드팩 변환까지 실행
 - 수동 실행: 필요할 때 Android 에뮬레이터 설치 / 실행 검사 선택
 - Release 서명 Secret 4개가 모두 설정된 경우에만 서명된 Release APK도 생성
 - APK와 카드 데이터 ZIP은 하나의 결과 Artifact에 별도 파일로 담김
 
 ### 수동 실행
 
-GitHub 저장소 → Actions → Android CI / APK Build → Run workflow에서 실행합니다. 카드팩 생성은 build_card_pack, 에뮬레이터 확인은 run_emulator를 선택합니다. 일반 push는 459MB 이미지 아카이브를 다시 받지 않습니다.
+GitHub 저장소 → Actions → Android CI / APK Build → Run workflow에서 실행합니다. 카드팩 생성은 build_card_pack, 에뮬레이터 확인은 run_emulator를 선택합니다. 일반 push는 459MB 이미지 아카이브를 다시 받지 않습니다. 단, 커밋 메시지에 `[build-card-pack]`이 포함되면 카드팩 생성 검증을 위해 원본 Release를 받아 변환합니다.
 
 ### Release 서명 설정
 
