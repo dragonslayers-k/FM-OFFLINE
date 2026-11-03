@@ -205,7 +205,7 @@ class SqliteCardPackTests(unittest.TestCase):
         ))
         self.db.commit()
         with self.assertRaisesRegex(RuntimeError, "does not match DB ID"):
-            CONVERTER.load_normalized_database(self.db_path)
+            CONVERTER.load_normalized_database(self.db_path, expected_count=1)
 
 
 if __name__ == "__main__":
