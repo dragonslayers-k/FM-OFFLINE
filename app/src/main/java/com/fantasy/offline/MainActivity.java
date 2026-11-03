@@ -2,6 +2,7 @@ package com.fantasy.offline;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
@@ -40,7 +41,7 @@ public final class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         dataDir = new File(getFilesDir(), "fm1-card-data");
-        if (BuildConfig.DEBUG) {
+        if ((getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
             String testPackName = getIntent().getStringExtra("fm1.testDataPackFile");
             if (testPackName != null && testPackName.matches("[A-Za-z0-9._-]+\\.zip")) {
                 try {
@@ -243,7 +244,7 @@ public final class MainActivity extends Activity {
     }
 
     private void startDebugDataPackImportIfRequested() {
-        if (!BuildConfig.DEBUG || pendingDebugDataPack == null) return;
+        if ((getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) == 0 || pendingDebugDataPack == null) return;
         final File pack = pendingDebugDataPack;
         pendingDebugDataPack = null;
         notifyWeb("working", "에뮬레이터 검증용 카드 데이터팩을 가져오는 중입니다.");
