@@ -883,13 +883,6 @@ def convert(a):
           "communityRulesExecutable":False,
           "executionPolicy":"Only manual_verified Skill1 mappings are eligible for Manual-baseline handlers. Skill2 remains reference metadata. Community candidates and unmapped values never trigger handlers."
         },
-        "specialSkillReview":{
-          **skill_db_counts,
-          "manualRuleSource":"Manual.zip / specialability.htm",
-          "communitySource":"2017 Inven community reference",
-          "communityRulesExecutable":False,
-          "executionPolicy":"Only manual_verified Skill1 mappings are normalized for the implemented Manual baseline handlers. Skill2 is retained as reference metadata. Community candidates and unmapped values never trigger handlers."
-        },
         "landSoulProduction":{
           "source":"Firestore EarnSoulList + Enum+EarnSoul",
           "decodedStandardLands":sum(1 for c in cards if c["type"]=="land" and c["soulProductionStatus"]=="source-decoded"),
