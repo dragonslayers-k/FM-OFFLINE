@@ -246,17 +246,32 @@ jobs:
             echo "Signed release APK: ${RELEASE_APK_STATUS:-not-configured}"
             echo "Emulator installation/launch: ${EMULATOR_OUTCOME:-not-run}"
             echo "Android card ZIP: ${FM1_DATA_PACK_STATUS:-not-built-in-this-run}"
-            echo "Source DB release: https://github.com/dragonslayers-k/T/releases/tag/fm1-carddb-26"
+            echo "Source DB release: https://github.com/dragonslayers-k/T/releases/tag/fm1-carddb-27"
             echo "Card counts: Land 289 / Unit 8633 / Magic 3857 / Item 1748 / Enchant 823"
             echo "Unknown or mixed costs are not treated as free."
           } > release-package/build-status.txt
 
-      - name: Upload APK and optional Android data ZIP
+      - name: Upload standalone Android card data ZIP
+        if: success() && hashFiles('release-package/FM1-CardData-v1.1.2.zip') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: FM1-CardData-v1.1.2-DB27
+          path: release-package/FM1-CardData-v1.1.2.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 90
+
+      - name: Upload APK and build report
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: FantasyMastersOffline-build-output
-          path: release-package/
+          path: |
+            release-package/FantasyMastersOffline-debug.apk
+            release-package/FantasyMastersOffline-release.apk
+            release-package/build-status.txt
+            release-package/emulator-screen.png
+            release-package/emulator-launch-log.txt
           if-no-files-found: warn
           compression-level: 1
           retention-days: 90
