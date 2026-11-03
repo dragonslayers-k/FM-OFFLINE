@@ -757,6 +757,13 @@ def self_test():
     print("converter self-test: PASS")
 
 def convert(a):
+    skill_catalogue_path=Path(a.skill_catalogue)
+    skill_catalogue=json.loads(skill_catalogue_path.read_text(encoding="utf-8"))
+    manual_catalogue_rules=skill_catalogue.get("manualRules",[])
+    community_catalogue_rules=skill_catalogue.get("communityCandidates",[])
+    if skill_catalogue.get("schemaVersion")!=1 or len(manual_catalogue_rules)!=27 or len(community_catalogue_rules)!=41:
+        raise RuntimeError("T skill catalogue does not match the audited 27 manual / 41 community candidate baseline")
+    skill_catalogue_sha256=hashlib.sha256(skill_catalogue_path.read_bytes()).hexdigest()
     enum_data=json.loads(Path(a.enumtable).read_text(encoding="utf-8"))
     enums=enum_lookup(enum_data)
     earn_soul_enum=enum_symbol_map(enum_data,"EarnSoul")
@@ -881,6 +888,11 @@ def convert(a):
         },
         "specialSkillReview":{
           **skill_db_counts,
+          "catalogueSchemaVersion":skill_catalogue["schemaVersion"],
+          "catalogueManualRules":len(manual_catalogue_rules),
+          "catalogueCommunityCandidates":len(community_catalogue_rules),
+          "catalogueSha256":skill_catalogue_sha256,
+          "catalogueEntry":"skill-catalogue.json",
           "manualRuleSource":"Manual.zip / specialability.htm",
           "communitySource":"2017 Inven community reference",
           "communityRulesExecutable":False,
@@ -904,7 +916,8 @@ def convert(a):
         "images":{"format":"webp","variant":"large","onePerCard":True}
     }
     (out/"manifest.json").write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding="utf-8")
-    unpacked_bytes=cards_bytes+image_bytes+(out/"manifest.json").stat().st_size
+    shutil.copy2(skill_catalogue_path,out/"skill-catalogue.json")
+    unpacked_bytes=cards_bytes+image_bytes+(out/"manifest.json").stat().st_size+(out/"skill-catalogue.json").stat().st_size
     if unpacked_bytes > 700*1024*1024:
         raise RuntimeError(f"FM1-CARD-DATA exceeds Android 700MB unpack limit: {unpacked_bytes} bytes")
     manifest["unpackedBytes"]=unpacked_bytes
@@ -914,12 +927,13 @@ def convert(a):
     with zipfile.ZipFile(z,"w",allowZip64=True) as archive:
         archive.write(cards_path,"cards.json",compress_type=zipfile.ZIP_DEFLATED,compresslevel=6)
         archive.write(out/"manifest.json","manifest.json",compress_type=zipfile.ZIP_DEFLATED,compresslevel=6)
+        archive.write(out/"skill-catalogue.json","skill-catalogue.json",compress_type=zipfile.ZIP_DEFLATED,compresslevel=6)
         for img in sorted(images.glob("*.webp")):
             archive.write(img,"images/"+img.name,compress_type=zipfile.ZIP_STORED)
     with zipfile.ZipFile(z) as archive:
         if archive.testzip() is not None: raise RuntimeError("Generated ZIP CRC test failed")
         names=archive.namelist()
-        if "cards.json" not in names or "manifest.json" not in names or sum(n.startswith("images/") for n in names)!=TOTAL:
+        if "cards.json" not in names or "manifest.json" not in names or "skill-catalogue.json" not in names or sum(n.startswith("images/") for n in names)!=TOTAL:
             raise RuntimeError("Generated ZIP structure incomplete")
     print(json.dumps({"zip":str(z),"bytes":z.stat().st_size,"cards":TOTAL,"images":TOTAL,
       "types":dict(counts),"cardsSha256":digest,"cardsJsonBytes":cards_bytes,"imageBytes":image_bytes,
@@ -935,12 +949,13 @@ def convert(a):
 def main():
     p=argparse.ArgumentParser()
     p.add_argument("--db-sqlite",help="Audited normalized T SQLite database (uncompressed)")
-    p.add_argument("--db-release-tag",default="fm1-carddb-28")
+    p.add_argument("--db-release-tag",default="fm1-carddb-29")
+    p.add_argument("--skill-catalogue",help="Source-versioned Manual/community skill catalogue from the same T release")
     p.add_argument("--enumtable");p.add_argument("--images-tar-gz")
     p.add_argument("--output");p.add_argument("--zip-output");p.add_argument("--self-test",action="store_true")
     a=p.parse_args()
     if a.self_test: self_test();return
-    if not all([a.db_sqlite,a.enumtable,a.images_tar_gz,a.output,a.zip_output]):
-        p.error("requires --db-sqlite --db-release-tag --enumtable --images-tar-gz --output --zip-output")
+    if not all([a.db_sqlite,a.skill_catalogue,a.enumtable,a.images_tar_gz,a.output,a.zip_output]):
+        p.error("requires --db-sqlite --db-release-tag --skill-catalogue --enumtable --images-tar-gz --output --zip-output")
     convert(a)
 if __name__=="__main__": main()
