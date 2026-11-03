@@ -15,6 +15,16 @@ adb wait-for-device
 adb logcat -c
 adb install -r "$APK"
 
+capture_failure_logs() {
+  adb logcat -d > emulator-launch-logcat-full.txt || true
+  adb shell dumpsys activity exit-info "$APP_ID" > emulator-process-exit-info.txt 2>&1 || true
+  {
+    grep -E "FATAL EXCEPTION|Fatal signal|am_crash|AndroidRuntime|Process .* has died|Killing .*fantasy.offline|OutOfMemory|lowmemorykiller|FM1CardData" emulator-launch-logcat-full.txt || true
+    cat emulator-process-exit-info.txt || true
+  } > emulator-launch-log.txt
+  cat emulator-launch-log.txt || true
+}
+
 # Stream the 400MB-class test ZIP directly into this Debug app's private files;
 # no storage permission or exported production import endpoint is introduced.
 adb shell "run-as '$APP_ID' sh -c 'mkdir -p files && cat > files/$TEST_PACK_NAME'" < "$PACK_ZIP"
@@ -27,8 +37,7 @@ START_OUTPUT="$(adb shell am start -n "$COMPONENT" --es fm1.testDataPackFile "$T
 printf '%s\n' "$START_OUTPUT"
 if grep -Eq 'Error type [0-9]+|Error: Activity class|Exception occurred' <<<"$START_OUTPUT"; then
   echo "::error::Android activity could not be started"
-  adb logcat -d -s AndroidRuntime:E ActivityManager:E FM1CardData:V > emulator-launch-log.txt || true
-  cat emulator-launch-log.txt || true
+  capture_failure_logs
   exit 1
 fi
 
@@ -44,8 +53,7 @@ for attempt in $(seq 1 720); do
   fi
   if grep -q 'WEBVIEW_CARDS_FAILED=' <<<"$DATA_LOG"; then
     echo "::error::The app installed the pack but failed to load every card in WebView"
-    adb logcat -d -s AndroidRuntime:E ActivityManager:E FM1CardData:E > emulator-launch-log.txt || true
-    cat emulator-launch-log.txt || true
+    capture_failure_logs
     exit 1
   fi
   APP_PID="$(adb shell pidof "$APP_ID" 2>/dev/null | tr -d '\r\n' || true)"
@@ -53,8 +61,7 @@ for attempt in $(seq 1 720); do
     APP_SEEN=true
   elif [ "$attempt" -gt 45 ] && [ "$APP_SEEN" = true ]; then
     echo "::error::Application process exited during card ZIP import or WebView loading"
-    adb logcat -d -s AndroidRuntime:E ActivityManager:E FM1CardData:V > emulator-launch-log.txt || true
-    cat emulator-launch-log.txt || true
+    capture_failure_logs
     exit 1
   fi
   sleep 1
@@ -62,8 +69,7 @@ done
 
 if [ "$CARD_LOAD_OK" != true ]; then
   echo "::error::Timed out after 12 minutes waiting for WebView confirmation of all 15,350 cards"
-  adb logcat -d -s AndroidRuntime:E ActivityManager:E FM1CardData:E > emulator-launch-log.txt || true
-  cat emulator-launch-log.txt || true
+  capture_failure_logs
   exit 1
 fi
 
