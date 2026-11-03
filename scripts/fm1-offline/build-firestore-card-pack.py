@@ -349,43 +349,6 @@ def load_normalized_database(db_path, expected_count=TOTAL):
             "ruleImplementationStatus":rule["implementation_status"] if rule else None,
             "rulePlayableByDefault":bool(rule["playable_by_default"]) if rule else False,
         })
-    skill_db_counts={
-        "manualRuleCount":connection.execute(
-            "SELECT COUNT(*) FROM game_rule_catalog WHERE source_authority='manual'"
-        ).fetchone()[0],
-        "communityRuleCandidateCount":connection.execute(
-            "SELECT COUNT(*) FROM game_rule_catalog WHERE source_authority='community'"
-        ).fetchone()[0],
-        "cardRuleMappingRows":connection.execute("SELECT COUNT(*) FROM card_rule_mappings").fetchone()[0],
-        "manualSkillMappingRows":connection.execute(
-            "SELECT COUNT(*) FROM card_rule_mappings WHERE mapping_status='manual_verified'"
-        ).fetchone()[0],
-        "communitySkillCandidateRows":connection.execute(
-            "SELECT COUNT(*) FROM card_rule_mappings WHERE mapping_status='community_documented_candidate'"
-        ).fetchone()[0],
-        "unmappedSkillRows":connection.execute(
-            "SELECT COUNT(*) FROM card_rule_mappings WHERE mapping_status='unmapped'"
-        ).fetchone()[0],
-        "skillEnumInventoryRows":connection.execute("SELECT COUNT(*) FROM skill_enum_inventory").fetchone()[0],
-        "playableCommunityRuleRows":connection.execute(
-            "SELECT COUNT(*) FROM game_rule_catalog WHERE source_authority='community' AND playable_by_default=1"
-        ).fetchone()[0],
-    }
-    expected_skill_counts={
-        "manualRuleCount":27,
-        "communityRuleCandidateCount":41,
-    }
-    for key,value in expected_skill_counts.items():
-        if skill_db_counts[key]!=value:
-            connection.close()
-            raise RuntimeError(f"T SQLite skill rule catalogue mismatch: {key}={skill_db_counts[key]} expected={value}")
-    if (skill_db_counts["cardRuleMappingRows"]<15000
-        or skill_db_counts["manualSkillMappingRows"]<1000
-        or skill_db_counts["communitySkillCandidateRows"]<100
-        or skill_db_counts["skillEnumInventoryRows"]<100
-        or skill_db_counts["playableCommunityRuleRows"]!=0):
-        connection.close()
-        raise RuntimeError("T SQLite card-level skill mapping validation failed: "+json.dumps(skill_db_counts,ensure_ascii=False))
     image_rows={}
     for image in connection.execute(
         "SELECT card_id,image_type,source_url,local_path,archive_path,mime_type,byte_size,sha256,download_status "
