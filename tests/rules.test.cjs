@@ -458,9 +458,9 @@ test('FM1 reshuffle is disabled after a card was placed and after turn four',()=
   assert.equal(FM.reshuffleHand(s,'player').ok,false);
 });
 
-test('terrain placement consumes LP only, without optional install-cost metadata',()=>{
+test('terrain with an explicitly verified zero install-soul cost consumes LP and produces souls',()=>{
   const card={...land('lp-only-land','light',1,0),instanceId:'lp-only',
-    landInstallCost:null,landInstallCostKnown:false};
+    landInstallCost:{neutral:0},landInstallCostKnown:true};
   const p=player('player',{hand:[card],lp:1,soulPool:{colored:{fire:1,light:0},neutral:1}});
   const s=state(p,player('ai'));
   assert.equal(FM.playCard(s,'player','lp-only').ok,true);
@@ -475,8 +475,9 @@ test('fractional dual-colour production is preserved and deployment limit rounds
   const output=FM._test.productionOf({soulProduction:{colored:{light:0.5,earth:1.5},neutral:0.25}});
   assert.deepEqual(output,{colored:{light:0.5,earth:1.5},neutral:0.25});
   const card={id:'fractional-land',instanceId:'fractional',name:'소수 지형',type:'land',
-    requiredLP:1,souls:['light','earth'],soulProduction:{colored:{light:0.5,earth:1.5},neutral:0.25},
-    landInstallCost:{},landInstallCostKnown:true};
+    requiredLP:1,requiredLPKnown:true,souls:['light','earth'],
+    soulProduction:{colored:{light:0.5,earth:1.5},neutral:0.25},soulProductionStatus:'source-decoded',
+    landInstallCost:{neutral:0},landInstallCostKnown:true};
   const p=player('player',{hand:[card],lp:1});
   const s=state(p,player('ai'));
   assert.equal(FM.playCard(s,'player','fractional').ok,true);
@@ -647,7 +648,8 @@ test('explicit LP 0 terrain remains free to install at zero current LP',()=>{
   const Schema=require('../app/src/main/assets/game/card-schema.js');
   const card=Schema.normalize({
     id:'explicit-lp-zero',name:'LP0 지형',type:'land',faction:'light',souls:['light'],soulValue:1,
-    requiredLP:0,description:'필요LP : 0'
+    requiredLP:0,requiredLPKnown:true,landInstallCost:{neutral:0},landInstallCostKnown:true,
+    soulProductionStatus:'source-decoded',description:'필요LP : 0'
   });
   assert.equal(card.requiredLP,0);
   assert.equal(card.rules.requiredLPStatus,'source-defined');

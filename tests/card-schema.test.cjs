@@ -244,13 +244,14 @@ test('simple text parser recognises healing, draw, mill and stat buffs',()=>{
   assert.equal(Schema.parseCardTextEffect('아군 유닛의 AP를 +2 증가').ap,2);
 });
 
-test('land with no required LP field defaults to LP 0, not unknown',()=>{
-  const card=Schema.normalize({id:'land-lp-zero',name:'무요구 지형',type:'land',
-    soulProduction:{colored:{light:1},neutral:0}});
-  assert.equal(card.requiredLP,0);
-  assert.equal(card.rules.requiredLPStatus,'default-zero-no-requirement');
+test('land with no required LP field remains unverified instead of being silently set to zero',()=>{
+  const card=Schema.normalize({id:'land-lp-missing',name:'LP 미확인 지형',type:'land',
+    soulProduction:{colored:{light:1},neutral:0},soulProductionStatus:'source-decoded'});
+  assert.equal(card.requiredLP,null);
+  assert.equal(card.requiredLPKnown,false);
+  assert.equal(card.rules.requiredLPStatus,'source-missing');
   assert.equal(card.rules.status,'mapped');
-  assert.equal(card.rules.costStatus,'not-applicable-lp-land-placement');
+  assert.equal(card.rules.costStatus,'installation-cost-needs-review');
   assert.equal(card.landInstallCostKnown,false);
 });
 
