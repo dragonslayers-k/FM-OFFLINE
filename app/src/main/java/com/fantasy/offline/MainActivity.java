@@ -98,11 +98,11 @@ public final class MainActivity extends Activity {
             runOnUiThread(() -> {
                 try {
                     Uri downloadUri = Uri.parse(
-                        "https://github.com/dragonslayers-k/FM-OFFLINE/actions/workflows/android-ci.yml"
+                        "https://www.dropbox.com/scl/fo/icb9it9ku1w8alhazktp5/AKNMbFpnG93HyCySCjMbHCE?rlkey=xkph7zvev2vf9lmesdkhb1fha&st=z8jaucif&dl=0"
                     );
                     startActivity(new Intent(Intent.ACTION_VIEW, downloadUri));
                 } catch (Exception e) {
-                    notifyWeb("error", "카드 데이터 ZIP 다운로드 페이지를 열지 못했습니다: " + safeMessage(e));
+                    notifyWeb("error", "Dropbox 카드 데이터 폴더를 열지 못했습니다: " + safeMessage(e));
                 }
             });
         }
