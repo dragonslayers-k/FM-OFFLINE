@@ -56,6 +56,96 @@
     return !direction ? false : changeUnitStat(unit,stat,next-current);
   }
 
+  const SPECIAL_SKILL_RULE_KEYWORDS = Object.freeze({
+    normal_attack: '일반공격',
+    defense_bypass: '방어무시',
+    fatal_attack: '치명공격',
+    piercing_attack: '관통공격',
+    weaken_attack: '약화공격',
+    petrify_attack: '석화공격',
+    vampiric_attack: '흡혈공격',
+    aging_attack: '노화공격',
+    charge_attack: '돌진공격',
+    beast_tamer: '야수조련공격',
+    bravery_attack: '용맹공격',
+    regeneration: '재생능력',
+    frenzy_attack: '광분공격',
+    consecutive_attack: '연속공격',
+    fear_attack: '공포공격',
+    charm_attack: '매료공격',
+    ability_seal: '봉쇄공격',
+    spell_suppression: '마법봉쇄공격',
+    weapon_suppression: '무기뺏기공격',
+    copy_attack: '복제공격',
+    shield_break: '방패파괴',
+    curse_attack: '저주공격',
+    defensive_use: '방어이용',
+    taunt_attack: '조롱',
+    confusion_attack: '혼란공격',
+    stealth_attack: '은폐공격',
+    defense_convert: '방어전환공격'
+  });
+
+  const SPECIAL_SKILL_NAME_ALIASES = Object.freeze({
+    '일반공격기술':'일반공격',
+    '방어무시기술':'방어무시',
+    '치명공격기술':'치명공격',
+    '관통공격기술':'관통공격',
+    '약화공격기술':'약화공격',
+    '석화공격기술':'석화공격',
+    '흡혈공격기술':'흡혈공격',
+    '노화공격기술':'노화공격',
+    '돌진공격기술':'돌진공격',
+    '야수조련':'야수조련공격',
+    '야수조련기술':'야수조련공격',
+    '용맹공격기술':'용맹공격',
+    '재생공격':'재생능력',
+    '재생공격기술':'재생능력',
+    '광분공격기술':'광분공격',
+    '연속공격기술':'연속공격',
+    '공포공격기술':'공포공격',
+    '매료공격기술':'매료공격',
+    '기술봉쇄':'봉쇄공격',
+    '봉쇄공격기술':'봉쇄공격',
+    '주문봉쇄':'마법봉쇄공격',
+    '마법봉쇄':'마법봉쇄공격',
+    '마법봉쇄기술':'마법봉쇄공격',
+    '무기봉쇄':'무기뺏기공격',
+    '무기뺏기':'무기뺏기공격',
+    '무기뺏기기술':'무기뺏기공격',
+    '공격복제':'복제공격',
+    '복제공격기술':'복제공격',
+    '방패파괴기술':'방패파괴',
+    '저주공격기술':'저주공격',
+    '방어이용기술':'방어이용',
+    '조롱능력':'조롱',
+    '조롱공격':'조롱',
+    '조롱공격기술':'조롱',
+    '혼란공격기술':'혼란공격',
+    '은폐공격기술':'은폐공격',
+    '방어전환':'방어전환공격',
+    '방어변환':'방어전환공격',
+    '방어전환기술':'방어전환공격'
+  });
+
+  function normalizeSpecialSkillForEngine(unit, rawSkill) {
+    // A DB29 card has a mapping array for every source Skill1/Skill2 field.
+    // Only an explicit Manual.zip Skill1 mapping may activate a rule.
+    if (unit && Array.isArray(unit.specialSkillMappings)) {
+      if (unit.tempSkill && String(unit.tempSkill).trim()) {
+        const temp = String(unit.tempSkill).replace(/\\s+/g, '');
+        return SPECIAL_SKILL_NAME_ALIASES[temp] || temp;
+      }
+      const ruleId = unit.specialSkillRuleId;
+      return ruleId && SPECIAL_SKILL_RULE_KEYWORDS[ruleId]
+        ? SPECIAL_SKILL_RULE_KEYWORDS[ruleId]
+        : '';
+    }
+    // Compatibility for legacy/unit-test records without DB29 mapping metadata.
+    const normalized = String(rawSkill || '').replace(/\\s+/g, '');
+    return SPECIAL_SKILL_NAME_ALIASES[normalized] || normalized;
+  }
+
   function itemMatchesUnit(card, unit, ownerId, targetOwnerId) {
     const condition = card && card.itemConditions;
     if (!condition) return true;
@@ -715,7 +805,7 @@ if (card.type === 'unit') {
       checkWinner(state);return {damage:removed,direct:true};
     }
     const defenderStats=rolledStats.defender||rollCombatStats(defender,rng),defenseRoll=defenderStats.dp;
-    const skill=String(attacker.tempSkill||attacker.skill||'').replace(/\s+/g,'');
+    const skill=normalizeSpecialSkillForEngine(attacker,attacker.tempSkill||attacker.skill||'');
     const targetAbilities=Array.isArray(defender.unitAbilityTags)&&defender.unitAbilityTags.length?defender.unitAbilityTags:[String(defender.unitAbility||'')];
     const change=(unit,stats,stat,delta)=>{
       const ok=changeUnitStat(unit,stat,delta);
@@ -747,8 +837,8 @@ if (card.type === 'unit') {
     else if(skill.includes('방어이용')&&canAffectDefender)damage=Math.max(0,Number(attackRoll.value||0)+Number(defenseRoll.value||0));
     else damage=Math.max(0,Number(attackRoll.value||0)-Number(defenseRoll.value||0));
     const attackerLevel=Number(attacker.level||0),defenderLevel=Number(defender.level||0);
-    if(skill.includes('용맹공격')&&attackerLevel>=defenderLevel)damage+=1;
-    if(skill.includes('공포공격')&&attackerLevel<=defenderLevel)damage+=1;
+    if(canAffectDefender&&skill.includes('용맹공격')&&attackerLevel>=defenderLevel)damage+=1;
+    if(canAffectDefender&&skill.includes('공포공격')&&attackerLevel<=defenderLevel)damage+=1;
     if(canAffectDefender&&skill.includes('약화공격')){change(defender,defenderStats,'ap',-1);change(defender,defenderStats,'dp',-1);}
     if(canAffectDefender&&skill.includes('석화공격')){set(defender,defenderStats,'ap',0);change(defender,defenderStats,'dp',1);}
     if(canAffectDefender&&skill.includes('노화공격'))change(defender,defenderStats,'ap',-2);
@@ -953,7 +1043,7 @@ if (card.type === 'unit') {
     COLORS, COLOR_NAMES, TYPE_NAMES, clone, uid, sumCost, costText, colorName,
     newGame, buildStarterDeck, drawToSix, canPay, spendSoul, totalPower, validateCardForPlay,
     playCard, discardCard, reshuffleHand, endPhase, resolveBattle, runAIPhase, checkWinner, cardArtClass,
-    _test: { makePlayer, beginPhase, rollStat, coinProfile, chooseBlocker, createUnit, applyEffect, resolveUnitAttack, productionOf, readCost, validateCardForPlay, itemMatchesUnit, resolveSpellSlot, statMarker, canChangeStat, changeUnitStat, setUnitStat }
+    _test: { makePlayer, beginPhase, rollStat, coinProfile, chooseBlocker, createUnit, applyEffect, resolveUnitAttack, productionOf, readCost, validateCardForPlay, itemMatchesUnit, resolveSpellSlot, statMarker, canChangeStat, changeUnitStat, setUnitStat, normalizeSpecialSkillForEngine, SPECIAL_SKILL_RULE_KEYWORDS }
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.FM = api;
