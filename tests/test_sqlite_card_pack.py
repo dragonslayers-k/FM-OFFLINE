@@ -199,6 +199,49 @@ class SqliteCardPackTests(unittest.TestCase):
         self.assertEqual(by_field["Skill2"]["mappingStatus"], "community_documented_candidate")
         self.assertEqual(by_field["Skill2"]["ruleAuthority"], "community")
 
+
+    def test_skill2_catalogue_remains_separate_even_if_a_candidate_rule_id_exists(self):
+        mappings = [
+            {
+                "cardId": self.card_id,
+                "sourceField": "Skill2",
+                "sourceEnumValue": "800",
+                "sourceName": "강한공포",
+                "mappingStatus": "community_documented_candidate",
+                "ruleId": "strong_fear"
+            },
+            {
+                "cardId": self.card_id,
+                "sourceField": "Skill1",
+                "sourceEnumValue": "243",
+                "sourceName": "방어무시",
+                "mappingStatus": "manual_verified",
+                "ruleId": "defense_bypass"
+            }
+        ]
+        cards = [{
+            "id": self.card_id,
+            "name": "숲의 전사",
+            "sourceCardUrl": self.detail,
+            "sourceListUrl": "https://fmlunatic.com/cardlist",
+            "specialSkill1": "방어무시",
+            "text": "원본 카드 텍스트"
+        }]
+        catalogue = CONVERTER.build_skill2_catalogue(mappings, cards, "test-release")
+        self.assertEqual(catalogue["sourceField"], "Skill2")
+        self.assertEqual(catalogue["entryCount"], 1)
+        self.assertEqual(catalogue["activeSkillCount"], 1)
+        self.assertEqual(catalogue["activeCardCount"], 1)
+        self.assertEqual(catalogue["executableRuleCount"], 0)
+        entry = catalogue["records"][0]
+        self.assertEqual(entry["name"], "강한공포")
+        self.assertIsNone(entry["ruleId"])
+        self.assertIsNone(entry["ruleAuthority"])
+        self.assertEqual(entry["sourceCandidateRuleIds"], ["strong_fear"])
+        self.assertEqual(entry["executionStatus"], "disabled-until-skill2-rule-review")
+        self.assertEqual(entry["cardReferences"][0]["sourceCardUrl"], self.detail)
+        self.assertEqual(entry["cardReferences"][0]["skill1"], "방어무시")
+
     def test_load_refuses_missing_or_fabricated_card_url(self):
         self.db.execute("UPDATE cards SET source_card_url=? WHERE card_id=?", (
             "https://fmlunatic.com/card/other-id", self.card_id

@@ -18,7 +18,7 @@ on:
         description: "Android 에뮬레이터에 APK 설치 및 실행"
         required: false
         type: boolean
-        default: false
+        default: true
       db_release_tag:
         description: "T 저장소의 정규화 SQLite DB Release tag"
         required: false
@@ -27,7 +27,7 @@ on:
 
 concurrency:
   group: fm-offline-android-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -176,8 +176,9 @@ jobs:
           unzip -p release-package/FM1-CardData-v1.3.0.zip cards.json > "$RUNNER_TEMP/fm1-app-cards.json"
           unzip -p release-package/FM1-CardData-v1.3.0.zip card-skill-mappings.json > "$RUNNER_TEMP/fm1-app-skill-mappings.json"
           unzip -p release-package/FM1-CardData-v1.3.0.zip card-effect-candidates.json > "$RUNNER_TEMP/fm1-app-effect-candidates.json"
-          node scripts/fm1-offline/validate-app-card-pack.cjs "$RUNNER_TEMP/fm1-app-cards.json" "$RUNNER_TEMP/fm1-app-skill-mappings.json" "$RUNNER_TEMP/fm1-app-effect-candidates.json"
-          rm -f "$RUNNER_TEMP/fm1-app-cards.json" "$RUNNER_TEMP/fm1-app-skill-mappings.json" "$RUNNER_TEMP/fm1-app-effect-candidates.json"
+          unzip -p release-package/FM1-CardData-v1.3.0.zip skill2-catalogue.json > "$RUNNER_TEMP/fm1-app-skill2-catalogue.json"
+          node scripts/fm1-offline/validate-app-card-pack.cjs "$RUNNER_TEMP/fm1-app-cards.json" "$RUNNER_TEMP/fm1-app-skill-mappings.json" "$RUNNER_TEMP/fm1-app-effect-candidates.json" "$RUNNER_TEMP/fm1-app-skill2-catalogue.json"
+          rm -f "$RUNNER_TEMP/fm1-app-cards.json" "$RUNNER_TEMP/fm1-app-skill-mappings.json" "$RUNNER_TEMP/fm1-app-effect-candidates.json" "$RUNNER_TEMP/fm1-app-skill2-catalogue.json"
           rm -rf "$RUNNER_TEMP/fm1-pack" "$RUNNER_TEMP/fm1-source"
           echo "FM1_DATA_PACK_STATUS=built-from-$CARD_DB_RELEASE_TAG" >> "$GITHUB_ENV"
 
@@ -272,29 +273,9 @@ jobs:
           emulator-boot-timeout: 900
           force-avd-creation: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data -camera-back none
-          script: |
-            set -eu
-            if [ -s FantasyMastersOffline-release.apk ]; then
-              APK="FantasyMastersOffline-release.apk"
-              APP_ID="com.fantasy.offline"
-            else
-              APK="FantasyMastersOffline-debug.apk"
-              APP_ID="com.fantasy.offline.debug"
-            fi
-            adb logcat -c
-            adb install -r "$APK"
-            adb shell am force-stop "$APP_ID"
-            adb shell am start -W -n "$APP_ID/com.fantasy.offline.MainActivity"
-            sleep 5
-            APP_PID="$(adb shell pidof "$APP_ID" | tr -d '\r\n')"
-            if [ -z "$APP_PID" ]; then
-              echo "::error::Application process exited after launch"
-              adb logcat -d -s AndroidRuntime:E ActivityManager:E
-              exit 1
-            fi
-            adb exec-out screencap -p > emulator-screen.png
-            test -s emulator-screen.png
-            adb logcat -d -s AndroidRuntime:E ActivityManager:E > emulator-launch-log.txt || true
+          # This action runs each script line in a separate shell. Keep the
+          # multiline smoke test in a checked-in script and invoke it as one command.
+          script: bash scripts/fm1-offline/emulator-smoke-test.sh
 
       - name: Prepare build report and output files
         if: always()

@@ -271,6 +271,17 @@
       n.unitAbility=htmlToText(raw.unitAbility||raw.unitType||raw.abilityType||detail['유닛 능력']||detail['유닛 능력 타입']||'');n.unitAbilityTags=normalizeAbility(n.unitAbility);
       n.rank=raw.rank||detail['랭크']||'';
       n.skill=htmlToText(raw.specialSkill||raw.specialAbility||raw.attackSkill||raw.skill||detail['특수공격기술']||detail['특수 공격 기술']||detail['공격기술']||detail['특수 능력']||detail['특수능력']||detail['스킬']||detail['공격 능력']||'');
+      // Preserve the two source enum fields independently. Skill2 has its own
+      // catalogue and must never inherit Skill1's Manual attack handler.
+      n.specialSkill1=htmlToText(raw.specialSkill1||'');
+      n.specialSkill2=htmlToText(raw.specialSkill2||'');
+      n.specialSkill1EnumValue=raw.specialSkill1EnumValue==null?null:String(raw.specialSkill1EnumValue);
+      n.specialSkill2EnumValue=raw.specialSkill2EnumValue==null?null:String(raw.specialSkill2EnumValue);
+      n.specialSkill2MappingStatus=String(raw.specialSkill2MappingStatus||
+        (n.specialSkill2&&n.specialSkill2!=='없음'?'unmapped':'no_special_skill'));
+      n.specialSkill2RuleId=null;
+      n.specialSkill2ExecutionStatus=n.specialSkill2&&n.specialSkill2!=='없음'
+        ?'disabled-until-skill2-rule-review':'no-skill';
       // Compact card metadata carries only the playable decision. Full per-card
       // Skill1/Skill2 provenance lives in card-skill-mappings.json and the source SQLite DB.
       n.specialSkillMappings=Array.isArray(raw.specialSkillMappings)?raw.specialSkillMappings:[];

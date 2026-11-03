@@ -7,9 +7,10 @@ const FM = require('../../app/src/main/assets/game/rules.js');
 const file = process.argv[2];
 const mappingFile = process.argv[3];
 const effectFile = process.argv[4];
+const skill2File = process.argv[5];
 if (!file || !fs.existsSync(file) || !mappingFile || !fs.existsSync(mappingFile) ||
-    !effectFile || !fs.existsSync(effectFile)) {
-  console.error('Usage: node validate-app-card-pack.cjs <cards.json> <card-skill-mappings.json> <card-effect-candidates.json>');
+    !effectFile || !fs.existsSync(effectFile) || !skill2File || !fs.existsSync(skill2File)) {
+  console.error('Usage: node validate-app-card-pack.cjs <cards.json> <card-skill-mappings.json> <card-effect-candidates.json> <skill2-catalogue.json>');
   process.exit(2);
 }
 const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -25,12 +26,95 @@ if (effectData.schemaVersion !== 1 || !Array.isArray(effectData.records) ||
     effectData.clauseCount !== effectData.records.reduce((n,x)=>n+(Array.isArray(x.clauses)?x.clauses.length:0),0)) {
   throw new Error('card-effect-candidates.json has an invalid schema or record count');
 }
+const skill2Data = JSON.parse(fs.readFileSync(skill2File, 'utf8'));
+if (skill2Data.schemaVersion !== 1 || skill2Data.sourceField !== 'Skill2' ||
+    !Array.isArray(skill2Data.records) || skill2Data.entryCount !== skill2Data.records.length ||
+    skill2Data.executableRuleCount !== 0) {
+  throw new Error('skill2-catalogue.json has an invalid schema or attempts to enable unverified Skill2 rules');
+}
 const skillMappingsByCard = new Map();
 for (const mapping of mappingData.records) {
   const id = String(mapping.cardId || '');
   if (!id) throw new Error('A card skill mapping has no cardId');
   if (!skillMappingsByCard.has(id)) skillMappingsByCard.set(id, []);
   skillMappingsByCard.get(id).push(mapping);
+}
+const skill2Expected = new Map();
+for (const mapping of mappingData.records) {
+  if (mapping.sourceField !== 'Skill2') continue;
+  const key = String(mapping.sourceEnumValue || '') + '\\u0000' + String(mapping.sourceName || '');
+  if (!skill2Expected.has(key)) skill2Expected.set(key, { enumValue:String(mapping.sourceEnumValue || ''),
+    name:String(mapping.sourceName || ''), cardIds:[], statuses:new Set(), candidateRuleIds:new Set() });
+  const entry = skill2Expected.get(key);
+  entry.cardIds.push(String(mapping.cardId));
+  entry.statuses.add(String(mapping.mappingStatus || 'unmapped'));
+  if (mapping.ruleId) entry.candidateRuleIds.add(String(mapping.ruleId));
+}
+const skill2Actual = new Map();
+for (const entry of skill2Data.records) {
+  const key = String(entry.enumValue || '') + '\\u0000' + String(entry.name || '');
+  if (skill2Actual.has(key)) throw new Error('Duplicate Skill2 catalogue entry: ' + key);
+  skill2Actual.set(key, entry);
+}
+if (skill2Actual.size !== skill2Expected.size) {
+  throw new Error('Skill2 catalogue enum coverage differs from card-skill-mappings.json');
+}
+const cardsById = new Map(cards.map(card => [String(card.id), card]));
+const skill2Audit = { entries:skill2Data.records.length, activeSkills:0, activeCards:0,
+  sourceMappings:0, cardReferences:0, executableRules:0 };
+for (const [key, expected] of skill2Expected) {
+  const actual = skill2Actual.get(key);
+  if (!actual) throw new Error('Missing Skill2 enum from catalogue: ' + key);
+  const expectedIds = [...new Set(expected.cardIds)].sort();
+  const actualIds = Array.isArray(actual.cardIds) ? actual.cardIds.map(String).sort() : [];
+  if (actual.cardCount !== expectedIds.length || JSON.stringify(actualIds) !== JSON.stringify(expectedIds)) {
+    throw new Error('Skill2 card coverage mismatch: ' + key);
+  }
+  const referenceIds = Array.isArray(actual.cardReferences)
+    ? actual.cardReferences.map(x => String(x.cardId || '')).sort() : [];
+  if (JSON.stringify(referenceIds) !== JSON.stringify(expectedIds)) {
+    throw new Error('Skill2 card evidence references do not cover the exact mapped cards: ' + key);
+  }
+  const expectedStatuses = [...expected.statuses].sort();
+  if (JSON.stringify(actual.sourceMappingStatuses) !== JSON.stringify(expectedStatuses)) {
+    throw new Error('Skill2 source mapping statuses differ: ' + key);
+  }
+  if (JSON.stringify([...(actual.sourceCandidateRuleIds || [])].sort()) !==
+      JSON.stringify([...expected.candidateRuleIds].sort())) {
+    throw new Error('Skill2 candidate rule provenance differs: ' + key);
+  }
+  if (actual.ruleId !== null || actual.ruleAuthority !== null ||
+      actual.executionStatus !== (actual.verificationStatus === 'no_special_skill'
+        ? 'no-skill' : 'disabled-until-skill2-rule-review')) {
+    skill2Audit.executableRules++;
+    throw new Error('Skill2 entry must remain non-executable: ' + key);
+  }
+  if (actual.verificationStatus !== 'no_special_skill') skill2Audit.activeSkills++;
+  skill2Audit.sourceMappings += expected.cardIds.length;
+  skill2Audit.cardReferences += (actual.cardReferences || []).length;
+  for (const ref of actual.cardReferences || []) {
+    const card = cardsById.get(String(ref.cardId));
+    if (!card || ref.sourceCardUrl !== card.sourceCardUrl ||
+        ref.sourceListUrl !== card.sourceListUrl || ref.name !== card.name ||
+        ref.text !== (card.text || '') || ref.description !== (card.description || '')) {
+      throw new Error('Skill2 card evidence link/text mismatch: ' + String(ref.cardId));
+    }
+  }
+}
+const activeSkill2CardIds = new Set(skill2Data.records
+  .filter(x => x.verificationStatus !== 'no_special_skill')
+  .flatMap(x => x.cardIds || []));
+const noSkill2CardIds = new Set(skill2Data.records
+  .filter(x => x.verificationStatus === 'no_special_skill')
+  .flatMap(x => x.cardIds || []));
+skill2Audit.activeCards = activeSkill2CardIds.size;
+if (skill2Audit.sourceMappings !== skill2Data.mappingRecordCount ||
+    skill2Audit.executableRules !== 0 || skill2Data.activeSkillCount !== skill2Audit.activeSkills ||
+    skill2Data.activeCardCount !== skill2Audit.activeCards ||
+    skill2Data.noSkillCardCount !== noSkill2CardIds.size ||
+    skill2Data.mappingStatusCounts == null ||
+    Object.values(skill2Data.mappingStatusCounts).reduce((n,v)=>n+Number(v||0),0) !== skill2Data.mappingRecordCount) {
+  throw new Error('Skill2 catalogue summary counts mismatch: ' + JSON.stringify(skill2Audit));
 }
 const effectCandidatesByCard = new Map();
 for (const candidate of effectData.records) {
@@ -100,6 +184,22 @@ for (const card of cards) {
   const sourceSkill1 = skillMappings.find(x => x.sourceField === 'Skill1');
   const expectedMappingStatus = sourceSkill1 ? sourceSkill1.mappingStatus : 'no_special_skill';
   if (card.type === 'unit') {
+    const sourceSkill2 = skillMappings.find(x => x.sourceField === 'Skill2');
+    const expectedSkill2Status = sourceSkill2 ? sourceSkill2.mappingStatus : 'no_special_skill';
+    if (card.specialSkill2MappingStatus !== expectedSkill2Status) {
+      errors.push(card.id + ': compact Skill2 mapping status does not match card-skill-mappings.json');
+    }
+    if (String(card.specialSkill2EnumValue ?? '') !== String(sourceSkill2?.sourceEnumValue ?? '')) {
+      errors.push(card.id + ': compact Skill2 enum value does not match card-skill-mappings.json');
+    }
+    if ((card.specialSkill2 || '') !== (sourceSkill2?.sourceName || '')) {
+      errors.push(card.id + ': compact Skill2 name does not match card-skill-mappings.json');
+    }
+    if (card.specialSkill2RuleId !== null ||
+        card.specialSkill2ExecutionStatus !== ((card.specialSkill2 && card.specialSkill2 !== '없음')
+          ? 'disabled-until-skill2-rule-review' : 'no-skill')) {
+      errors.push(card.id + ': Skill2 has an executable rule or invalid review gate');
+    }
     if (card.specialSkillMappingStatus !== expectedMappingStatus) {
       errors.push(card.id + ': compact Skill1 mapping status does not match card-skill-mappings.json');
     }
@@ -231,5 +331,6 @@ console.log(JSON.stringify({
   playableByType:playable,
   blockedReasons:blocked,
   effectAudit,
-  skillAudit
+  skillAudit,
+  skill2Audit
 },null,2));
