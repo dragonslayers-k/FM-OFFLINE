@@ -101,7 +101,7 @@ class SqliteCardPackTests(unittest.TestCase):
 
     def test_db_iron_key_is_translated_to_android_metal(self):
         row = self.db.execute("SELECT * FROM card_costs").fetchone()
-        names = [x[0] for x in self.db.execute("PRAGMA table_info(card_costs)")]
+        names = [x[1] for x in self.db.execute("PRAGMA table_info(card_costs)")]
         parsed = CONVERTER.db_cost_to_app(dict(zip(names, row)))
         self.assertTrue(parsed["known"])
         self.assertEqual(parsed["cost"], {"metal": 2})
@@ -139,7 +139,7 @@ class SqliteCardPackTests(unittest.TestCase):
         self.assertEqual(parsed["specialSouls"]["ncs"], 1)
 
     def test_load_reads_exact_url_image_hash_and_effect_candidates_from_sqlite(self):
-        rows = CONVERTER.load_normalized_database(self.db_path)
+        rows = CONVERTER.load_normalized_database(self.db_path, expected_count=1)
         self.assertEqual(len(rows), 1)
         card = rows[0]
         self.assertEqual(card["source_card_url"], self.detail)
@@ -153,7 +153,7 @@ class SqliteCardPackTests(unittest.TestCase):
             "https://fmlunatic.com/card/other-id", self.card_id
         ))
         self.db.commit()
-        with self.assertRaisesRegex(RuntimeError, "does not match the DB ID"):
+        with self.assertRaisesRegex(RuntimeError, "does not match DB ID"):
             CONVERTER.load_normalized_database(self.db_path)
 
 
