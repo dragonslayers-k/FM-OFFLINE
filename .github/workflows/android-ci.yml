@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - fix/data-pack-schema-import-2026-11-04
 # Add [run-emulator] to a PR title to request the long import/emulator validation.
   pull_request:
     branches:
