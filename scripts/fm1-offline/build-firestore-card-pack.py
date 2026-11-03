@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Convert FM Lunatic Firestore release data into the Android app's FM1-CARD-DATA ZIP."""
-import argparse, gzip, hashlib, json, os, shutil, tarfile, zipfile
+import argparse, gzip, hashlib, json, os, shutil, sqlite3, tarfile, zipfile
 from collections import Counter
 from pathlib import Path, PurePosixPath
 
@@ -194,6 +194,187 @@ def add(tabs, group, label_text, value):
     if value is None or value=="": return
     tabs.setdefault(group,[]).append({"label":label_text,"text":f"{label_text} : {value}"})
 
+def db_cost_to_app(cost_row):
+    """Read the canonical T SQLite status; never infer cost validity from token syntax alone."""
+    if cost_row is None:
+        return {
+            "cost": {}, "candidateCost": {}, "known": False, "mappingReview": False,
+            "semanticReview": False, "soulKnown": False, "review": ["database-cost-row-missing"],
+            "tokens": [], "sourceStatus": "missing"
+        }
+    soul=json.loads(cost_row["soul_json"] or "{}")
+    colors=soul.get("colors") or {}
+    candidate={}
+    for key,value in colors.items():
+        if key in ("ncs","bonus"):
+            continue
+        amount=integer(value)
+        if amount is not None and amount:
+            candidate["metal" if key=="iron" else key]=amount
+    mapping_review=bool(cost_row["mapping_review"])
+    semantic_review=bool(cost_row["semantic_review"])
+    soul_known=bool(cost_row["soul_known"])
+    known=soul_known and not mapping_review and not semantic_review
+    review=[]
+    if not soul_known:
+        review.append("unresolved-source-token")
+    if mapping_review:
+        review.append("hybrid-requiresoul-mapping-review")
+    if semantic_review:
+        review.append("ncs-bonus-semantics-review")
+    # Preserve an explicit NONE/00 source as a known zero-cost object.
+    app_cost=dict(candidate) if known else {}
+    if known and not app_cost:
+        app_cost={"neutral":0}
+    return {
+        "cost":app_cost,
+        "candidateCost":candidate,
+        "known":known,
+        "mappingReview":mapping_review,
+        "semanticReview":semantic_review,
+        "soulKnown":soul_known,
+        "review":review,
+        "tokens":soul.get("tokens") or [],
+        "specialSouls":{k:integer(colors.get(k)) or 0 for k in ("ncs","bonus")},
+        "sourceStatus":str(cost_row["verification_status"] or "unknown"),
+        "raw":cost_row["source_text"],
+    }
+
+
+def load_normalized_database(db_path):
+    """Build source records from T's audited SQLite, not a second JSONL re-parser."""
+    connection=sqlite3.connect(str(db_path))
+    connection.row_factory=sqlite3.Row
+    integrity=connection.execute("PRAGMA integrity_check").fetchone()[0]
+    if integrity!="ok":
+        connection.close()
+        raise RuntimeError("T SQLite integrity_check failed: "+str(integrity))
+    required_tables={
+        "cards","card_costs","card_fields","card_images","card_effect_candidate_summaries","card_effect_clauses"
+    }
+    present={row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    missing=required_tables-present
+    if missing:
+        connection.close()
+        raise RuntimeError("T SQLite schema is incomplete: "+", ".join(sorted(missing)))
+    cost_rows={
+        row["card_id"]:row
+        for row in connection.execute("SELECT * FROM card_costs")
+    }
+    image_rows={}
+    for image in connection.execute(
+        "SELECT card_id,image_type,source_url,local_path,archive_path,mime_type,byte_size,sha256,download_status "
+        "FROM card_images ORDER BY card_id,image_type"
+    ):
+        image_rows.setdefault(str(image["card_id"]),{})[str(image["image_type"])]={
+            "sourceUrl":image["source_url"],
+            "localPath":image["local_path"],
+            "archivePath":image["archive_path"],
+            "mimeType":image["mime_type"],
+            "byteSize":image["byte_size"],
+            "sha256":image["sha256"],
+            "downloadStatus":image["download_status"],
+        }
+    effect_rows={}
+    candidate_ids={}
+    for item in connection.execute(
+        "SELECT candidate_id,card_id,text_type,source_text_sha256,source_detail_url,"
+        "source_text_class_candidate,topic_candidates_json,trigger_candidates_json,"
+        "actor_candidates_json,target_candidates_json,operation_candidates_json,"
+        "number_candidates_json,special_token_candidates_json,analysis_json,verification_status,"
+        "span_integrity_status FROM card_effect_candidate_summaries ORDER BY card_id,candidate_id"
+    ):
+        candidate_id=int(item["candidate_id"])
+        candidate_ids[candidate_id]=str(item["card_id"])
+        entry={
+            "textType":item["text_type"],
+            "sourceTextSha256":item["source_text_sha256"],
+            "sourceCardUrl":item["source_detail_url"],
+            "sourceTextClassCandidate":item["source_text_class_candidate"],
+            "topicCandidates":json.loads(item["topic_candidates_json"] or "[]"),
+            "triggerCandidates":json.loads(item["trigger_candidates_json"] or "[]"),
+            "actorCandidates":json.loads(item["actor_candidates_json"] or "[]"),
+            "targetCandidates":json.loads(item["target_candidates_json"] or "[]"),
+            "operationCandidates":json.loads(item["operation_candidates_json"] or "[]"),
+            "numberCandidates":json.loads(item["number_candidates_json"] or "[]"),
+            "specialTokenCandidates":json.loads(item["special_token_candidates_json"] or "[]"),
+            "analysis":json.loads(item["analysis_json"] or "{}"),
+            "verificationStatus":item["verification_status"],
+            "spanIntegrityStatus":item["span_integrity_status"],
+            "clauses":[],
+        }
+        effect_rows.setdefault(str(item["card_id"]),[]).append(entry)
+    effect_index={}
+    for card_id,entries in effect_rows.items():
+        for entry in entries:
+            effect_index[(card_id,entry["sourceTextSha256"])]=entry
+    for clause in connection.execute(
+        "SELECT candidate_id,card_id,clause_index,start_char,end_char,segment_type,segment_text,"
+        "topic_candidates_json,trigger_candidates_json,actor_candidates_json,target_candidates_json,"
+        "operation_candidates_json,verification_status FROM card_effect_clauses "
+        "ORDER BY candidate_id,clause_index"
+    ):
+        card_id=str(clause["card_id"])
+        # Candidate text hashes are unique per card/text source row; candidate_id is resolved below.
+        candidate_id=int(clause["candidate_id"])
+        parent=next((entry for entry in effect_rows.get(card_id,[]) if id(entry)==candidate_ids.get(candidate_id)),None)
+        if parent is None:
+            # Build a deterministic candidate lookup once when multiple text rows exist.
+            parent_by_id=_candidate_object_index.get(candidate_id) if "_candidate_object_index" in globals() else None
+            parent=parent_by_id
+        if parent is None:
+            raise RuntimeError(f"SQLite effect clause has no candidate parent: {candidate_id}")
+        parent["clauses"].append({
+            "index":int(clause["clause_index"]),
+            "startChar":int(clause["start_char"]),
+            "endChar":int(clause["end_char"]),
+            "segmentType":clause["segment_type"],
+            "text":clause["segment_text"],
+            "topicCandidates":json.loads(clause["topic_candidates_json"] or "[]"),
+            "triggerCandidates":json.loads(clause["trigger_candidates_json"] or "[]"),
+            "actorCandidates":json.loads(clause["actor_candidates_json"] or "[]"),
+            "targetCandidates":json.loads(clause["target_candidates_json"] or "[]"),
+            "operationCandidates":json.loads(clause["operation_candidates_json"] or "[]"),
+            "verificationStatus":clause["verification_status"],
+        })
+    records=[]
+    for item in connection.execute(
+        "SELECT card_id,name,card_type,attribute,source_list_url,source_card_url,"
+        "raw_payload_json,collected_at FROM cards ORDER BY card_id"
+    ):
+        cid=str(item["card_id"])
+        raw=json.loads(item["raw_payload_json"] or "{}")
+        detail=item["source_card_url"]
+        expected=f"https://fmlunatic.com/card/{cid}"
+        if not detail or detail!=expected:
+            raise RuntimeError(f"Card detail URL missing or does not match DB ID: {cid} -> {detail}")
+        images=image_rows.get(cid,{})
+        if set(images)!={"small","large"}:
+            raise RuntimeError(f"Card image metadata incomplete for {cid}: {sorted(images)}")
+        if any(images[k]["downloadStatus"]!="archive_verified" or not images[k]["sha256"] for k in ("small","large")):
+            raise RuntimeError(f"Card image is not archive-verified: {cid}")
+        record={
+            "card_id":cid,
+            "name":item["name"],
+            "raw_payload":raw,
+            "source_list_url":item["source_list_url"],
+            "source_card_url":detail,
+            "source_image_urls":{k:v["sourceUrl"] for k,v in images.items()},
+            "source_image_metadata":images,
+            "collected_at":item["collected_at"],
+            "normalized_cost":db_cost_to_app(cost_rows.get(cid)),
+            "effect_candidates":effect_rows.get(cid,[]),
+        }
+        records.append(record)
+    fk=connection.execute("PRAGMA foreign_key_check").fetchall()
+    connection.close()
+    if fk:
+        raise RuntimeError(f"T SQLite foreign-key errors: {len(fk)}")
+    if len(records)!=TOTAL:
+        raise RuntimeError(f"T SQLite card count mismatch: {len(records)}")
+    return records
+
+
 def build_card(row, enums, earn_soul_enum, require_soul_enum):
     f=row.get("raw_payload") or {}
     cid=str(row.get("card_id") or f.get("ID") or "")
@@ -224,7 +405,7 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
         add(tabs,"분류별","카드 텍스트",base)
     if extra: tabs["텍스트"].append({"label":"추가 설명","text":extra})
 
-    c=parse_cost(f.get("RequireSoul"),require_soul_enum)
+    c=row.get("normalized_cost") or parse_cost(f.get("RequireSoul"),require_soul_enum)
     cost_known=(c["known"] and typ!="land")
     card={
         "id":cid,"name":name,"type":typ,"faction":color,
@@ -232,13 +413,25 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
         "costKnown":cost_known,"costMapped":cost_known,
         "costSource":("firestore-requiresoul-land-install" if c["known"] else "unresolved-firestore-requiresoul-land-install") if typ=="land" else ("firestore-requiresoul-enum" if cost_known else "unresolved-firestore-requiresoul"),
         "soulCostRaw":f.get("RequireSoul"),"costReview":c["review"],
+        "costReviewStatus":c.get("sourceStatus","legacy-enum-parse"),
+        "costMappingReview":bool(c.get("mappingReview",False)),
+        "costSemanticReview":bool(c.get("semanticReview",False)),
+        "costTokenParsed":bool(c.get("soulKnown",c.get("known",False))),
+        "costCandidate":c.get("candidateCost",{}),
+        "costTokens":c.get("tokens",[]),
+        "specialSoulTokens":c.get("specialSouls",{}),
         "text":base,"description":extra,"tabs":tabs,
         "artImage":cid+".webp",
-        "sourceCardUrl":row.get("source_card_url") or f"https://fmlunatic.com/card/{cid}",
-        "sourceListUrl":row.get("source_list_url") or "https://fmlunatic.com/cardlist",
+        "sourceCardUrl":row.get("source_card_url"),
+        "sourceListUrl":row.get("source_list_url"),
         "sourceImageUrls":row.get("source_image_urls") or {},
+        "sourceImageMetadata":row.get("source_image_metadata") or {},
         "sourceFields":f,"sourceCollectedAt":row.get("collected_at"),
-        "sourceDocumentId":cid
+        "sourceDocumentId":cid,
+        "effectCandidates":row.get("effect_candidates") or [],
+        "effectExecutionStatus":"candidate-only",
+        "effectVerificationStatus":"pattern_candidate",
+        "effect":None
     }
     if typ=="land":
         lp=integer(f.get("RequireLP"))
@@ -247,11 +440,13 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
         card["requiredLPStatus"]="source-defined" if lp is not None else "source-missing"
         if lp is not None: add(tabs,"분류별","필요LP",lp)
 
-        land_cost_known=bool(c["known"])
+        land_cost_known=bool(c["known"] and not c.get("mappingReview",False) and not c.get("semanticReview",False))
         card["landInstallCost"]=c["cost"] if land_cost_known else None
         card["landInstallCostKnown"]=land_cost_known
         card["landInstallCostRaw"]=f.get("RequireSoul")
         card["landInstallCostReview"]=c["review"]
+        card["landInstallCostReviewStatus"]=c.get("sourceStatus","legacy-enum-parse")
+        card["landInstallCostCandidate"]=c.get("candidateCost",{})
         if land_cost_known:
             add(tabs,"분류별","설치 소울 비용",json.dumps(c["cost"],ensure_ascii=False,sort_keys=True))
 
@@ -413,10 +608,15 @@ def convert(a):
     if not require_soul_enum:
         raise RuntimeError("enumtable is missing Enum+RequireSoul; refusing to guess soul payment costs")
     cards=[]
-    with gzip.open(a.cards_jsonl_gz,"rt",encoding="utf-8") as src:
-        for lineno,line in enumerate(src,1):
-            if line.strip(): cards.append(build_card(json.loads(line),enums,earn_soul_enum,require_soul_enum))
-            if lineno%3000==0: print(f"converted {lineno} source lines",flush=True)
+    source_records=load_normalized_database(a.db_sqlite)
+    source_db_counts={"cards":len(source_records),"databaseRelease":a.db_release_tag}
+    for index,row in enumerate(source_records,1):
+        card=build_card(row,enums,earn_soul_enum,require_soul_enum)
+        for image_type in ("small","large"):
+            meta=(row.get("source_image_metadata") or {}).get(image_type) or {}
+            card.setdefault("sourceImageSha256",{})[image_type]=meta.get("sha256")
+        cards.append(card)
+        if index%3000==0: print(f"converted {index}/{TOTAL} SQLite cards",flush=True)
     counts=Counter(c["type"] for c in cards)
     if len(cards)!=TOTAL or counts!=EXPECTED: raise RuntimeError(f"Card counts differ: {len(cards)} {dict(counts)}")
     ids=[c["id"] for c in cards]
@@ -456,6 +656,13 @@ def convert(a):
             card["storedImageFileName"]=target.name
             card["artImageSha256"]=hashlib.sha256(target.read_bytes()).hexdigest()
             card["artImageSizeBytes"]=target.stat().st_size
+            expected_sha=card.get("sourceImageSha256",{}).get("large")
+            expected_size=(card.get("sourceImageMetadata",{}).get("large") or {}).get("byteSize")
+            if expected_sha and card["artImageSha256"]!=expected_sha:
+                raise RuntimeError("Large image SHA-256 differs from T SQLite manifest: "+card_id)
+            if expected_size is not None and int(expected_size)!=card["artImageSizeBytes"]:
+                raise RuntimeError("Large image byte size differs from T SQLite manifest: "+card_id)
+            card["artImageSha256Verified"]=bool(expected_sha)
             extracted_ids.add(card_id)
             extracted+=1
             if extracted%3000==0:
@@ -477,24 +684,42 @@ def convert(a):
     needs_review=sum(1 for c in cards if c["type"]!="land" and not c["costKnown"])
     land_cost_known=sum(1 for c in cards if c["type"]=="land" and c["landInstallCostKnown"])
     land_cost_review=sum(1 for c in cards if c["type"]=="land" and not c["landInstallCostKnown"])
+    mapping_review_nonland=sum(1 for c in cards if c["type"]!="land" and c.get("costMappingReview"))
+    semantic_review_nonland=sum(1 for c in cards if c["type"]!="land" and c.get("costSemanticReview"))
+    mapping_review_land=sum(1 for c in cards if c["type"]=="land" and c.get("costMappingReview"))
+    semantic_review_land=sum(1 for c in cards if c["type"]=="land" and c.get("costSemanticReview"))
+    effect_candidate_count=sum(len(c.get("effectCandidates",[])) for c in cards)
+    effect_clause_count=sum(len(e.get("clauses",[])) for c in cards for e in c.get("effectCandidates",[]))
     land_magiclands=sum(1 for c in cards if c["type"]=="land" and c["isMagicLand"])
     land_production_review=sum(1 for c in cards if c["type"]=="land" and c["soulProductionStatus"]=="needs-review")
     land_token_counts=Counter(t.get("symbol") or "UNMAPPED" for c in cards if c["type"]=="land" for t in c["soulProductionTokens"])
     manifest={
-        "format":"FM1-CARD-DATA","version":"1.1.2",
+        "format":"FM1-CARD-DATA","version":"1.2.0",
         "cardsCount":TOTAL,"imagesCount":TOTAL,"cardsSha256":digest,
         "classification":{"source":"current FMLunatic Firestore Category enum + current five-type reference",
           "types":{"land":289,"unit":8633,"spell":3857,"item":1748,"enchant":823},
           "enchantIsOfficialFifthType":True},
         "source":{"listUrl":"https://fmlunatic.com/cardlist",
           "cardUrlPattern":"https://fmlunatic.com/card/{documentId}",
-          "databaseRelease":"https://github.com/dragonslayers-k/T/releases/tag/fm1-carddb-27"},
+          "databaseRelease":f"https://github.com/dragonslayers-k/T/releases/tag/{a.db_release_tag}"},
+        "sourceDatabase":{"releaseTag":a.db_release_tag,"schema":"T normalized SQLite v2","cardCount":source_db_counts["cards"]},
         "costReview":{
           "knownNonLandCosts":known,"needsReviewNonLandCosts":needs_review,
+          "mappingReviewNonLandCosts":mapping_review_nonland,
+          "semanticReviewNonLandCosts":semantic_review_nonland,
           "knownLandInstallationSoulCosts":land_cost_known,
           "needsReviewLandInstallationSoulCosts":land_cost_review,
+          "mappingReviewLandInstallationCosts":mapping_review_land,
+          "semanticReviewLandInstallationCosts":semantic_review_land,
           "nonLandNeedsReviewByType":dict(Counter(c["type"] for c in cards if c["type"]!="land" and not c["costKnown"])),
-          "policy":"RequireSoul pure and compound color enum symbols are decoded as one soul per named color. NCS and BONUS remain review-only until payment rules are verified. LP and RequireSoul are separate land installation requirements."
+          "policy":"Only T SQLite rows with soul_known=1, mapping_review=0 and semantic_review=0 are playable costs. Hybrid candidates and NCS/BONUS remain review-required; source RequireSoul is retained."
+        },
+        "effectReview":{
+          "candidateRows":effect_candidate_count,
+          "clauseRows":effect_clause_count,
+          "verificationStatus":"pattern_candidate",
+          "executableEffectMappings":0,
+          "policy":"Candidate extraction is reference data only. No candidate is treated as an executable game rule."
         },
         "landSoulProduction":{
           "source":"Firestore EarnSoulList + Enum+EarnSoul",
@@ -527,17 +752,22 @@ def convert(a):
     print(json.dumps({"zip":str(z),"bytes":z.stat().st_size,"cards":TOTAL,"images":TOTAL,
       "types":dict(counts),"cardsSha256":digest,"cardsJsonBytes":cards_bytes,"imageBytes":image_bytes,
       "unpackedBytes":unpacked_bytes,"costKnownNonLand":known,"costNeedsReviewNonLand":needs_review,
+      "mappingReviewNonLand":mapping_review_nonland,"semanticReviewNonLand":semantic_review_nonland,
       "landInstallCostKnown":land_cost_known,"landInstallCostNeedsReview":land_cost_review,
+      "mappingReviewLandInstallCost":mapping_review_land,"semanticReviewLandInstallCost":semantic_review_land,
+      "effectCandidateRows":effect_candidate_count,"effectClauseRows":effect_clause_count,
       "magicLandCount":land_magiclands,"landSoulProductionNeedsReview":land_production_review,
       "format":manifest["format"],"version":manifest["version"]},ensure_ascii=False,indent=2))
 
 def main():
     p=argparse.ArgumentParser()
-    p.add_argument("--cards-jsonl-gz");p.add_argument("--enumtable");p.add_argument("--images-tar-gz")
+    p.add_argument("--db-sqlite",help="Audited normalized T SQLite database (uncompressed)")
+    p.add_argument("--db-release-tag",default="fm1-carddb-28")
+    p.add_argument("--enumtable");p.add_argument("--images-tar-gz")
     p.add_argument("--output");p.add_argument("--zip-output");p.add_argument("--self-test",action="store_true")
     a=p.parse_args()
     if a.self_test: self_test();return
-    if not all([a.cards_jsonl_gz,a.enumtable,a.images_tar_gz,a.output,a.zip_output]):
-        p.error("requires --cards-jsonl-gz --enumtable --images-tar-gz --output --zip-output")
+    if not all([a.db_sqlite,a.enumtable,a.images_tar_gz,a.output,a.zip_output]):
+        p.error("requires --db-sqlite --db-release-tag --enumtable --images-tar-gz --output --zip-output")
     convert(a)
 if __name__=="__main__": main()
