@@ -241,7 +241,7 @@ def db_cost_to_app(cost_row):
     }
 
 
-def load_normalized_database(db_path):
+def load_normalized_database(db_path, expected_count=TOTAL):
     """Build source records from T's audited SQLite, not a second JSONL re-parser."""
     connection=sqlite3.connect(str(db_path))
     connection.row_factory=sqlite3.Row
@@ -378,11 +378,11 @@ def load_normalized_database(db_path):
     connection.close()
     if fk:
         raise RuntimeError(f"T SQLite foreign-key errors: {len(fk)}")
-    if len(records)!=TOTAL:
-        raise RuntimeError(f"T SQLite card count mismatch: {len(records)}")
-    if len(cost_rows)!=TOTAL or len(image_rows)!=TOTAL:
+    if len(records)!=expected_count:
+        raise RuntimeError(f"T SQLite card count mismatch: {len(records)} / {expected_count}")
+    if len(cost_rows)!=expected_count or len(image_rows)!=expected_count:
         raise RuntimeError(
-            f"T SQLite cost/image parent counts mismatch: costs={len(cost_rows)} images={len(image_rows)}"
+            f"T SQLite cost/image parent counts mismatch: costs={len(cost_rows)} images={len(image_rows)} expected={expected_count}"
         )
     return records
 
