@@ -858,7 +858,14 @@ def build_skill2_catalogue(mapping_records, cards, release_tag):
                 "sourceListUrl":card.get("sourceListUrl"),
                 "faction":card.get("faction"),"unitAbility":card.get("unitAbility"),
                 "level":card.get("level"),"ap":card.get("ap"),"dp":card.get("dp"),"hp":card.get("hp"),
-                "skill1":card.get("specialSkill1"),"text":card.get("text") or "",
+                "skill1":card.get("specialSkill1"),"skill2":card.get("specialSkill2") or "",
+                "skill2EnumValue":card.get("specialSkill2EnumValue"),
+                "skill2MappingStatus":card.get("specialSkill2MappingStatus"),
+                "skill2SourceMappingStatus":card.get("specialSkill2SourceMappingStatus"),
+                "skill2RuleId":card.get("specialSkill2RuleId"),
+                "skill2RuleAuthority":card.get("specialSkill2RuleAuthority"),
+                "skill2ExecutionStatus":card.get("specialSkill2ExecutionStatus"),
+                "text":card.get("text") or "",
                 "description":card.get("description") or "",
                 "effectCandidateCount":card.get("effectCandidateCount",0)
             })
