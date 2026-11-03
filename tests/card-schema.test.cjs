@@ -532,3 +532,13 @@ test('rejects Skill2 rule IDs that do not match their source ability name',()=>{
   assert.equal(card.specialSkill2RuleAuthority,null);
   assert.equal(card.specialSkill2ExecutionStatus,'disabled-until-skill2-rule-review');
 });
+
+
+test('accepts only canonical HTTPS per-card source URLs and rejects unsafe or unrelated hosts',()=> {
+  assert.equal(Schema.safeSourceCardUrl('https://fmlunatic.com/card/U08673S'),'https://fmlunatic.com/card/U08673S');
+  assert.equal(Schema.safeSourceCardUrl('http://fmlunatic.com/card/U08673S'),null);
+  assert.equal(Schema.safeSourceCardUrl('https://evil.example/card/U08673S'),null);
+  assert.equal(Schema.safeSourceCardUrl('https://fmlunatic.com/cardlist'),null);
+  assert.equal(Schema.safeSourceCardUrl('javascript:alert(1)'),null);
+  assert.equal(Schema.safeSourceCardUrl('https://user@fmlunatic.com/card/U08673S'),null);
+});
