@@ -538,7 +538,7 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
         ),
         "specialSkillRuleAuthority":(
             next((m["ruleAuthority"] for m in (row.get("skill_mappings") or [])
-                  if typ=="unit" and m.get("sourceField")=="Skill1" and m.get("mappingStatus")=="manual_verified"),None)
+                  if typ=="unit" and m.get("sourceField")=="Skill1"),None)
         ),
         "specialSkillRuleIds":[
             m["ruleId"] for m in (row.get("skill_mappings") or [])
