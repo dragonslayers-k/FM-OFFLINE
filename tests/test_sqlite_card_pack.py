@@ -249,6 +249,10 @@ class SqliteCardPackTests(unittest.TestCase):
             ("702","헌신방어","아군 필드 다음 유닛 공방체 +1","skill2_devoted_defense"),
             ("703","격노","자신의 HP가 깎인 수치만큼 AP 상승","skill2_frenzy_defense"),
             ("704","홀리오오라","방/체 합 1/2 이하","skill2_holy_aura"),
+            ("705","얼라이디펜스","자신과 동일한 소속의 필드 유닛 수 만큼 받는 데미지 감소","skill2_alliance_defense"),
+            ("706","레이셜디펜스","자신과 동일한 종족의 필드 유닛 수 만큼 받는 데미지 감소","skill2_racial_defense"),
+            ("707","강한헌신방어","아군 필드 유닛 전체의 공방체가 1증가한다","skill2_strong_devoted_defense"),
+            ("708","프레셔","아군 필드 빈공간수 절반(내림) 만큼 받은 데미지를 감소시킨다","skill2_pressure_defense"),
         ]
         mappings = []
         cards = []
@@ -267,8 +271,8 @@ class SqliteCardPackTests(unittest.TestCase):
                 "ap":3,"dp":2,"hp":5
             })
         catalogue = CONVERTER.build_skill2_catalogue(mappings,cards,"test-release")
-        self.assertEqual(catalogue["entryCount"],4)
-        self.assertEqual(catalogue["executableRuleCount"],4)
+        self.assertEqual(catalogue["entryCount"],8)
+        self.assertEqual(catalogue["executableRuleCount"],8)
         entries = {x["name"]:x for x in catalogue["records"]}
         for _enum_value,name,evidence,rule_id in cases:
             entry = entries[name]
