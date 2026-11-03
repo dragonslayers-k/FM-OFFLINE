@@ -4,15 +4,18 @@ const Schema=require('../app/src/main/assets/game/card-schema.js');
 
 test('maps native land LP, colored soul and generated neutral souls',()=>{
   const card=Schema.normalize({
-    id:'L00291S',name:'구름도시',type:'land',faction:'light',souls:['light'],soulValue:1,
-    tabs:{'분류별':['생산무소울 : 2','필요LP : 2'],'기타':['분류 : 지형','속성 : 빛']}
+    id:'L00291S',name:'구름도시',type:'land',faction:'light',requiredLP:2,requiredLPKnown:true,
+    landInstallCost:{light:1,neutral:1},landInstallCostKnown:true,
+    soulProduction:{colored:{light:1},neutral:0},soulProductionStatus:'source-decoded',
+    tabs:{'분류별':['필요LP : 2'],'기타':['분류 : 지형','속성 : 빛']}
   });
   assert.equal(card.requiredLP,2);
-  assert.deepEqual(card.soulProduction,{colored:{light:1},neutral:2});
+  assert.equal(card.requiredLPKnown,true);
+  assert.deepEqual(card.landInstallCost,{light:1,neutral:1});
+  assert.equal(card.landInstallCostKnown,true);
+  assert.deepEqual(card.soulProduction,{colored:{light:1},neutral:0});
   assert.equal(card.rules.status,'mapped');
-  assert.equal(card.rules.costStatus,'not-applicable-lp-land-placement');
-  assert.equal(card.landInstallCostKnown,false);
-  assert.equal(card.landInstallCost,null);
+  assert.equal(card.rules.costStatus,'mapped');
 });
 
 test('maps unit ability, rank, skill, and raw AP/DP/HP',()=>{
@@ -155,14 +158,35 @@ test('parses FM1 unsigned coin notation as a stat replacement and signed notatio
   assert.equal(multiply.operation,'multiply');
 });
 
-test('terrain maps LP and soul production; placement does not require a soul-cost field',()=>{
+test('terrain uses decoded production tokens and separately records LP and RequireSoul install cost',()=>{
   const card=Schema.normalize({
-    id:'L-COST',name:'마르힐라호수',type:'land',faction:'light',souls:['light'],soulValue:1,
-    tabs:{'분류별':['생산무소울 : 2','필요LP : 2']}
+    id:'L-COST',name:'마르힐라호수',type:'land',faction:'light',
+    requiredLP:2,requiredLPKnown:true,
+    landInstallCost:{neutral:0},landInstallCostKnown:true,
+    soulProduction:{colored:{dark:1,earth:1,light:1},neutral:2},
+    soulProductionStatus:'source-decoded',
+    tabs:{'분류별':['필요LP : 2']}
   });
   assert.equal(card.requiredLP,2);
-  assert.equal(card.rules.costStatus,'not-applicable-lp-land-placement');
-  assert.deepEqual(card.soulProduction,{colored:{light:1},neutral:2});
+  assert.equal(card.landInstallCostKnown,true);
+  assert.deepEqual(card.soulProduction,{colored:{dark:1,earth:1,light:1},neutral:2});
+  assert.equal(card.rules.costStatus,'mapped');
+  assert.equal(card.rules.status,'mapped');
+});
+
+test('MagicLand marker is not mistaken for ordinary colored-soul production',()=>{
+  const card=Schema.normalize({
+    id:'L-MAGIC',name:'매직랜드',type:'land',faction:'light',
+    requiredLP:0,requiredLPKnown:true,
+    landInstallCost:{light:1},landInstallCostKnown:true,
+    soulProduction:{colored:{},neutral:0},soulProductionStatus:'magicland-effect',isMagicLand:true,
+    text:'소울코스트시 빛유소울 1을 소각하고 효과를 발동한다.',
+    tabs:{'분류별':['필요LP : 0']}
+  });
+  assert.equal(card.isMagicLand,true);
+  assert.deepEqual(card.soulProduction,{colored:{},neutral:0});
+  assert.equal(card.rules.status,'special-effect-pending');
+  assert.match(card.rules.unsupportedReason,/매직랜드/);
 });
 
 test('parses item race restriction from native item text',()=>{

@@ -177,9 +177,12 @@
       return 'AP '+card.ap+' · DP '+card.dp+' · HP '+card.hp+' · '+(card.unitAbility||'능력 미상')+' · '+(card.skill||'스킬 없음')+(coinText?' · '+coinText:'');
     }
     if(card.type==='land'){
-      const prod=card.soulProduction||{colored:Object.fromEntries((card.souls||[]).map(c=>[c,card.soulValue||1])),neutral:card.neutralSoulProduction||0};
+      if(card.isMagicLand||card.soulProductionStatus==='magicland-effect')
+        return '매직랜드 · 소울 코스트 발동 효과 구현 대기';
+      const prod=card.soulProduction||{colored:{},neutral:0};
       const colors=Object.entries(prod.colored||{}).filter(([,v])=>Number(v)>0).map(([c,v])=>(COLOR_LABEL[c]||c)+' '+v).join(' + ')||'유색 소울 없음';
-      return '필요 LP '+(card.requiredLP??'미상')+' · 배치 소울 비용 없음 · 생산 '+colors+' · 무소울 '+(prod.neutral??0);
+      const install=card.landInstallCostKnown===true?FM.costText(card.landInstallCost):'설치 소울 확인 필요';
+      return '필요 LP '+(card.requiredLP??'미상')+' · 설치 소울 '+install+' · 생산 '+colors+' · 무소울 '+(prod.neutral??0);
     }
     if(card.type==='item')return '장착 능력 '+(card.equipAbility||'미상')+' · AP '+(card.apBonus||0)+' · DP '+(card.dpBonus||0)+' · HP '+(card.hpBonus||0)+' · 코인 '+(card.coinDeltaText||'미상');
     if(card.type==='enchant')return '발동 '+(card.triggerTiming||'미상')+' · 지속 '+(card.durationText||'미상')+' · 위치 '+(card.slotLocation||'미상');
@@ -187,7 +190,11 @@
     return '특수 효과';
   }
   function costLabel(card) {
-    if(card.type==='land')return 'LP '+(card.requiredLP??'미상')+' · 배치 소울 비용 없음';
+    if(card.type==='land'){
+      if(card.isMagicLand||card.soulProductionStatus==='magicland-effect')return '매직랜드 효과 구현 대기';
+      const install=card.landInstallCostKnown===true?FM.costText(card.landInstallCost):'설치 소울 확인 필요';
+      return 'LP '+(card.requiredLP??'미상')+' · 설치 소울 '+install;
+    }
     return card.costKnown===true&&card.costMapped===true?FM.costText(card.cost):'소울 구슬 비용 검증 대기';
   }
   function canEquipOn(card, unit, targetOwnerId = 'player') {
@@ -241,7 +248,7 @@
       const colors=Object.entries(prod.colored||{}).filter(([,v])=>Number(v)>0).map(([c,v])=>(COLOR_LABEL[c]||c)+' '+v).join(' + ')||'유색 생산 없음';
       return '<button type="button" class="land-token" data-card-detail="'+escapeAttr(l.id)+'">'+
         (art?'<img src="'+escapeAttr(art)+'" alt="'+escapeAttr(l.name)+'" loading="lazy" onerror="this.remove();">':'<span class="field-card-fallback">'+escapeHtml(l.name)+'</span>')+
-        '<strong>'+escapeHtml(l.name)+'</strong><small>LP '+escapeHtml(l.requiredLP??'미상')+' · 배치 소울 없음</small>'+
+        '<strong>'+escapeHtml(l.name)+'</strong><small>LP '+escapeHtml(l.requiredLP??'미상')+' · 설치 소울 '+escapeHtml(l.landInstallCostKnown===true?FM.costText(l.landInstallCost):'확인 필요')+'</small>'+
         '<small>생산 '+escapeHtml(colors)+' · 무소울 '+escapeHtml(prod.neutral??0)+'</small></button>';
     }).join(''):'<div class="empty-state">아직 설치된 지형이 없습니다.</div>';
   }

@@ -29,6 +29,26 @@ def enum_lookup(data):
 def label(lookups, name, value):
     return "" if value is None else lookups.get(name,{}).get(str(value),"")
 
+def enum_symbol_map(data, group_name):
+    raw = data.get("Enum+" + group_name, {})
+    rows = raw if isinstance(raw, list) else list(raw.values()) if isinstance(raw, dict) else []
+    result = {}
+    for row in rows:
+        if isinstance(row, list) and len(row) >= 2:
+            code = str(row[0])
+            result[code] = {
+                "symbol": str(row[1] or "").upper(),
+                "icon": str(row[2] or "") if len(row) > 2 else ""
+            }
+        elif isinstance(row, dict):
+            code = row.get("KIND", row.get("value", row.get("ID")))
+            if code is not None:
+                result[str(code)] = {
+                    "symbol": str(row.get("TYPE") or row.get("name") or row.get("UIName") or "").upper(),
+                    "icon": str(row.get("image") or row.get("icon") or "")
+                }
+    return result
+
 def integer(value):
     if value is None or value=="": return None
     try: return int(float(str(value).replace(",","").strip()))
@@ -69,11 +89,83 @@ def parse_cost(raw):
         out["review"].append("no-recognized-cost-token")
     return out
 
+def parse_earn_soul_list(raw, earn_enum, mu_soul=None):
+    """Decode land production from Enum+EarnSoul (not SoulType/MuSoul guesses)."""
+    out = {
+        "colored": {}, "neutral": 0, "magicLand": False,
+        "known": False, "review": [], "tokens": []
+    }
+    if not isinstance(raw, str) or not raw:
+        out["review"].append("source-earn-soul-list-missing")
+        return out
+    if len(raw) % 4:
+        out["review"].append("invalid-token-width")
+        return out
+
+    colors = {
+        "DARK":"dark", "FIRE":"fire", "WATER":"water",
+        "FOREST":"forest", "IRON":"metal", "EARTH":"earth", "LIGHT":"light"
+    }
+    colored = Counter()
+    neutral = 0
+    for i in range(0, len(raw), 4):
+        token = raw[i:i+4]
+        if not token.isdigit():
+            out["review"].append("non-numeric-token:" + token)
+            continue
+        code, amount = token[:2], int(token[2:])
+        meta = earn_enum.get(code)
+        if not meta:
+            out["review"].append("unresolved-earn-soul-code:" + token)
+            out["tokens"].append({"raw":token,"code":int(code),"amount":amount,"status":"unmapped"})
+            continue
+        symbol = meta["symbol"]
+        record = {
+            "raw":token,"code":int(code),"symbol":symbol,"amount":amount,
+            "icon":meta.get("icon",""),"status":"enum-decoded"
+        }
+        if symbol == "NONE":
+            record["kind"] = "none"
+        elif symbol == "SPELL":
+            out["magicLand"] = True
+            record["kind"] = "magicland-marker"
+        elif symbol == "ALL":
+            record["kind"] = "all-colors"
+            record["colors"] = list(colors.values())
+            for color in colors.values():
+                colored[color] += amount
+        elif symbol in ("MU01","MU02","MU03"):
+            value = int(symbol[-1])
+            neutral += value * amount
+            record["kind"] = "neutral"
+            record["neutralPerToken"] = value
+            record["neutralOutput"] = value * amount
+        else:
+            components = symbol.split("_")
+            if components and all(part in colors for part in components):
+                output_colors = [colors[part] for part in components]
+                record["kind"] = "colored"
+                record["colors"] = output_colors
+                for color in output_colors:
+                    colored[color] += amount
+            else:
+                record["status"] = "unmapped"
+                out["review"].append("unresolved-earn-soul-symbol:" + symbol)
+        out["tokens"].append(record)
+
+    expected_mu = integer(mu_soul)
+    if expected_mu is not None and neutral != expected_mu and not out["magicLand"]:
+        out["review"].append(f"mu-soul-cross-check-mismatch:EarnSoulList={neutral},MuSoul={expected_mu}")
+    out["colored"] = {k:v for k,v in colored.items() if v}
+    out["neutral"] = neutral
+    out["known"] = not out["review"]
+    return out
+
 def add(tabs, group, label_text, value):
     if value is None or value=="": return
     tabs.setdefault(group,[]).append({"label":label_text,"text":f"{label_text} : {value}"})
 
-def build_card(row, enums):
+def build_card(row, enums, earn_soul_enum):
     f=row.get("raw_payload") or {}
     cid=str(row.get("card_id") or f.get("ID") or "")
     name=str(row.get("name") or f.get("Name") or "")
@@ -109,7 +201,7 @@ def build_card(row, enums):
         "id":cid,"name":name,"type":typ,"faction":color,
         "cost":c["cost"] if cost_known else {},
         "costKnown":cost_known,"costMapped":cost_known,
-        "costSource":"not-applicable-lp-land-placement" if typ=="land" else ("firestore-requiresoul-enum" if cost_known else "unresolved-firestore-requiresoul"),
+        "costSource":("firestore-requiresoul-land-install" if c["known"] else "unresolved-firestore-requiresoul-land-install") if typ=="land" else ("firestore-requiresoul-enum" if cost_known else "unresolved-firestore-requiresoul"),
         "soulCostRaw":f.get("RequireSoul"),"costReview":c["review"],
         "text":base,"description":extra,"tabs":tabs,
         "artImage":cid+".webp",
@@ -122,15 +214,36 @@ def build_card(row, enums):
     if typ=="land":
         lp=integer(f.get("RequireLP"))
         card["requiredLP"]=lp
+        card["requiredLPKnown"]=lp is not None
         card["requiredLPStatus"]="source-defined" if lp is not None else "source-missing"
         if lp is not None: add(tabs,"분류별","필요LP",lp)
-        colored={color:1} if color!="neutral" else {}
-        mu=integer(f.get("MuSoul")); neutral=mu if mu is not None and mu>=0 else 0
-        card.update({"souls":list(colored),"soulValue":1,"neutralSoulProduction":neutral,
-                     "soulProduction":{"colored":colored,"neutral":neutral},
-                     "soulProductionSource":"SoulType+MuSoul",
-                     "soulProductionReview":"EarnSoulList preserved in sourceFields; verify any multi-colour production"})
-        add(tabs,"분류별","생산무소울",neutral)
+
+        land_cost_known=bool(c["known"])
+        card["landInstallCost"]=c["cost"] if land_cost_known else None
+        card["landInstallCostKnown"]=land_cost_known
+        card["landInstallCostRaw"]=f.get("RequireSoul")
+        card["landInstallCostReview"]=c["review"]
+        if land_cost_known:
+            add(tabs,"분류별","설치 소울 비용",json.dumps(c["cost"],ensure_ascii=False,sort_keys=True))
+
+        earn=parse_earn_soul_list(f.get("EarnSoulList"),earn_soul_enum,f.get("MuSoul"))
+        mode="needs-review" if not earn["known"] else ("magicland-effect" if earn["magicLand"] else "source-decoded")
+        card["soulProduction"]={"colored":earn["colored"],"neutral":earn["neutral"]}
+        card["soulProductionTokens"]=earn["tokens"]
+        card["soulProductionStatus"]=mode
+        card["soulProductionSource"]="Firestore EarnSoulList + Enum+EarnSoul"
+        card["soulProductionRaw"]=f.get("EarnSoulList")
+        card["soulProductionReview"]=earn["review"]
+        card["isMagicLand"]=earn["magicLand"]
+        card["souls"]=list(earn["colored"])
+        card["soulValue"]=1
+        card["neutralSoulProduction"]=earn["neutral"]
+        if mode=="magicland-effect":
+            add(tabs,"분류별","지형 유형","매직랜드 · 원문 특수 효과")
+        else:
+            for soul_color, amount in earn["colored"].items():
+                add(tabs,"분류별","생산 소울",f"{soul_color} {amount}")
+            add(tabs,"분류별","생산무소울",earn["neutral"])
     elif typ=="unit":
         for src,dst in [("ATK","ap"),("DEF","dp"),("HP","hp")]:
             n=integer(f.get(src))
@@ -221,14 +334,37 @@ def self_test():
     assert large_image_card_id("large/M03861L.webp") == "M03861L"
     assert large_image_card_id("./small/16121533861.webp") is None
     assert large_image_card_id("16121533861.webp") is None
+    earn_enum={
+        "03":{"symbol":"ALL","icon":"/all.webp"},
+        "02":{"symbol":"SPELL","icon":"/spell.webp"},
+        "11":{"symbol":"DARK","icon":"/dark.webp"},
+        "12":{"symbol":"DARK_EARTH","icon":"/dark_earth.webp"},
+        "71":{"symbol":"LIGHT","icon":"/light.webp"},
+        "81":{"symbol":"MU01","icon":"/mu01.webp"},
+        "82":{"symbol":"MU02","icon":"/mu02.webp"}
+    }
+    all_souls=parse_earn_soul_list("03018201",earn_enum,2)
+    assert all_souls["known"] and all_souls["colored"]=={
+        "dark":1,"fire":1,"water":1,"forest":1,"metal":1,"earth":1,"light":1
+    } and all_souls["neutral"]==2
+    hybrid=parse_earn_soul_list("120171018201",earn_enum,2)
+    assert hybrid["known"] and hybrid["colored"]=={"dark":1,"earth":1,"light":1} and hybrid["neutral"]==2
+    magic=parse_earn_soul_list("0201",earn_enum,0)
+    assert magic["known"] and magic["magicLand"] and not magic["colored"] and magic["neutral"]==0
+    mismatch=parse_earn_soul_list("8201",earn_enum,1)
+    assert not mismatch["known"] and any("cross-check-mismatch" in x for x in mismatch["review"])
     print("converter self-test: PASS")
 
 def convert(a):
-    enums=enum_lookup(json.loads(Path(a.enumtable).read_text(encoding="utf-8")))
+    enum_data=json.loads(Path(a.enumtable).read_text(encoding="utf-8"))
+    enums=enum_lookup(enum_data)
+    earn_soul_enum=enum_symbol_map(enum_data,"EarnSoul")
+    if not earn_soul_enum:
+        raise RuntimeError("enumtable is missing Enum+EarnSoul; refusing to guess land soul production")
     cards=[]
     with gzip.open(a.cards_jsonl_gz,"rt",encoding="utf-8") as src:
         for lineno,line in enumerate(src,1):
-            if line.strip(): cards.append(build_card(json.loads(line),enums))
+            if line.strip(): cards.append(build_card(json.loads(line),enums,earn_soul_enum))
             if lineno%3000==0: print(f"converted {lineno} source lines",flush=True)
     counts=Counter(c["type"] for c in cards)
     if len(cards)!=TOTAL or counts!=EXPECTED: raise RuntimeError(f"Card counts differ: {len(cards)} {dict(counts)}")
@@ -286,11 +422,15 @@ def convert(a):
         raise RuntimeError(f"cards.json exceeds Android import limit: {cards_bytes} bytes")
     image_bytes=sum(p.stat().st_size for p in images.glob("*.webp"))
     digest=hashlib.sha256(cards_path.read_bytes()).hexdigest()
-    known=sum(1 for c in cards if c["costKnown"])
-    not_applicable=sum(1 for c in cards if c["type"]=="land")
+    known=sum(1 for c in cards if c["type"]!="land" and c["costKnown"])
     needs_review=sum(1 for c in cards if c["type"]!="land" and not c["costKnown"])
+    land_cost_known=sum(1 for c in cards if c["type"]=="land" and c["landInstallCostKnown"])
+    land_cost_review=sum(1 for c in cards if c["type"]=="land" and not c["landInstallCostKnown"])
+    land_magiclands=sum(1 for c in cards if c["type"]=="land" and c["isMagicLand"])
+    land_production_review=sum(1 for c in cards if c["type"]=="land" and c["soulProductionStatus"]=="needs-review")
+    land_token_counts=Counter(t["symbol"] for c in cards if c["type"]=="land" for t in c["soulProductionTokens"])
     manifest={
-        "format":"FM1-CARD-DATA","version":"1.1.0",
+        "format":"FM1-CARD-DATA","version":"1.1.1",
         "cardsCount":TOTAL,"imagesCount":TOTAL,"cardsSha256":digest,
         "classification":{"source":"current FMLunatic Firestore Category enum + current five-type reference",
           "types":{"land":289,"unit":8633,"spell":3857,"item":1748,"enchant":823},
@@ -298,8 +438,20 @@ def convert(a):
         "source":{"listUrl":"https://fmlunatic.com/cardlist",
           "cardUrlPattern":"https://fmlunatic.com/card/{documentId}",
           "databaseRelease":"https://github.com/dragonslayers-k/T/releases/tag/fm1-carddb-25"},
-        "costReview":{"knownFromUnambiguousFirestoreTokens":known,"needsReview":needs_review,"notApplicableLandPlacement":not_applicable,
-          "policy":"Land placement uses LP, not a soul install cost. Unknown, mixed, NCS and BONUS tokens are not treated as free."},
+        "costReview":{
+          "knownNonLandCosts":known,"needsReviewNonLandCosts":needs_review,
+          "knownLandInstallationSoulCosts":land_cost_known,
+          "needsReviewLandInstallationSoulCosts":land_cost_review,
+          "policy":"LP and RequireSoul are separate land installation requirements. Unknown mixed/NCS/BONUS tokens are never treated as free."
+        },
+        "landSoulProduction":{
+          "source":"Firestore EarnSoulList + Enum+EarnSoul",
+          "decodedStandardLands":sum(1 for c in cards if c["type"]=="land" and c["soulProductionStatus"]=="source-decoded"),
+          "magicLandSpecialEffectLands":land_magiclands,
+          "needsReview":land_production_review,
+          "tokenCounts":dict(land_token_counts),
+          "policy":"Pure and compound color symbols are decoded from the site's EarnSoul enum; ALL yields one of each seven colored souls per token; MU01/MU02/MU03 yield 1/2/3 neutral souls per token; SPELL marks a MagicLand effect and is not a normal soul."
+        },
         "images":{"format":"webp","variant":"large","onePerCard":True}
     }
     (out/"manifest.json").write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding="utf-8")
@@ -322,7 +474,9 @@ def convert(a):
             raise RuntimeError("Generated ZIP structure incomplete")
     print(json.dumps({"zip":str(z),"bytes":z.stat().st_size,"cards":TOTAL,"images":TOTAL,
       "types":dict(counts),"cardsSha256":digest,"cardsJsonBytes":cards_bytes,"imageBytes":image_bytes,
-      "unpackedBytes":unpacked_bytes,"costKnown":known,"costNeedsReview":needs_review,"costNotApplicableLand":not_applicable,
+      "unpackedBytes":unpacked_bytes,"costKnownNonLand":known,"costNeedsReviewNonLand":needs_review,
+      "landInstallCostKnown":land_cost_known,"landInstallCostNeedsReview":land_cost_review,
+      "magicLandCount":land_magiclands,"landSoulProductionNeedsReview":land_production_review,
       "format":manifest["format"],"version":manifest["version"]},ensure_ascii=False,indent=2))
 
 def main():

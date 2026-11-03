@@ -77,14 +77,21 @@
       return {ok:false,reason:'유닛의 AP·DP·HP 데이터가 누락되었거나 올바르지 않습니다.'};
     if(card.type==='land'){
       const lp=Number(card.requiredLP),prod=card.soulProduction,legacy=Array.isArray(card.souls)?card.souls:[];
-      if(card.requiredLP===null||card.requiredLP===undefined||card.requiredLP===''||!Number.isInteger(lp)||lp<0)
-        return {ok:false,reason:'지형의 필요LP 정보가 없거나 올바르지 않습니다.'};
+      if(card.requiredLPKnown!==true||card.requiredLP===null||card.requiredLP===undefined||card.requiredLP===''||!Number.isInteger(lp)||lp<0)
+        return {ok:false,reason:'지형의 필요LP 원본값이 없거나 검증되지 않았습니다.'};
+      if(card.landInstallCostKnown!==true)return {ok:false,reason:'지형 설치에 필요한 RequireSoul 비용이 아직 확인되지 않았습니다. 무료로 처리하지 않습니다.'};
+      const installCost=readCost(card.landInstallCost);
+      if(!installCost.ok)return {ok:false,reason:'지형 설치 소울 비용을 검증할 수 없습니다: '+installCost.reason};
+      if(card.isMagicLand===true||card.soulProductionStatus==='magicland-effect')
+        return {ok:false,reason:'매직랜드의 소울 코스트 발동 및 특수효과 실행 규칙은 구현 검증 대기 중입니다. 일반 지형처럼 설치하지 않습니다.'};
+      if(card.soulProductionStatus!=='source-decoded')
+        return {ok:false,reason:'EarnSoulList 생산 규칙이 검증되지 않은 지형입니다.'};
       if(legacy.some(c=>!COLORS.includes(c)||c==='neutral')||(prod&&(typeof prod!=='object'||!prod.colored||typeof prod.colored!=='object'||
         Object.entries(prod.colored).some(([c,v])=>!COLORS.includes(c)||c==='neutral'||!Number.isFinite(Number(v))||Number(v)<0)||
         !Number.isFinite(Number(prod.neutral))||Number(prod.neutral)<0)))return {ok:false,reason:'지형의 소울 생산 데이터가 올바르지 않습니다.'};
       const ct=prod?Object.values(prod.colored).reduce((s,n)=>s+Number(n||0),0):legacy.length*(Number(card.soulValue)||1);
       const nt=prod?Number(prod.neutral||0):Number(card.neutralSoulProduction||0);
-      if(ct+nt<=0)return {ok:false,reason:'소울을 생산하지 않는 지형은 원본 조건을 확인해야 합니다.'};
+      if(ct+nt<=0)return {ok:false,reason:'소울 생산량이 0인 표준 지형입니다.'};
     }
     if(card.type==='item'){
       const allowed=Array.isArray(card.allowedUnitAbilities)?card.allowedUnitAbilities:[];
@@ -410,6 +417,8 @@
       if(p.lands.length>=10)return {ok:false,reason:'지형은 최대 10장까지 설치할 수 있습니다.'};
       const requiredLP=Number(card.requiredLP);
       if(p.lp<requiredLP)return {ok:false,reason:'랜드 포인트(LP)가 부족합니다. 필요 LP: '+requiredLP+' / 보유 LP: '+p.lp};
+      if(!canPay(p,card.landInstallCost))return {ok:false,reason:'지형 설치 소울이 부족합니다. 필요: '+costText(card.landInstallCost)};
+      if(!spendSoul(p,card.landInstallCost))return {ok:false,reason:'지형 설치 소울 지불에 실패했습니다. 기존 자원을 유지합니다.'};
       const land=removeHand(p,instanceId);land.ready=true;p.lp-=requiredLP;
       const output=productionOf(land);
       Object.entries(output.colored).forEach(([color,amount])=>{p.soulPool.colored[color]=Number(p.soulPool.colored[color]||0)+Number(amount||0);});
@@ -417,6 +426,7 @@
       p.unitDeployLimit=Math.floor(poolTotal(p.soulPool)+1e-9);
       p.playedLand=true;p.playedAnyCardThisPhase=true;
       addLog(state,p.name+'이(가) 지형 '+card.name+'을(를) 설치했습니다. (LP -'+requiredLP+
+        ', 설치 소울 지불 '+costText(card.landInstallCost)+
         ', 유색 소울 +'+Object.values(output.colored).reduce((a,b)=>a+Number(b||0),0)+
         ', 무속성 소울 +'+Number(output.neutral||0)+')');
       return {ok:true};

@@ -102,9 +102,9 @@ jobs:
             --enumtable "$RUNNER_TEMP/fm1-source/enumtable.json" \
             --images-tar-gz "$RUNNER_TEMP/fm1-source/images.tar.gz" \
             --output "$RUNNER_TEMP/fm1-pack" \
-            --zip-output "release-package/FM1-CardData-v1.1.0.zip"
+            --zip-output "release-package/FM1-CardData-v1.1.1.zip"
 
-          test -s release-package/FM1-CardData-v1.1.0.zip
+          test -s release-package/FM1-CardData-v1.1.1.zip
           rm -rf "$RUNNER_TEMP/fm1-pack" "$RUNNER_TEMP/fm1-source"
           echo "FM1_DATA_PACK_STATUS=built-from-fm1-carddb-25" >> "$GITHUB_ENV"
 

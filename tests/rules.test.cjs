@@ -3,7 +3,8 @@ const assert=require('node:assert/strict');
 const FM=require('../app/src/main/assets/game/rules.js');
 
 function land(id,color,requiredLP=1,neutral=0){
-  return {id,name:id,type:'land',faction:color,souls:[color],soulValue:1,requiredLP,
+  return {id,name:id,type:'land',faction:color,souls:[color],soulValue:1,requiredLP,requiredLPKnown:true,
+    landInstallCost:{neutral:0},landInstallCostKnown:true,soulProductionStatus:'source-decoded',
     neutralSoulProduction:neutral,soulProduction:{colored:{[color]:1},neutral},
     ready:true};
 }
@@ -73,19 +74,50 @@ test('LP accumulates each turn and a land placement consumes LP only',()=>{
 });
 
 
-test('FM1 terrain installation spends LP only and immediately generates souls',()=>{
-  const card={id:'free-land',instanceId:'lu',name:'설치 무료 지형',type:'land',
-    faction:'light',souls:['light'],requiredLP:1,soulProduction:{colored:{light:1},neutral:0},
-    landInstallCost:{},landInstallCostKnown:true};
-  const p=player('player',{hand:[card],lp:2,soulPool:{colored:{fire:2},neutral:1}});
+test('terrain installation spends LP and the exact RequireSoul cost before adding production',()=>{
+  const card={id:'paid-land',instanceId:'lu',name:'구름도시',type:'land',
+    faction:'light',requiredLP:2,requiredLPKnown:true,
+    landInstallCost:{light:1,neutral:1},landInstallCostKnown:true,soulProductionStatus:'source-decoded',
+    soulProduction:{colored:{light:1},neutral:0}};
+  const p=player('player',{hand:[card],lp:2,soulPool:{colored:{light:1,fire:1},neutral:1}});
   const s=state(p,player('ai'));
   const result=FM.playCard(s,'player','lu');
   assert.equal(result.ok,true);
   assert.equal(p.hand.length,0);
-  assert.equal(p.lp,1);
-  assert.equal(p.soulPool.colored.fire,2);
+  assert.equal(p.lp,0);
+  assert.equal(p.soulPool.colored.fire,1);
   assert.equal(p.soulPool.colored.light,1);
-  assert.equal(p.soulPool.neutral,1);
+  assert.equal(p.soulPool.neutral,0);
+  assert.equal(p.lands.length,1);
+});
+
+test('terrain with insufficient install soul cannot consume LP or leave the hand',()=>{
+  const card={id:'paid-land',instanceId:'lu',name:'구름도시',type:'land',
+    faction:'light',requiredLP:2,requiredLPKnown:true,
+    landInstallCost:{light:1,neutral:1},landInstallCostKnown:true,soulProductionStatus:'source-decoded',
+    soulProduction:{colored:{light:1},neutral:0}};
+  const initialPool={colored:{light:0,fire:1},neutral:0};
+  const p=player('player',{hand:[card],lp:2,soulPool:initialPool});
+  const s=state(p,player('ai'));
+  const result=FM.playCard(s,'player','lu');
+  assert.equal(result.ok,false);
+  assert.match(result.reason,/지형 설치 소울이 부족/);
+  assert.equal(p.lp,2);
+  assert.equal(p.hand.length,1);
+  assert.deepEqual(p.soulPool,initialPool);
+});
+
+test('MagicLand is not installed as a normal producing land until its recurring effect is implemented',()=>{
+  const card={id:'magic-land',instanceId:'ml',name:'빛의성벽',type:'land',
+    requiredLP:0,requiredLPKnown:true,landInstallCost:{neutral:0},landInstallCostKnown:true,
+    soulProduction:{colored:{},neutral:0},soulProductionStatus:'magicland-effect',isMagicLand:true};
+  const p=player('player',{hand:[card],lp:1,soulPool:{colored:{},neutral:0}});
+  const s=state(p,player('ai'));
+  const result=FM.playCard(s,'player','ml');
+  assert.equal(result.ok,false);
+  assert.match(result.reason,/매직랜드/);
+  assert.equal(p.lp,1);
+  assert.equal(p.hand.length,1);
 });
 
 test('terrain LP is spent while its colored and neutral souls are added to the pool',()=>{

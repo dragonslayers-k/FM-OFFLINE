@@ -41,7 +41,7 @@ The import screen accepts a JSON array. Supported values:
 - Spell: `effect` object. Currently supported `damage`, `heal`, `buff`, `draw`, `mill` (drain not fully implemented). Targets: `ownUnit`, `enemyUnit`.
 
 
-## Firestore DB → Android import adapter (FM1-CARD-DATA 1.1.0)
+## Firestore DB → Android import adapter (FM1-CARD-DATA 1.1.1)
 
 The current app import contract remains a ZIP with three required entries:
 
@@ -77,3 +77,12 @@ The converter enforces the existing Android importer limits: cards.json ≤128 M
 ## Important
 
 This is an implementation schema, **not a confirmed export schema from the original game or FAN-MADE MASTERS**. Translate source data into it only after checking the original card behavior. Special effects require a new explicit effect handler and test before they should be considered implemented.
+
+
+## 지형 비용 및 생산 데이터 (FM1-CARD-DATA 1.1.1)
+
+지형 설치에는 `RequireLP`와 `RequireSoul`이 별도 적용된다. LP만으로 설치할 수 있는 지형도 있지만, 예를 들어 구름도시는 LP 2와 빛 유소울 1, 무소울 1을 함께 요구한다. 앱 데이터팩에는 `requiredLP`, `landInstallCost`, 각 필드의 확인 상태를 따로 저장한다. 비용이 원문에서 해석되지 않은 지형은 무료로 간주하지 않는다.
+
+지형의 실제 생산량은 `SoulType`이나 `MuSoul`에서 추정하지 않고 `EarnSoulList`와 `Enum+EarnSoul`로 해석한다. 일반 색상 심볼, 두 색 조합 심볼, `ALL`(7색 각 1개), `MU01/02/03`(무소울 1/2/3개)를 토큰 단위로 저장한다. `SPELL`은 일반 소울이 아니라 매직랜드 특수 효과 표시이므로, 일반 지형처럼 소울을 만들어내지 않는다. 매직랜드는 별도 발동 규칙이 구현되기 전까지 게임 엔진에서 일반 지형으로 설치하지 않는다.
+
+현재 데이터팩은 원본 토큰·아이콘·원문 텍스트를 보존한다. 설치 비용 미해석 및 매직랜드 효과 미구현은 정상 완료가 아니라 검증 대기 상태로 표시한다.

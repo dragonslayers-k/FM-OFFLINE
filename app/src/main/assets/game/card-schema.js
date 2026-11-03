@@ -90,7 +90,8 @@
       for(const [color,value] of Object.entries(colors)) if(color!=='neutral'&&COLORS.includes(color)&&decimal(value)!==null&&decimal(value)>=0) out.colored[color]=decimal(value);
       const neutral=decimal(src.neutral??raw.neutralSoulProduction);
       if(neutral!==null&&neutral>=0) out.neutral=neutral;
-      if(Object.keys(out.colored).length||out.neutral>0) return out;
+      if(Object.keys(out.colored).length||out.neutral>0||
+          ['source-decoded','magicland-effect'].includes(raw.soulProductionStatus)) return out;
     }
     const labels={dark:['생산암흑소울','생산어둠소울'],fire:['생산불소울','생산화염소울'],water:['생산물소울','생산수소울'],forest:['생산숲소울'],metal:['생산금속소울'],earth:['생산대지소울','생산땅소울'],light:['생산빛소울','생산광명소울']};
     let explicit=false;
@@ -240,20 +241,32 @@
     const landCandidates=[raw.landInstallCost,raw.installCost,raw.summonCost,raw.soulCost,type==='land'?raw.cost:null]
       .map(normalizeCostObject).filter(value=>value!==null&&Object.keys(value).length>0);
     const landObj=landCandidates[0]||null;
-    const landKnown=raw.landInstallCostKnown!==false&&landObj!==null;
-    n.landInstallCost=landKnown?(landObj||{}):null;n.landInstallCostKnown=landKnown;
+    const landKnown=raw.landInstallCostKnown===true&&landObj!==null;
+    n.landInstallCost=landKnown?landObj:null;n.landInstallCostKnown=landKnown;
+    n.landInstallCostReview=Array.isArray(raw.landInstallCostReview)?raw.landInstallCostReview:[];
     if(type==='land'){
       const prod=parseSoulProduction(raw,detail,meta);n.soulProduction=prod;n.souls=Object.keys(prod.colored).filter(c=>Number(prod.colored[c])>0);
       const amounts=Object.values(prod.colored).map(Number);
       n.soulValue=amounts.length&&amounts.every(v=>v===amounts[0])?amounts[0]:(decimal(raw.soulValue)??1);
       n.neutralSoulProduction=prod.neutral;
       const sourceLP=integer(raw.requiredLP??detail['필요LP']);
-      n.requiredLP=sourceLP===null?0:sourceLP;
-      n.rules.requiredLPStatus=sourceLP===null?'default-zero-no-requirement':'source-defined';
+      n.requiredLP=sourceLP;
+      n.requiredLPKnown=raw.requiredLPKnown===true&&sourceLP!==null;
+      n.rules.requiredLPStatus=n.requiredLPKnown?'source-defined':'source-missing';
       const total=Object.values(prod.colored).reduce((s,v)=>s+Number(v||0),0)+prod.neutral;
-      n.rules.status=total>0?'mapped':'incomplete';
-      n.rules.costStatus='not-applicable-lp-land-placement';
-      if(n.rules.status==='incomplete')n.rules.unsupportedReason='지형의 소울 생산량 정보가 누락되었거나 0입니다.';
+      n.rules.costStatus=n.requiredLPKnown&&n.landInstallCostKnown?'mapped':'installation-cost-needs-review';
+      if(raw.soulProductionStatus==='magicland-effect'){
+        n.rules.status='special-effect-pending';
+        n.rules.unsupportedReason='매직랜드의 소울 코스트 발동 효과는 원문을 보존했으며, 별도 실행 규칙 구현 전까지 임의 생산/발동을 하지 않습니다.';
+      }else if(raw.soulProductionStatus!=='source-decoded'){
+        n.rules.status='incomplete';
+        n.rules.unsupportedReason='지형의 EarnSoulList 생산 토큰이 검증되지 않았습니다.';
+      }else if(total>0){
+        n.rules.status='mapped';
+      }else{
+        n.rules.status='incomplete';
+        n.rules.unsupportedReason='표준 지형의 소울 생산량이 0입니다.';
+      }
     }else if(type==='unit'){
       n.unitAbility=htmlToText(raw.unitAbility||raw.unitType||raw.abilityType||detail['유닛 능력']||detail['유닛 능력 타입']||'');n.unitAbilityTags=normalizeAbility(n.unitAbility);
       n.rank=raw.rank||detail['랭크']||'';n.skill=htmlToText(raw.specialSkill||raw.specialAbility||raw.attackSkill||raw.skill||detail['특수공격기술']||detail['특수 공격 기술']||detail['공격기술']||detail['특수 능력']||detail['특수능력']||detail['스킬']||detail['공격 능력']||'');
