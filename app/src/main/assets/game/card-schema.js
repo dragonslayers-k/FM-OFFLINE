@@ -374,6 +374,15 @@
     return n;
   }
 
+  function safeSourceCardUrl(value) {
+    try {
+      const url = new URL(String(value || ''));
+      if (url.protocol !== 'https:' || url.hostname !== 'fmlunatic.com' ||
+          url.username || url.password || !/^\\/card\\/[A-Za-z0-9_-]+\\/?$/.test(url.pathname)) return null;
+      return url.href;
+    } catch (_) { return null; }
+  }
+
   function normalizeMany(records) {
     if (!Array.isArray(records)) throw new TypeError('FM1 card data must be an array');
     const ids = new Set();
@@ -384,7 +393,7 @@
       return card;
     });
   }
-  const api = {normalize,normalizeMany,fieldMap,entries,normalizeAbility,mappedType,parseStatTech,parseCoinExpression,parseItemConditions,parseCardTextEffect,htmlToText,dedupeTextBlocks,parseColors,parseSoulProduction};
+  const api = {normalize,normalizeMany,fieldMap,entries,normalizeAbility,mappedType,parseStatTech,parseCoinExpression,parseItemConditions,parseCardTextEffect,htmlToText,dedupeTextBlocks,parseColors,parseSoulProduction,safeSourceCardUrl};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.FMCardSchema = api;
 })(typeof window !== 'undefined' ? window : globalThis);
