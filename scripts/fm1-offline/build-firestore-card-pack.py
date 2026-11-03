@@ -337,6 +337,7 @@ def self_test():
     assert large_image_card_id("./small/16121533861.webp") is None
     assert large_image_card_id("16121533861.webp") is None
     earn_enum={
+        "1":{"symbol":"NONE","icon":"/none.webp"},
         "3":{"symbol":"ALL","icon":"/all.webp"},
         "2":{"symbol":"SPELL","icon":"/spell.webp"},
         "11":{"symbol":"DARK","icon":"/dark.webp"},
