@@ -41,20 +41,21 @@ The import screen accepts a JSON array. Supported values:
 - Spell: `effect` object. Currently supported `damage`, `heal`, `buff`, `draw`, `mill` (drain not fully implemented). Targets: `ownUnit`, `enemyUnit`.
 
 
-## Firestore DB → Android import adapter (FM1-CARD-DATA 1.1.1)
+## T normalized SQLite → Android import adapter (FM1-CARD-DATA 1.2.0)
 
 The current app import contract remains a ZIP with three required entries:
 
 - `cards.json`: UTF-8 JSON array of 15,350 card objects.
-- `manifest.json`: format `FM1-CARD-DATA`, version `1.1.0`, card/image counts, and SHA-256 of the exact `cards.json` bytes.
+- `manifest.json`: format `FM1-CARD-DATA`, version `1.2.0`, card/image counts, source DB Release tag, cost/effect review counts, and SHA-256 of the exact `cards.json` bytes.
 - `images/{FirestoreDocumentId}.webp`: one large WebP illustration per card.
 
-The source database is the successful FM LUNATIC Firestore release, not a second crawl. The adapter reads its JSONL, enum table and existing images archive, then converts each original record into the app's normalized card input. Every card keeps:
+The source is the normalized SQLite database produced by `dragonslayers-k/T`, not a second crawl or an independent cost parser. The adapter reads `cards`, `card_costs`, `card_images`, `card_effect_candidate_summaries` and `card_effect_clauses`; the enum table is retained for the source-defined land `EarnSoulList` mapping. Every card keeps:
 
 - Stable Firestore document ID and the individual source card URL `https://fmlunatic.com/card/{documentId}`.
 - The card-list URL and source image URLs.
 - The entire original Firestore field map in `sourceFields`.
-- The original RequireSoul token string and a cost review status.
+- The original RequireSoul token string, token rows, DB verification status, and any hybrid/NCS/BONUS review flags.
+- Effect candidate summaries and exact clause start/end positions; these remain non-executable until reviewed.
 - A local image filename based on the same Firestore document ID.
 
 Current category mapping and counts are fixed:
@@ -70,7 +71,7 @@ Current category mapping and counts are fixed:
 
 Enchant is the current fifth official card type. It is not a missing or unsupported category. The per-card EnchantSlot field is a separate value that may still require parsing or rule verification.
 
-Unknown, mixed, NCS, and BONUS soul tokens remain review-required. They are not converted into zero-cost cards. Land installation uses LP; land cards are excluded from ordinary summon-soul cost checks. Missing LP defaults follow the current rules adapter and remain distinguishable in the source fields.
+Hybrid costs remain `mapping_review` until independent reference costs verify them. NCS and BONUS remain separate `semantic_review` resources. The T DB's `soul_known`, `mapping_review` and `semantic_review` flags are carried through the Android pack; a token string being parseable does not automatically make its cost playable. Review-required cards are not converted into zero-cost cards. Land installation uses LP and a separate RequireSoul cost; land cards are excluded from ordinary summon-soul cost checks. Missing LP defaults follow the current rules adapter and remain distinguishable in the source fields.
 
 The converter enforces the existing Android importer limits: cards.json ≤128 MiB, total unpacked payload ≤700 MiB, 15,350 records, 15,350 images, unique IDs and the exact five-category counts. The Android importer independently rechecks SHA-256, ZIP entry paths, image references and category counts before atomic installation.
 
@@ -93,8 +94,10 @@ This is an implementation schema, **not a confirmed export schema from the origi
 The 1.1.1 Android pack conversion is pinned to the audited T Release `fm1-carddb-26`. Its source asset hashes are checked before conversion. Land installation now requires both verified LP and a parsed `RequireSoul` cost; land production uses `EarnSoulList` with the live `Enum+EarnSoul` symbols. MagicLand (`SPELL`) records remain preserved but cannot be played as ordinary producing terrain until their card-specific soul-cost effects are implemented.
 
 
-## RequireSoul 복합 속성 토큰 보정 (FM1-CARD-DATA 1.1.2)
+## RequireSoul 및 효과 후보 검증 (FM1-CARD-DATA 1.2.0)
 
 `RequireSoul`은 `Enum+RequireSoul`의 코드 심볼을 기준으로 해석한다. 단일 속성 심볼은 해당 속성 요구량으로, `DARK_EARTH` 등 복합 심볼은 명시된 각 속성 요구량으로 분해한다. 예를 들어 `12011101`은 `DARK_EARTH` 1개와 `DARK` 1개 토큰이므로 암흑 2, 대지 1이다. 해당 카드는 원문 추가 설명과도 대조했다.
 
-`MU`는 무소울 요구량, `NONE`은 수량 0일 때 명시적 무비용으로 보존한다. `NCS`와 `BONUS`는 기존 enum 이름 및 카드 원문을 보존하되 결제 규칙이 충분히 검증되지 않아 계속 `manual_review`로 남긴다. 이를 일반 무소울이나 무료 비용으로 바꾸지 않는다.
+`MU`는 무소울 요구량, `NONE`은 수량 0일 때 명시적 무비용으로 보존한다. T SQLite 기준으로 비지형 비용 14,244건만 확정된 소울 비용으로 전달한다. 혼합 토큰 38건은 `mapping_review`, NCS/BONUS가 포함된 779건은 `semantic_review`로 전달하며 비용 객체를 비워 게임에서 지불할 수 없게 한다. 지형 설치 비용은 275건 확정, 14건 검토 대상이다.
+
+T SQLite의 `card_effect_candidate_summaries`와 `card_effect_clauses`는 카드별 효과 표현 후보 17,407건과 절 구간 48,281건을 제공한다. 절 구간은 원문과 정확히 재구성됨을 검증했지만 모든 항목은 `pattern_candidate`다. 이를 실행 가능한 효과로 자동 변환하지 않는다. 앱의 효과 실행은 검증된 개별 핸들러와 테스트가 추가된 경우에만 허용한다.
