@@ -326,6 +326,12 @@ jobs:
             release-package/enchant-effect-audit.csv
             release-package/emulator-screen.png
             release-package/emulator-launch-log.txt
+            emulator-launch-logcat-full.txt
+            emulator-process-exit-info.txt
+            emulator-app-meminfo.txt
+            emulator-system-meminfo.txt
+            emulator-tombstone-list.txt
+            emulator-tombstone_*.txt
           if-no-files-found: warn
           compression-level: 1
           retention-days: 90
