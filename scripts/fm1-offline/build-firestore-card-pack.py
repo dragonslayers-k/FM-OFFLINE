@@ -194,6 +194,20 @@ def expected_large_image_name(card):
         raise ValueError(f"Missing valid large image URL or Category/KIND for {card.get('id')}")
     return f"{prefix}{kind:05d}L.webp"
 
+def large_image_card_id(archive_member_name):
+    # T stores files under data/images/{small|large}/{FirestoreDocumentId}.webp.
+    # The archive is created with -C data/images ., so member paths look like
+    # ./large/{documentId}.webp. Match the document ID, not the original
+    # Firebase Storage basename (for example M03861L.webp).
+    parts = [part for part in PurePosixPath(str(archive_member_name)).parts if part not in ("", ".", "/")]
+    if len(parts) < 2 or parts[-2].lower() != "large":
+        return None
+    filename = parts[-1]
+    if not filename.lower().endswith(".webp"):
+        return None
+    return filename[:-5]
+
+
 def self_test():
     assert parse_cost("11012102")["cost"]=={"dark":1,"fire":2}
     assert parse_cost("8301")["known"] is False
@@ -203,6 +217,10 @@ def self_test():
     assert expected_large_image_name({"id":"land-card","sourceFields":{"Category":1,"KIND":5}})=="L00005L.webp"
     assert expected_large_image_name({"id":"magic-card","sourceFields":{"Category":3,"KIND":3861}})=="M03861L.webp"
     assert expected_large_image_name({"id":"enchant-card","sourceFields":{"Category":5,"KIND":823}})=="E00823L.webp"
+    assert large_image_card_id("./large/16121533861.webp") == "16121533861"
+    assert large_image_card_id("large/M03861L.webp") == "M03861L"
+    assert large_image_card_id("./small/16121533861.webp") is None
+    assert large_image_card_id("16121533861.webp") is None
     print("converter self-test: PASS")
 
 def convert(a):
@@ -219,46 +237,46 @@ def convert(a):
     out=Path(a.output)
     if out.exists(): shutil.rmtree(out)
     images=out/"images";images.mkdir(parents=True)
-    # KIND is the per-category image number; Firestore document ID is a different identity.
-    expected_images={}
-    for card in cards:
-        filename=expected_large_image_name(card)
-        if filename in expected_images:
-            raise RuntimeError(f"Duplicate category/KIND image identity: {filename}")
-        expected_images[filename]=card
+    # In T, image paths are data/images/{small|large}/{documentId}.webp.
+    # Only the large variant belongs in the Android install pack.
+    expected_images={str(card["id"]):card for card in cards}
     if len(expected_images)!=TOTAL:
         raise RuntimeError(f"Image identity map contains {len(expected_images)} records, expected {TOTAL}")
+    extracted_ids=set()
     extracted=0
     with tarfile.open(a.images_tar_gz,"r|gz") as tf:
         for member in tf:
             if not member.isfile():
                 continue
-            filename=PurePosixPath(member.name).name
-            card=expected_images.get(filename)
+            card_id=large_image_card_id(member.name)
+            card=expected_images.get(card_id) if card_id else None
             if card is None:
                 continue
+            if card_id in extracted_ids:
+                raise RuntimeError("Duplicate large image archive entry: "+member.name)
             src=tf.extractfile(member)
             if src is None:
-                raise RuntimeError("Unreadable image: "+filename)
-            target=images/(card["id"]+".webp")
+                raise RuntimeError("Unreadable image: "+member.name)
+            target=images/(card_id+".webp")
             with src,target.open("wb") as dst:
                 shutil.copyfileobj(src,dst,1024*1024)
             with target.open("rb") as img:
                 h=img.read(12)
             if len(h)<12 or h[:4]!=b"RIFF" or h[8:12]!=b"WEBP":
-                raise RuntimeError("Invalid WebP: "+filename)
-            card["sourceImageFileName"]=filename
+                raise RuntimeError("Invalid WebP: "+member.name)
+            card["sourceImageFileName"]=expected_large_image_name(card)
+            card["sourceImageArchivePath"]=member.name
+            card["storedImageFileName"]=target.name
             card["artImageSha256"]=hashlib.sha256(target.read_bytes()).hexdigest()
             card["artImageSizeBytes"]=target.stat().st_size
+            extracted_ids.add(card_id)
             extracted+=1
             if extracted%3000==0:
                 print(f"extracted {extracted}/{TOTAL} large images",flush=True)
             if extracted==TOTAL:
                 break
     if extracted!=TOTAL:
-        present={p.stem for p in images.glob("*.webp")}
-        missing=next((expected_images[name]["id"] for name in expected_images
-                      if expected_images[name]["id"] not in present), "unknown")
+        missing=next((card_id for card_id in expected_images if card_id not in extracted_ids), "unknown")
         raise RuntimeError(f"Large images extracted {extracted}/{TOTAL}; first missing card: {missing}")
     cards_path=out/"cards.json"
     with cards_path.open("w",encoding="utf-8") as dst:
