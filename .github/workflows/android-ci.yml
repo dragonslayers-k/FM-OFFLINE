@@ -252,7 +252,7 @@ jobs:
           force-avd-creation: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data -camera-back none
           script: |
-            set -euo pipefail
+            set -eu
             if [ -s FantasyMastersOffline-release.apk ]; then
               APK="FantasyMastersOffline-release.apk"
               APP_ID="com.fantasy.offline"
@@ -302,7 +302,7 @@ jobs:
           } > release-package/build-status.txt
 
       - name: Upload standalone Android card data ZIP
-        if: success() && hashFiles('release-package/FM1-CardData-v1.2.0.zip') != ''
+        if: always() && hashFiles('release-package/FM1-CardData-v1.2.0.zip') != ''
         uses: actions/upload-artifact@v7
         with:
           name: FM1-CardData-v1.2.0-DB28
