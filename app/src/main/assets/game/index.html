@@ -129,8 +129,8 @@
         <div class="notice-card"><strong>원작 복원 데이터 관련</strong><p>FAN-MADE MASTERS와 FM LUNATIC은 카드명·능력·구성·속성 분류를 대조하는 참고 대상으로 사용할 수 있습니다. 다만 해당 사이트의 이미지 파일과 카드 데이터베이스를 그대로 추출·재배포할 권한은 확인되지 않았습니다. 현재 앱에는 무단 복제된 이미지가 포함되어 있지 않습니다.</p><p>원작 또는 FAN-MADE MASTERS의 일러스트는 권리자 허락이나 명시적 이용허락이 확인된 파일을 제공받은 뒤 앱의 assets/game/cards/ 폴더에 포함하는 방식으로 처리합니다. 카드 JSON의 artImage에는 cards/파일명.webp 경로를 지정합니다.</p></div>
         <div class="import-card">
           <h2>FM1 카드 데이터팩 설치</h2>
-          <p>카드 DB와 일러스트는 APK와 분리되어 있습니다. GitHub Actions의 Fantasy Masters Offline v0.1.8 APK 작업에서 Run workflow를 실행하고 build_card_pack을 켜면 FM1-CardData-v1.1.0.zip이 생성됩니다. 성공한 실행의 Artifacts에서 ZIP을 내려받은 뒤 아래에서 가져오면 이후 오프라인으로 사용할 수 있습니다. ZIP은 수백 MB일 수 있으므로 Wi-Fi와 충분한 저장 공간을 권장합니다.</p>
-          <div class="action-row"><button id="download-data-pack" class="button button-secondary">최신 카드 ZIP 받는 곳 열기</button><button id="import-data-pack" class="button button-primary">카드 ZIP 가져오기</button></div>
+          <p>카드 DB와 일러스트는 APK와 분리되어 있습니다. 최신 FM1 카드 데이터 ZIP은 Dropbox 카드 데이터 폴더에 보관합니다. 폴더에서 FM1-CardData ZIP을 내려받은 뒤 아래의 ‘카드 ZIP 가져오기’를 눌러 설치하면 이후 오프라인으로 사용할 수 있습니다. ZIP은 약 400MB이므로 Wi-Fi와 충분한 저장 공간을 권장합니다.</p>
+          <div class="action-row"><button id="download-data-pack" class="button button-secondary">Dropbox 카드 데이터 폴더 열기</button><button id="import-data-pack" class="button button-primary">카드 ZIP 가져오기</button></div>
           <div id="data-pack-status" class="data-message">데이터팩이 설치되지 않았습니다.</div>
           <div id="data-message" class="data-message"></div>
           <p class="database-only-note">카드 목록은 설치한 FM1 카드 DB 하나만 사용합니다. 데모 카드와 개별 임시 카드 목록은 데이터팩 설치 시 자동으로 제외됩니다.</p>
