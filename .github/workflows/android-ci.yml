@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+# Add [run-emulator] to a PR title to request the long import/emulator validation.
   pull_request:
     branches:
       - main
