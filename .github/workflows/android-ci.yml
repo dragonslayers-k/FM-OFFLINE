@@ -47,6 +47,26 @@ jobs:
       - name: Checkout this APK repository
         uses: actions/checkout@v7
 
+      - name: Enable KVM before expensive Android build steps
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) || (github.event_name == 'pull_request' && (contains(github.event.pull_request.labels.*.name, 'full-emulator-test') || contains(github.event.pull_request.title, '[run-emulator]'))) }}
+        run: |
+          set -euo pipefail
+          if [ ! -c /dev/kvm ]; then
+            echo "::error::This GitHub Actions runner does not expose /dev/kvm; refusing to start a 15-minute software-only Android emulator."
+            exit 1
+          fi
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo chmod 0666 /dev/kvm
+          if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+            echo "::error::KVM exists but is not readable and writable by the runner."
+            ls -l /dev/kvm || true
+            exit 1
+          fi
+          echo "KVM is available to the runner:"
+          ls -l /dev/kvm
+
       - name: Record source revision
         run: echo "FM_SOURCE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
@@ -78,7 +98,7 @@ jobs:
           python scripts/fm1-offline/audit-enchant-cards.py --self-test
 
       - name: Download the audited T SQLite DB release and build Android data ZIP
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.build_card_pack == true) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-card-pack]') || contains(github.event.head_commit.message, '[run-emulator]'))) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && (inputs.build_card_pack == true || inputs.run_emulator == true)) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-card-pack]') || contains(github.event.head_commit.message, '[run-emulator]'))) || (github.event_name == 'pull_request' && (contains(github.event.pull_request.labels.*.name, 'full-emulator-test') || contains(github.event.pull_request.title, '[run-emulator]'))) }}
         env:
           CARD_DB_RELEASE: https://github.com/dragonslayers-k/T/releases/download/${{ env.CARD_DB_RELEASE_TAG }}
           SOURCE_DIR: ${{ runner.temp }}/fm1-source
@@ -205,7 +225,7 @@ jobs:
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Install Android emulator components
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) || (github.event_name == 'pull_request' && (contains(github.event.pull_request.labels.*.name, 'full-emulator-test') || contains(github.event.pull_request.title, '[run-emulator]'))) }}
         run: |
           set -euo pipefail
           sdkmanager "platforms;android-34" "emulator" "system-images;android-34;google_apis;x86_64"
@@ -260,7 +280,7 @@ jobs:
           done
 
       - name: Install and launch APK in Android emulator
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) || (github.event_name == 'pull_request' && (contains(github.event.pull_request.labels.*.name, 'full-emulator-test') || contains(github.event.pull_request.title, '[run-emulator]'))) }}
         id: emulator
         timeout-minutes: 25
         uses: reactivecircus/android-emulator-runner@v2.38.0
@@ -270,7 +290,8 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          emulator-boot-timeout: 900
+          emulator-boot-timeout: 300
+          disable-linux-hw-accel: false
           force-avd-creation: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data -camera-back none -memory 4096
           # This action runs each script line in a separate shell. Keep the
@@ -296,6 +317,7 @@ jobs:
             echo "Job status: ${{ job.status }}"
             echo "Signed release APK: ${RELEASE_APK_STATUS:-not-configured}"
             echo "Emulator installation/launch: ${EMULATOR_OUTCOME:-not-run}"
+            echo "Full emulator test for PRs: add the full-emulator-test label or [run-emulator] to the PR title; a green PR without this opt-in covers build/unit checks only."
             echo "Android card ZIP: ${FM1_DATA_PACK_STATUS:-not-built-in-this-run}"
             echo "Source DB release: https://github.com/dragonslayers-k/T/releases/tag/${CARD_DB_RELEASE_TAG}"
             echo "Data pack version: FM1-CARD-DATA 1.3.0"
