@@ -283,6 +283,31 @@ class SqliteCardPackTests(unittest.TestCase):
             self.assertEqual(entry["cardReferences"][0]["sourceCardUrl"],cards[cases.index((_enum_value,name,evidence,rule_id))]["sourceCardUrl"])
             self.assertTrue(any(evidence in ref["description"] for ref in entry["cardReferences"]))
 
+
+    def test_no_skill_catalogue_preserves_nonunit_raw_metadata_without_unit_defaults(self):
+        mappings = [{
+            "cardId":"item-10010641105","sourceField":"Skill2","sourceEnumValue":"1",
+            "sourceName":"없음","mappingStatus":"no_special_skill","ruleId":None
+        }]
+        cards = [{
+            "id":"item-10010641105","name":"드레이소드","type":"item",
+            "faction":"dark","sourceCardUrl":"https://fmlunatic.com/card/10010641105",
+            "sourceListUrl":"https://fmlunatic.com/cardlist","text":"원본 아이템 텍스트",
+            "description":"","equipAbility":"장비"
+        }]
+        catalogue = CONVERTER.build_skill2_catalogue(mappings,cards,"test-release")
+        self.assertEqual(catalogue["entryCount"],1)
+        entry = catalogue["records"][0]
+        self.assertEqual(entry["verificationStatus"],"no_special_skill")
+        ref = entry["cardReferences"][0]
+        self.assertEqual(ref["sourceCardUrl"],cards[0]["sourceCardUrl"])
+        self.assertEqual(ref["text"],cards[0]["text"])
+        self.assertIsNone(ref["unitAbility"])
+        self.assertIsNone(ref["level"])
+        self.assertIsNone(ref["ap"])
+        self.assertIsNone(ref["dp"])
+        self.assertIsNone(ref["hp"])
+
     def test_load_refuses_missing_or_fabricated_card_url(self):
         self.db.execute("UPDATE cards SET source_card_url=? WHERE card_id=?", (
             "https://fmlunatic.com/card/other-id", self.card_id
