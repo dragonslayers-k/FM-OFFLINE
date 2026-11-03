@@ -109,7 +109,7 @@ class SqliteCardPackTests(unittest.TestCase):
 
     def test_hybrid_mapping_review_is_not_a_playable_cost(self):
         row = self.db.execute("SELECT * FROM card_costs").fetchone()
-        names = [x[0] for x in self.db.execute("PRAGMA table_info(card_costs)")]
+        names = [x[1] for x in self.db.execute("PRAGMA table_info(card_costs)")]
         values = dict(zip(names, row))
         soul = json.loads(values["soul_json"])
         soul["colors"]["forest"] = 1
@@ -125,7 +125,7 @@ class SqliteCardPackTests(unittest.TestCase):
 
     def test_ncs_semantics_review_is_not_treated_as_neutral_or_free(self):
         row = self.db.execute("SELECT * FROM card_costs").fetchone()
-        names = [x[0] for x in self.db.execute("PRAGMA table_info(card_costs)")]
+        names = [x[1] for x in self.db.execute("PRAGMA table_info(card_costs)")]
         values = dict(zip(names, row))
         soul = json.loads(values["soul_json"])
         soul["colors"]["ncs"] = 1
