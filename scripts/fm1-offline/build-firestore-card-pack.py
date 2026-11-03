@@ -250,7 +250,9 @@ def load_normalized_database(db_path, expected_count=TOTAL):
         connection.close()
         raise RuntimeError("T SQLite integrity_check failed: "+str(integrity))
     required_tables={
-        "cards","card_costs","card_fields","card_images","card_effect_candidate_summaries","card_effect_clauses"
+        "cards","card_costs","card_fields","card_images",
+        "card_effect_candidate_summaries","card_effect_clauses",
+        "game_rule_catalog","card_rule_mappings","skill_enum_inventory"
     }
     present={row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     missing=required_tables-present
@@ -261,6 +263,69 @@ def load_normalized_database(db_path, expected_count=TOTAL):
         row["card_id"]:row
         for row in connection.execute("SELECT * FROM card_costs")
     }
+    skill_rule_rows={
+        row["rule_id"]:row
+        for row in connection.execute("SELECT * FROM game_rule_catalog")
+    }
+    skill_mappings={}
+    for mapping in connection.execute("""
+        SELECT card_id,source_field,source_enum_value,source_name,rule_id,
+               mapping_status,confidence,evidence_references_json
+        FROM card_rule_mappings
+        ORDER BY card_id,source_field
+    """):
+        rule=skill_rule_rows.get(mapping["rule_id"])
+        skill_mappings.setdefault(str(mapping["card_id"]),[]).append({
+            "sourceField":mapping["source_field"],
+            "sourceEnumValue":mapping["source_enum_value"],
+            "sourceName":mapping["source_name"],
+            "ruleId":mapping["rule_id"],
+            "mappingStatus":mapping["mapping_status"],
+            "confidence":mapping["confidence"],
+            "evidenceReferences":json.loads(mapping["evidence_references_json"] or "[]"),
+            "ruleName":rule["canonical_name"] if rule else None,
+            "ruleAuthority":rule["source_authority"] if rule else None,
+            "ruleVerificationStatus":rule["verification_status"] if rule else None,
+            "ruleImplementationStatus":rule["implementation_status"] if rule else None,
+            "rulePlayableByDefault":bool(rule["playable_by_default"]) if rule else False,
+        })
+    skill_db_counts={
+        "manualRuleCount":connection.execute(
+            "SELECT COUNT(*) FROM game_rule_catalog WHERE source_authority='manual'"
+        ).fetchone()[0],
+        "communityRuleCandidateCount":connection.execute(
+            "SELECT COUNT(*) FROM game_rule_catalog WHERE source_authority='community'"
+        ).fetchone()[0],
+        "cardRuleMappingRows":connection.execute("SELECT COUNT(*) FROM card_rule_mappings").fetchone()[0],
+        "manualSkillMappingRows":connection.execute(
+            "SELECT COUNT(*) FROM card_rule_mappings WHERE mapping_status='manual_verified'"
+        ).fetchone()[0],
+        "communitySkillCandidateRows":connection.execute(
+            "SELECT COUNT(*) FROM card_rule_mappings WHERE mapping_status='community_documented_candidate'"
+        ).fetchone()[0],
+        "unmappedSkillRows":connection.execute(
+            "SELECT COUNT(*) FROM card_rule_mappings WHERE mapping_status='unmapped'"
+        ).fetchone()[0],
+        "skillEnumInventoryRows":connection.execute("SELECT COUNT(*) FROM skill_enum_inventory").fetchone()[0],
+        "playableCommunityRuleRows":connection.execute(
+            "SELECT COUNT(*) FROM game_rule_catalog WHERE source_authority='community' AND playable_by_default=1"
+        ).fetchone()[0],
+    }
+    expected_skill_counts={
+        "manualRuleCount":27,
+        "communityRuleCandidateCount":41,
+    }
+    for key,value in expected_skill_counts.items():
+        if skill_db_counts[key]!=value:
+            connection.close()
+            raise RuntimeError(f"T SQLite skill rule catalogue mismatch: {key}={skill_db_counts[key]} expected={value}")
+    if (skill_db_counts["cardRuleMappingRows"]<15000
+        or skill_db_counts["manualSkillMappingRows"]<1000
+        or skill_db_counts["communitySkillCandidateRows"]<100
+        or skill_db_counts["skillEnumInventoryRows"]<100
+        or skill_db_counts["playableCommunityRuleRows"]!=0):
+        connection.close()
+        raise RuntimeError("T SQLite card-level skill mapping validation failed: "+json.dumps(skill_db_counts,ensure_ascii=False))
     image_rows={}
     for image in connection.execute(
         "SELECT card_id,image_type,source_url,local_path,archive_path,mime_type,byte_size,sha256,download_status "
@@ -372,6 +437,7 @@ def load_normalized_database(db_path, expected_count=TOTAL):
             "collected_at":item["collected_at"],
             "normalized_cost":db_cost_to_app(cost_rows.get(cid)),
             "effect_candidates":effect_rows.get(cid,[]),
+            "skill_mappings":skill_mappings.get(cid,[]),
         }
         records.append(record)
     fk=connection.execute("PRAGMA foreign_key_check").fetchall()
@@ -384,6 +450,8 @@ def load_normalized_database(db_path, expected_count=TOTAL):
         raise RuntimeError(
             f"T SQLite cost/image parent counts mismatch: costs={len(cost_rows)} images={len(image_rows)} expected={expected_count}"
         )
+    if len(skill_mappings)<1000:
+        raise RuntimeError(f"T SQLite card rule mapping coverage too low: {len(skill_mappings)}")
     return records
 
 
@@ -441,6 +509,21 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
         "sourceFields":f,"sourceCollectedAt":row.get("collected_at"),
         "sourceDocumentId":cid,
         "effectCandidates":row.get("effect_candidates") or [],
+        "specialSkillMappings":row.get("skill_mappings") or [],
+        "specialSkillRuleIds":[
+            m["ruleId"] for m in (row.get("skill_mappings") or [])
+            if m.get("sourceField")=="Skill1" and m.get("mappingStatus")=="manual_verified"
+            and m.get("ruleAuthority")=="manual" and m.get("rulePlayableByDefault") is False
+        ],
+        "specialSkillRuleId":next((
+            m["ruleId"] for m in (row.get("skill_mappings") or [])
+            if m.get("sourceField")=="Skill1" and m.get("mappingStatus")=="manual_verified"
+            and m.get("ruleAuthority")=="manual" and m.get("rulePlayableByDefault") is False
+        ),None),
+        "specialSkillExecutionStatus":"manual-rule-catalogue-mapped" if any(
+            m.get("sourceField")=="Skill1" and m.get("mappingStatus")=="manual_verified"
+            and m.get("ruleAuthority")=="manual" for m in (row.get("skill_mappings") or [])
+        ) else "unmapped-or-community-candidate",
         "effectExecutionStatus":"candidate-only",
         "effectVerificationStatus":"pattern_candidate",
         "effect":None
@@ -706,7 +789,7 @@ def convert(a):
     land_production_review=sum(1 for c in cards if c["type"]=="land" and c["soulProductionStatus"]=="needs-review")
     land_token_counts=Counter(t.get("symbol") or "UNMAPPED" for c in cards if c["type"]=="land" for t in c["soulProductionTokens"])
     manifest={
-        "format":"FM1-CARD-DATA","version":"1.2.0",
+        "format":"FM1-CARD-DATA","version":"1.3.0",
         "cardsCount":TOTAL,"imagesCount":TOTAL,"cardsSha256":digest,
         "classification":{"source":"current FMLunatic Firestore Category enum + current five-type reference",
           "types":{"land":289,"unit":8633,"spell":3857,"item":1748,"enchant":823},
@@ -732,6 +815,13 @@ def convert(a):
           "verificationStatus":"pattern_candidate",
           "executableEffectMappings":0,
           "policy":"Candidate extraction is reference data only. No candidate is treated as an executable game rule."
+        },
+        "specialSkillReview":{
+          **skill_db_counts,
+          "manualRuleSource":"Manual.zip / specialability.htm",
+          "communitySource":"2017 Inven community reference",
+          "communityRulesExecutable":False,
+          "executionPolicy":"Only manual_verified Skill1 mappings are normalized for the implemented Manual baseline handlers. Skill2 is retained as reference metadata. Community candidates and unmapped values never trigger handlers."
         },
         "landSoulProduction":{
           "source":"Firestore EarnSoulList + Enum+EarnSoul",
@@ -768,6 +858,7 @@ def convert(a):
       "landInstallCostKnown":land_cost_known,"landInstallCostNeedsReview":land_cost_review,
       "mappingReviewLandInstallCost":mapping_review_land,"semanticReviewLandInstallCost":semantic_review_land,
       "effectCandidateRows":effect_candidate_count,"effectClauseRows":effect_clause_count,
+      "specialSkillReview":skill_db_counts,
       "magicLandCount":land_magiclands,"landSoulProductionNeedsReview":land_production_review,
       "format":manifest["format"],"version":manifest["version"]},ensure_ascii=False,indent=2))
 
