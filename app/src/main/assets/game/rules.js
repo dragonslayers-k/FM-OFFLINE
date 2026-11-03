@@ -99,6 +99,8 @@
       if(!hasEquipRule)return {ok:false,reason:'아이템 장착 조건 데이터가 없습니다.'};
       if(card.itemConditions&&card.itemConditions.mapped===false)return {ok:false,reason:'아이템의 원본 종족·소속 장착 조건을 해석하지 못해 안전하게 발동을 차단합니다.'};
     }
+    if(card.type==='enchant'&&(card.effectExecutionStatus==='candidate-only'||card.effectVerificationStatus==='pattern_candidate'))
+      return {ok:false,reason:'인챈트 효과는 SQLite 후보 추출만 완료됐으며 매뉴얼·카드별 테스트로 검증되기 전까지 실행을 차단합니다.'};
     if(card.type==='enchant'&&(!Number.isInteger(Number(card.slotIndex))||Number(card.slotIndex)<1||!['own','enemy'].includes(card.slotOwner)))
       return {ok:false,reason:'인챈트의 원본 슬롯 위치가 확인되지 않아 발동할 수 없습니다.'};
     if(card.type==='spell'){
