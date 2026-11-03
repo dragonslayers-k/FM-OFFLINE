@@ -179,7 +179,8 @@ jobs:
           unzip -p release-package/FM1-CardData-v1.3.0.zip skill2-catalogue.json > "$RUNNER_TEMP/fm1-app-skill2-catalogue.json"
           node scripts/fm1-offline/validate-app-card-pack.cjs "$RUNNER_TEMP/fm1-app-cards.json" "$RUNNER_TEMP/fm1-app-skill-mappings.json" "$RUNNER_TEMP/fm1-app-effect-candidates.json" "$RUNNER_TEMP/fm1-app-skill2-catalogue.json"
           rm -f "$RUNNER_TEMP/fm1-app-cards.json" "$RUNNER_TEMP/fm1-app-skill-mappings.json" "$RUNNER_TEMP/fm1-app-effect-candidates.json" "$RUNNER_TEMP/fm1-app-skill2-catalogue.json"
-          rm -rf "$RUNNER_TEMP/fm1-pack" "$RUNNER_TEMP/fm1-source"
+          # Keep the unpacked payload until upload-artifact creates a directly importable ZIP.
+          rm -rf "$RUNNER_TEMP/fm1-source"
           echo "FM1_DATA_PACK_STATUS=built-from-$CARD_DB_RELEASE_TAG" >> "$GITHUB_ENV"
 
       - name: Set up JDK 17
@@ -318,14 +319,17 @@ jobs:
             echo "Unknown or mixed costs are not treated as free."
           } > release-package/build-status.txt
 
-      - name: Upload standalone Android card data ZIP
-        if: always() && hashFiles('release-package/FM1-CardData-v1.3.0.zip') != ''
+      - name: Upload directly importable Android card data archive
+        if: always() && env.FM1_DATA_PACK_STATUS != ''
         uses: actions/upload-artifact@v7
         with:
-          name: FM1-CardData-v1.3.0-DB29
-          path: release-package/FM1-CardData-v1.3.0.zip
+          name: FM1-CardData-v1.3.0-IMPORT-DB29
+          # Upload the payload directory, not a ZIP containing another ZIP.
+          # The downloaded artifact ZIP therefore has cards.json, manifest.json,
+          # and images/ at its root and can be selected directly in the APK.
+          path: ${{ runner.temp }}/fm1-pack/**
           if-no-files-found: error
-          compression-level: 0
+          compression-level: 6
           retention-days: 90
 
       - name: Upload APK and build report
