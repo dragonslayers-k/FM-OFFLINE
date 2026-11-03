@@ -510,6 +510,10 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
 
     c=row.get("normalized_cost") or parse_cost(f.get("RequireSoul"),require_soul_enum)
     cost_known=(c["known"] and typ!="land")
+    skill1_name=label(enums,"Skill1",f.get("Skill1"))
+    skill2_name=label(enums,"Skill2",f.get("Skill2"))
+    source_skill1=next((m for m in (row.get("skill_mappings") or []) if m.get("sourceField")=="Skill1"),None)
+    source_skill2=next((m for m in (row.get("skill_mappings") or []) if m.get("sourceField")=="Skill2"),None)
     card={
         "id":cid,"name":name,"type":typ,"faction":color,
         "cost":c["cost"] if cost_known else {},
@@ -534,13 +538,23 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
         "effectCandidateCount":len(row.get("effect_candidates") or []),
         "effectExecutionStatus":"candidate-only" if row.get("effect_candidates") else "no-effect-candidate",
         "effectVerificationStatus":"pattern_candidate" if row.get("effect_candidates") else "no-effect-candidate",
+        "specialSkill1":skill1_name if typ=="unit" else "",
+        "specialSkill2":skill2_name if typ=="unit" else "",
+        "specialSkill1EnumValue":f.get("Skill1") if typ=="unit" else None,
+        "specialSkill2EnumValue":f.get("Skill2") if typ=="unit" else None,
+        "specialSkill2MappingStatus":(
+            source_skill2.get("mappingStatus","no_special_skill") if typ=="unit" and source_skill2 else "no_special_skill"
+        ),
+        "specialSkill2RuleId":None,
+        "specialSkill2ExecutionStatus":(
+            "no-skill" if typ!="unit" or not skill2_name or skill2_name=="없음"
+            else "disabled-until-skill2-rule-review"
+        ),
         "specialSkillMappingStatus":(
-            next((m["mappingStatus"] for m in (row.get("skill_mappings") or [])
-                  if typ=="unit" and m.get("sourceField")=="Skill1"),"no_special_skill")
+            source_skill1.get("mappingStatus","no_special_skill") if typ=="unit" and source_skill1 else "no_special_skill"
         ),
         "specialSkillRuleAuthority":(
-            next((m["ruleAuthority"] for m in (row.get("skill_mappings") or [])
-                  if typ=="unit" and m.get("sourceField")=="Skill1"),None)
+            source_skill1.get("ruleAuthority") if typ=="unit" and source_skill1 else None
         ),
         "specialSkillRuleIds":[
             m["ruleId"] for m in (row.get("skill_mappings") or [])
@@ -603,9 +617,11 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
         card["sourceCoinTech"]={k:f.get(k) for k in ("ATKCoin","ATKCoinType","ATKCoinCount","DEFCoin","DEFCoinType","DEFCoinCount","HPCoin","HPCoinType","HPCoinCount")}
         ability=label(enums,"UnitType",f.get("UnitType"))
         card["unitAbility"]=ability;add(tabs,"분류별","유닛 능력",ability)
-        skills=[label(enums,k,f.get(k)) for k in ("Skill1","Skill2")]
+        skills=[skill1_name,skill2_name]
         card["specialSkill"]=" / ".join(s for s in skills if s)
         if card["specialSkill"]: add(tabs,"분류별","특수 공격 기술",card["specialSkill"])
+        add(tabs,"분류별","Skill1 원본 기술",skill1_name or "없음")
+        add(tabs,"분류별","Skill2 원본 기술",skill2_name or "없음")
         for src,ko in [("ATK","공"),("DEF","방"),("HP","체")]:
             if f.get(src) is not None: tabs["분류별"].append({"label":ko,"text":f"{ko}\n{f[src]}"})
     elif typ=="item":
@@ -725,6 +741,77 @@ def self_test():
     assert magic_many["known"] and magic_many["magicLand"] is True
     print("converter self-test: PASS")
 
+def build_skill2_catalogue(mapping_records, cards, release_tag):
+    """Create a distinct, source-linked Skill2 inventory; never make Skill2 executable by alias."""
+    card_by_id={str(card.get("id")):card for card in cards}
+    grouped={}
+    status_counts=Counter()
+    active_card_ids=set()
+    no_skill_card_ids=set()
+    for mapping in mapping_records:
+        if mapping.get("sourceField")!="Skill2":
+            continue
+        enum_value=str(mapping.get("sourceEnumValue") or "")
+        source_name=str(mapping.get("sourceName") or "")
+        key=(enum_value,source_name)
+        entry=grouped.setdefault(key,{
+            "sourceField":"Skill2","enumValue":enum_value,"name":source_name,
+            "cardIds":[],"sourceMappingStatuses":set(),"sourceCandidateRuleIds":set()
+        })
+        card_id=str(mapping.get("cardId") or "")
+        if card_id: entry["cardIds"].append(card_id)
+        status=str(mapping.get("mappingStatus") or "unmapped")
+        entry["sourceMappingStatuses"].add(status)
+        status_counts[status]+=1
+        if status=="no_special_skill" or source_name in ("","없음"):
+            if card_id: no_skill_card_ids.add(card_id)
+        elif card_id:
+            active_card_ids.add(card_id)
+        if mapping.get("ruleId"):
+            entry["sourceCandidateRuleIds"].add(str(mapping["ruleId"]))
+
+    records=[]
+    for key,entry in sorted(grouped.items(),key=lambda item:(
+        int(item[0][0]) if item[0][0].isdigit() else 10**9,item[0][1])):
+        card_ids=sorted(set(entry["cardIds"]))
+        refs=[]
+        for card_id in card_ids:
+            card=card_by_id.get(card_id)
+            if card is None:
+                raise RuntimeError("Skill2 mapping references missing cards.json record: "+card_id)
+            refs.append({
+                "cardId":card_id,"name":card.get("name"),
+                "sourceCardUrl":card.get("sourceCardUrl"),
+                "sourceListUrl":card.get("sourceListUrl"),
+                "faction":card.get("faction"),"unitAbility":card.get("unitAbility"),
+                "level":card.get("level"),"ap":card.get("ap"),"dp":card.get("dp"),"hp":card.get("hp"),
+                "skill1":card.get("specialSkill1"),"text":card.get("text") or "",
+                "description":card.get("description") or "",
+                "effectCandidateCount":card.get("effectCandidateCount",0)
+            })
+        source_name=entry["name"]
+        no_skill=source_name in ("","없음") or entry["sourceMappingStatuses"]=={"no_special_skill"}
+        records.append({
+            "sourceField":"Skill2","enumValue":entry["enumValue"],"name":source_name,
+            "cardCount":len(card_ids),"cardIds":card_ids,"cardReferences":refs,
+            "sourceMappingStatuses":sorted(entry["sourceMappingStatuses"]),
+            "sourceCandidateRuleIds":sorted(entry["sourceCandidateRuleIds"]),
+            "ruleId":None,"ruleAuthority":None,
+            "verificationStatus":"no_special_skill" if no_skill else "extracted_unverified",
+            "executionStatus":"no-skill" if no_skill else "disabled-until-skill2-rule-review"
+        })
+    active_records=[x for x in records if x["verificationStatus"]!="no_special_skill"]
+    return {
+        "schemaVersion":1,"sourceDatabaseRelease":release_tag,"sourceField":"Skill2",
+        "description":"Independent Skill2 enum inventory with per-card URLs and text. It is not merged with Manual.zip Skill1 attack rules. Every Skill2 mechanic remains disabled until separately evidenced and test-verified.",
+        "mappingRecordCount":sum(status_counts.values()),"entryCount":len(records),
+        "activeSkillCount":len(active_records),"activeCardCount":len(active_card_ids),
+        "noSkillCardCount":len(no_skill_card_ids),
+        "mappingStatusCounts":dict(sorted(status_counts.items())),
+        "executableRuleCount":0,"records":records
+    }
+
+
 def convert(a):
     skill_catalogue_path=Path(a.skill_catalogue)
     skill_catalogue=json.loads(skill_catalogue_path.read_text(encoding="utf-8"))
@@ -791,6 +878,8 @@ def convert(a):
     }
     effect_candidate_bytes=json.dumps(effect_candidate_data,ensure_ascii=False,separators=(",",":")).encode("utf-8")
     effect_candidate_sha256=hashlib.sha256(effect_candidate_bytes).hexdigest()
+    skill2_catalogue_bytes=json.dumps(skill2_catalogue,ensure_ascii=False,separators=(",",":")).encode("utf-8")
+    skill2_catalogue_sha256=hashlib.sha256(skill2_catalogue_bytes).hexdigest()
     for index,row in enumerate(source_records,1):
         card=build_card(row,enums,earn_soul_enum,require_soul_enum)
         for image_type in ("small","large"):
@@ -800,6 +889,14 @@ def convert(a):
         if index%3000==0: print(f"converted {index}/{TOTAL} SQLite cards",flush=True)
     counts=Counter(c["type"] for c in cards)
     if len(cards)!=TOTAL or counts!=EXPECTED: raise RuntimeError(f"Card counts differ: {len(cards)} {dict(counts)}")
+    skill2_catalogue=build_skill2_catalogue(skill_mapping_records,cards,a.db_release_tag)
+    if expected_count==TOTAL and (
+        skill2_catalogue["entryCount"]!=189 or skill2_catalogue["activeSkillCount"]!=188
+        or skill2_catalogue["activeCardCount"]!=1366 or skill2_catalogue["executableRuleCount"]!=0
+    ):
+        raise RuntimeError("DB29 Skill2 inventory validation failed: "+json.dumps({
+            k:skill2_catalogue[k] for k in ("entryCount","activeSkillCount","activeCardCount","mappingStatusCounts")
+        },ensure_ascii=False))
     ids=[c["id"] for c in cards]
     if len(set(ids))!=TOTAL: raise RuntimeError("Duplicate card IDs")
     out=Path(a.output)
@@ -914,12 +1011,18 @@ def convert(a):
           "cardSkillMappingsEntry":"card-skill-mappings.json",
           "cardSkillMappingsSha256":skill_mapping_sha256,
           "cardSkillMappingRecordCount":len(skill_mapping_records),
+          "skill2CatalogueEntry":"skill2-catalogue.json",
+          "skill2CatalogueSha256":skill2_catalogue_sha256,
+          "skill2EntryCount":skill2_catalogue["entryCount"],
+          "skill2ActiveSkillCount":skill2_catalogue["activeSkillCount"],
+          "skill2ActiveCardCount":skill2_catalogue["activeCardCount"],
+          "skill2ExecutableRuleCount":0,
           "effectCandidatesEntry":"card-effect-candidates.json",
           "effectCandidatesSha256":effect_candidate_sha256,
           "manualRuleSource":"Manual.zip / specialability.htm",
           "communitySource":"2017 Inven community reference",
           "communityRulesExecutable":False,
-          "executionPolicy":"Only manual_verified Skill1 mappings are eligible for Manual-baseline handlers. Skill2 remains reference metadata. Community candidates and unmapped values never trigger handlers."
+          "executionPolicy":"Only manual_verified Skill1 mappings are eligible for Manual-baseline handlers. Skill2 is an independent enum inventory with per-card source links and text evidence; no Skill2 entry is executable until its own definition and engine tests are verified. Community candidates and unmapped values never trigger handlers."
         },
         "landSoulProduction":{
           "source":"Firestore EarnSoulList + Enum+EarnSoul",
@@ -935,10 +1038,12 @@ def convert(a):
     shutil.copy2(skill_catalogue_path,out/"skill-catalogue.json")
     (out/"card-skill-mappings.json").write_bytes(skill_mapping_bytes)
     (out/"card-effect-candidates.json").write_bytes(effect_candidate_bytes)
+    (out/"skill2-catalogue.json").write_bytes(skill2_catalogue_bytes)
     unpacked_bytes=(cards_bytes+image_bytes+(out/"manifest.json").stat().st_size
                     +(out/"skill-catalogue.json").stat().st_size
                     +(out/"card-skill-mappings.json").stat().st_size
-                    +(out/"card-effect-candidates.json").stat().st_size)
+                    +(out/"card-effect-candidates.json").stat().st_size
+                    +(out/"skill2-catalogue.json").stat().st_size)
     if unpacked_bytes > 700*1024*1024:
         raise RuntimeError(f"FM1-CARD-DATA exceeds Android 700MB unpack limit: {unpacked_bytes} bytes")
     manifest["unpackedBytes"]=unpacked_bytes
@@ -951,6 +1056,7 @@ def convert(a):
         archive.write(out/"skill-catalogue.json","skill-catalogue.json",compress_type=zipfile.ZIP_DEFLATED,compresslevel=6)
         archive.write(out/"card-skill-mappings.json","card-skill-mappings.json",compress_type=zipfile.ZIP_DEFLATED,compresslevel=6)
         archive.write(out/"card-effect-candidates.json","card-effect-candidates.json",compress_type=zipfile.ZIP_DEFLATED,compresslevel=6)
+        archive.write(out/"skill2-catalogue.json","skill2-catalogue.json",compress_type=zipfile.ZIP_DEFLATED,compresslevel=6)
         for img in sorted(images.glob("*.webp")):
             archive.write(img,"images/"+img.name,compress_type=zipfile.ZIP_STORED)
     with zipfile.ZipFile(z) as archive:
@@ -958,7 +1064,8 @@ def convert(a):
         names=archive.namelist()
         if ("cards.json" not in names or "manifest.json" not in names or
             "skill-catalogue.json" not in names or "card-skill-mappings.json" not in names or
-            "card-effect-candidates.json" not in names or sum(n.startswith("images/") for n in names)!=TOTAL):
+            "card-effect-candidates.json" not in names or "skill2-catalogue.json" not in names
+            or sum(n.startswith("images/") for n in names)!=TOTAL):
             raise RuntimeError("Generated ZIP structure incomplete")
     print(json.dumps({"zip":str(z),"bytes":z.stat().st_size,"cards":TOTAL,"images":TOTAL,
       "types":dict(counts),"cardsSha256":digest,"cardsJsonBytes":cards_bytes,"imageBytes":image_bytes,
