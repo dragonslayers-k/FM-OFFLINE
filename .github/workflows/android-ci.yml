@@ -174,8 +174,9 @@ jobs:
             --summary "release-package/enchant-effect-audit.json" \
             --csv "release-package/enchant-effect-audit.csv"
           unzip -p release-package/FM1-CardData-v1.3.0.zip cards.json > "$RUNNER_TEMP/fm1-app-cards.json"
-          node scripts/fm1-offline/validate-app-card-pack.cjs "$RUNNER_TEMP/fm1-app-cards.json"
-          rm -f "$RUNNER_TEMP/fm1-app-cards.json"
+          unzip -p release-package/FM1-CardData-v1.3.0.zip card-skill-mappings.json > "$RUNNER_TEMP/fm1-app-skill-mappings.json"
+          node scripts/fm1-offline/validate-app-card-pack.cjs "$RUNNER_TEMP/fm1-app-cards.json" "$RUNNER_TEMP/fm1-app-skill-mappings.json"
+          rm -f "$RUNNER_TEMP/fm1-app-cards.json" "$RUNNER_TEMP/fm1-app-skill-mappings.json"
           rm -rf "$RUNNER_TEMP/fm1-pack" "$RUNNER_TEMP/fm1-source"
           echo "FM1_DATA_PACK_STATUS=built-from-$CARD_DB_RELEASE_TAG" >> "$GITHUB_ENV"
 
