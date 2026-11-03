@@ -58,6 +58,7 @@ jobs:
           node --check app/src/main/assets/game/card-schema.js
           node --check app/src/main/assets/game/app.js
           node --check app/src/main/assets/game/rules.js
+          node --check scripts/fm1-offline/validate-app-card-pack.cjs
           node --test tests/*.test.cjs
 
       - name: Set up Python
@@ -68,7 +69,7 @@ jobs:
       - name: Check Firestore-to-Android converter
         run: |
           set -euo pipefail
-          python -m py_compile scripts/fm1-offline/build-firestore-card-pack.py scripts/fm1-offline/audit-enchant-cards.py scripts/fm1-offline/validate-app-card-pack.cjs
+          python -m py_compile scripts/fm1-offline/build-firestore-card-pack.py scripts/fm1-offline/audit-enchant-cards.py
           python scripts/fm1-offline/build-firestore-card-pack.py --self-test
           python -m unittest tests/test_sqlite_card_pack.py
           python scripts/fm1-offline/audit-enchant-cards.py --self-test
@@ -77,6 +78,7 @@ jobs:
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.build_card_pack == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[build-card-pack]')) }}
         env:
           CARD_DB_RELEASE: https://github.com/dragonslayers-k/T/releases/download/${{ env.CARD_DB_RELEASE_TAG }}
+          SOURCE_DIR: ${{ runner.temp }}/fm1-source
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/fm1-source" release-package
@@ -90,9 +92,9 @@ jobs:
             "$CARD_DB_RELEASE/images.tar.gz.part-aa" -o "$RUNNER_TEMP/fm1-source/images.tar.gz.part-aa"
 
           python - <<'PY'
-          import hashlib, json
+          import hashlib, json, os
           from pathlib import Path
-          root=Path("$RUNNER_TEMP/fm1-source")
+          root=Path(os.environ["SOURCE_DIR"])
           summary=json.loads((root/"sqlite-build-summary.json").read_text(encoding="utf-8"))
           checks=[
               ("fm1_cards.sqlite.gz", summary.get("sqliteGzipSha256")),
