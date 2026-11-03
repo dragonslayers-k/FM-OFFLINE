@@ -113,11 +113,13 @@ def parse_earn_soul_list(raw, earn_enum, mu_soul=None):
         if not token.isdigit():
             out["review"].append("non-numeric-token:" + token)
             continue
-        code, amount = token[:2], int(token[2:])
-        meta = earn_enum.get(code)
+        code, amount = int(token[:2]), int(token[2:])
+        # Firestore enum keys are numeric codes ("2"), while EarnSoulList
+        # serializes fixed-width tokens ("02"). Normalize before lookup.
+        meta = earn_enum.get(str(code))
         if not meta:
             out["review"].append("unresolved-earn-soul-code:" + token)
-            out["tokens"].append({"raw":token,"code":int(code),"amount":amount,"status":"unmapped"})
+            out["tokens"].append({"raw":token,"code":code,"symbol":None,"amount":amount,"status":"unmapped"})
             continue
         symbol = meta["symbol"]
         record = {
@@ -335,8 +337,8 @@ def self_test():
     assert large_image_card_id("./small/16121533861.webp") is None
     assert large_image_card_id("16121533861.webp") is None
     earn_enum={
-        "03":{"symbol":"ALL","icon":"/all.webp"},
-        "02":{"symbol":"SPELL","icon":"/spell.webp"},
+        "3":{"symbol":"ALL","icon":"/all.webp"},
+        "2":{"symbol":"SPELL","icon":"/spell.webp"},
         "11":{"symbol":"DARK","icon":"/dark.webp"},
         "12":{"symbol":"DARK_EARTH","icon":"/dark_earth.webp"},
         "71":{"symbol":"LIGHT","icon":"/light.webp"},
@@ -353,6 +355,10 @@ def self_test():
     assert magic["known"] and magic["magicLand"] and not magic["colored"] and magic["neutral"]==0
     mismatch=parse_earn_soul_list("8201",earn_enum,1)
     assert not mismatch["known"] and any("cross-check-mismatch" in x for x in mismatch["review"])
+    none=parse_earn_soul_list("0100",earn_enum,0)
+    assert none["known"] and not none["colored"] and none["neutral"]==0
+    magic_many=parse_earn_soul_list("0201",earn_enum,0)
+    assert magic_many["known"] and magic_many["magicLand"] is True
     print("converter self-test: PASS")
 
 def convert(a):
@@ -428,7 +434,7 @@ def convert(a):
     land_cost_review=sum(1 for c in cards if c["type"]=="land" and not c["landInstallCostKnown"])
     land_magiclands=sum(1 for c in cards if c["type"]=="land" and c["isMagicLand"])
     land_production_review=sum(1 for c in cards if c["type"]=="land" and c["soulProductionStatus"]=="needs-review")
-    land_token_counts=Counter(t["symbol"] for c in cards if c["type"]=="land" for t in c["soulProductionTokens"])
+    land_token_counts=Counter(t.get("symbol") or "UNMAPPED" for c in cards if c["type"]=="land" for t in c["soulProductionTokens"])
     manifest={
         "format":"FM1-CARD-DATA","version":"1.1.1",
         "cardsCount":TOTAL,"imagesCount":TOTAL,"cardsSha256":digest,
