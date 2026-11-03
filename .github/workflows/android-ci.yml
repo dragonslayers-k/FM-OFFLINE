@@ -315,7 +315,7 @@ jobs:
             echo "Emulator installation/launch: ${EMULATOR_OUTCOME:-not-run}"
             echo "Android card ZIP: ${FM1_DATA_PACK_STATUS:-not-built-in-this-run}"
             echo "Source DB release: https://github.com/dragonslayers-k/T/releases/tag/${CARD_DB_RELEASE_TAG}"
-            echo "Data pack version: FM1-CARD-DATA 1.2.0"
+            echo "Data pack version: FM1-CARD-DATA 1.3.0"
             echo "Card counts: Land 289 / Unit 8633 / Magic 3857 / Item 1748 / Enchant 823"
             echo "Unknown or mixed costs are not treated as free."
           } > release-package/build-status.txt
@@ -324,7 +324,7 @@ jobs:
         if: always() && hashFiles('release-package/FM1-CardData-v1.3.0.zip') != ''
         uses: actions/upload-artifact@v7
         with:
-          name: FM1-CardData-v1.3.0-DB28
+          name: FM1-CardData-v1.3.0-DB29
           path: release-package/FM1-CardData-v1.3.0.zip
           if-no-files-found: error
           compression-level: 0
