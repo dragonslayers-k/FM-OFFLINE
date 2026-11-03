@@ -118,8 +118,15 @@ jobs:
           gzip -t "$RUNNER_TEMP/fm1-source/fm1_cards.sqlite.gz"
           gzip -dc "$RUNNER_TEMP/fm1-source/fm1_cards.sqlite.gz" > "$RUNNER_TEMP/fm1-source/fm1_cards.sqlite"
           python - "$RUNNER_TEMP/fm1-source/fm1_cards.sqlite" <<'PY'
-          import sqlite3, sys
-          db=sqlite3.connect(sys.argv[1])
+          import hashlib, json, sqlite3, sys
+          from pathlib import Path
+          db_path=Path(sys.argv[1])
+          summary_path=db_path.parent/"sqlite-build-summary.json"
+          summary=json.loads(summary_path.read_text(encoding="utf-8"))
+          actual_sha=hashlib.sha256(db_path.read_bytes()).hexdigest()
+          if actual_sha.lower()!=str(summary.get("sqliteDatabaseSha256","")).lower():
+              raise SystemExit("Uncompressed SQLite SHA-256 does not match T release manifest")
+          db=sqlite3.connect(db_path)
           result=db.execute("PRAGMA integrity_check").fetchone()[0]
           if result!="ok": raise SystemExit("Downloaded normalized DB failed SQLite integrity_check: "+result)
           if db.execute("select count(*) from cards").fetchone()[0]!=15350: raise SystemExit("Unexpected SQLite card count")
