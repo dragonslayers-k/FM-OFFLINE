@@ -276,7 +276,6 @@ def load_normalized_database(db_path):
             "downloadStatus":image["download_status"],
         }
     effect_rows={}
-    candidate_ids={}
     candidate_objects={}
     for item in connection.execute(
         "SELECT candidate_id,card_id,text_type,source_text_sha256,source_detail_url,"
@@ -286,7 +285,6 @@ def load_normalized_database(db_path):
         "span_integrity_status FROM card_effect_candidate_summaries ORDER BY card_id,candidate_id"
     ):
         candidate_id=int(item["candidate_id"])
-        candidate_ids[candidate_id]=str(item["card_id"])
         entry={
             "textType":item["text_type"],
             "sourceTextSha256":item["source_text_sha256"],
@@ -306,10 +304,6 @@ def load_normalized_database(db_path):
         }
         effect_rows.setdefault(str(item["card_id"]),[]).append(entry)
         candidate_objects[candidate_id]=entry
-    effect_index={}
-    for card_id,entries in effect_rows.items():
-        for entry in entries:
-            effect_index[(card_id,entry["sourceTextSha256"])]=entry
     for clause in connection.execute(
         "SELECT candidate_id,card_id,clause_index,start_char,end_char,segment_type,segment_text,"
         "topic_candidates_json,trigger_candidates_json,actor_candidates_json,target_candidates_json,"
@@ -349,8 +343,24 @@ def load_normalized_database(db_path):
         images=image_rows.get(cid,{})
         if set(images)!={"small","large"}:
             raise RuntimeError(f"Card image metadata incomplete for {cid}: {sorted(images)}")
-        if any(images[k]["downloadStatus"]!="archive_verified" or not images[k]["sha256"] for k in ("small","large")):
+        if any(
+            images[k]["downloadStatus"]!="archive_verified" or not images[k]["sha256"]
+            or images[k]["mimeType"]!="image/webp" or not images[k]["archivePath"]
+            for k in ("small","large")
+        ):
             raise RuntimeError(f"Card image is not archive-verified: {cid}")
+        for candidate in effect_rows.get(cid,[]):
+            if candidate["sourceCardUrl"]!=detail:
+                raise RuntimeError(f"Effect candidate points to the wrong source card URL: {cid}")
+            if candidate["verificationStatus"]!="pattern_candidate":
+                raise RuntimeError(f"Unexpected executable effect verification status for {cid}")
+            if candidate["spanIntegrityStatus"] not in ("exact","not_split"):
+                raise RuntimeError(f"Effect candidate has unverified source spans: {cid}")
+            if candidate["spanIntegrityStatus"]=="exact":
+                original="".join(x.get("text","") for x in candidate["analysis"].get("clause_candidates",[]))
+                flattened="".join(x["text"] for x in candidate["clauses"])
+                if original!=flattened:
+                    raise RuntimeError(f"Effect candidate clause text does not reconstruct source: {cid}")
         record={
             "card_id":cid,
             "name":item["name"],
@@ -370,6 +380,10 @@ def load_normalized_database(db_path):
         raise RuntimeError(f"T SQLite foreign-key errors: {len(fk)}")
     if len(records)!=TOTAL:
         raise RuntimeError(f"T SQLite card count mismatch: {len(records)}")
+    if len(cost_rows)!=TOTAL or len(image_rows)!=TOTAL:
+        raise RuntimeError(
+            f"T SQLite cost/image parent counts mismatch: costs={len(cost_rows)} images={len(image_rows)}"
+        )
     return records
 
 
@@ -409,7 +423,7 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
         "id":cid,"name":name,"type":typ,"faction":color,
         "cost":c["cost"] if cost_known else {},
         "costKnown":cost_known,"costMapped":cost_known,
-        "costSource":("firestore-requiresoul-land-install" if c["known"] else "unresolved-firestore-requiresoul-land-install") if typ=="land" else ("firestore-requiresoul-enum" if cost_known else "unresolved-firestore-requiresoul"),
+        "costSource":c.get("sourceStatus","legacy-enum-parse"),
         "soulCostRaw":f.get("RequireSoul"),"costReview":c["review"],
         "costReviewStatus":c.get("sourceStatus","legacy-enum-parse"),
         "costMappingReview":bool(c.get("mappingReview",False)),
