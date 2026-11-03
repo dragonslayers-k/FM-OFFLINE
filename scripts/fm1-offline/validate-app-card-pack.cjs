@@ -138,12 +138,35 @@ for (const [key, expected] of skill2Expected) {
     // Evidence references deliberately preserve exact source HTML/text. Compare
     // them with the raw pack record, not the normalized display text (which has
     // tags/entities/line breaks decoded for rendering).
-    if (!card || !rawCard || ref.sourceCardUrl !== card.sourceCardUrl ||
-        ref.sourceListUrl !== card.sourceListUrl || ref.name !== card.name ||
-        ref.text !== (rawCard.text || '') || ref.description !== (rawCard.description || '') ||
-        ref.faction !== card.faction || ref.unitAbility !== card.unitAbility ||
-        ref.level !== card.level || ref.ap !== card.ap || ref.dp !== card.dp || ref.hp !== card.hp) {
-      throw new Error('Skill2 card raw evidence link/text mismatch: ' + String(ref.cardId));
+    if (!rawCard) {
+      throw new Error('Skill2 card evidence references a missing raw card: ' + String(ref.cardId));
+    }
+    // Compare every evidence field with the original cards.json record. The
+    // normalized card is a display/runtime object: it decodes HTML, canonicalizes
+    // faction/ability names, and coerces stats. Comparing raw evidence to that
+    // transformed object creates false mismatches even when the source record
+    // and evidence reference are byte-for-byte semantically identical.
+    const rawEvidenceFields = [
+      ['sourceCardUrl', rawCard.sourceCardUrl ?? null],
+      ['sourceListUrl', rawCard.sourceListUrl ?? null],
+      ['name', rawCard.name ?? null],
+      ['text', rawCard.text || ''],
+      ['description', rawCard.description || ''],
+      ['faction', rawCard.faction ?? null],
+      ['unitAbility', rawCard.unitAbility ?? null],
+      ['skill1', rawCard.specialSkill1 ?? null],
+      ['level', rawCard.level ?? null],
+      ['ap', rawCard.ap ?? null],
+      ['dp', rawCard.dp ?? null],
+      ['hp', rawCard.hp ?? null],
+      ['effectCandidateCount', rawCard.effectCandidateCount ?? 0]
+    ];
+    const mismatchedFields = rawEvidenceFields
+      .filter(([field, expectedValue]) => ref[field] !== expectedValue)
+      .map(([field]) => field);
+    if (mismatchedFields.length) {
+      throw new Error('Skill2 card raw evidence mismatch: ' + String(ref.cardId) +
+        ' fields: ' + mismatchedFields.join(', '));
     }
   }
 }
