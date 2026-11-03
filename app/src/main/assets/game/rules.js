@@ -165,7 +165,11 @@
     skill2_tactical_initiative:'기선제압',
     skill2_devoted_defense:'헌신방어',
     skill2_frenzy_defense:'격노',
-    skill2_holy_aura:'홀리오오라'
+    skill2_holy_aura:'홀리오오라',
+    skill2_alliance_defense:'얼라이디펜스',
+    skill2_racial_defense:'레이셜디펜스',
+    skill2_strong_devoted_defense:'강한헌신방어',
+    skill2_pressure_defense:'프레셔'
   });
 
   function normalizeSpecialSkill2ForEngine(unit) {
@@ -704,7 +708,8 @@ if (card.type === 'unit') {
       (gone.equipmentCards || []).forEach(item => owner.graveyard.push(item));
       owner.graveyard.push(gone);
       addLog(state,owner.name + '의 ' + gone.name + '이(가) 파괴되었습니다. 장착 아이템도 함께 소멸했습니다.');
-      if (normalizeSpecialSkill2ForEngine(gone) === '헌신방어') {
+      const destructionSkill2=normalizeSpecialSkill2ForEngine(gone);
+      if (destructionSkill2 === '헌신방어') {
         // The unit now occupying the destroyed unit's field position is the
         // "next" friendly unit. The benefit is temporary for this battle.
         const nextUnit=owner.units[idx]||null;
@@ -714,6 +719,13 @@ if (card.type === 'unit') {
           changeUnitStat(nextUnit,'hp',1);
           addLog(state,gone.name+'의 헌신방어! 다음 아군 유닛의 공·방·체가 각각 1 증가했습니다.');
         }
+      } else if (destructionSkill2 === '강한헌신방어') {
+        owner.units.forEach(ally=>{
+          changeUnitStat(ally,'ap',1);
+          changeUnitStat(ally,'dp',1);
+          changeUnitStat(ally,'hp',1);
+        });
+        if (owner.units.length) addLog(state,gone.name+'의 강한헌신방어! 남은 아군 유닛 전체의 공·방·체가 각각 1 증가했습니다.');
       }
     }
   }
@@ -911,6 +923,20 @@ if (card.type === 'unit') {
     if(defenderSkill2==='홀리오오라'&&Number(attackRoll.value||0)<=
         Math.floor((Number(defenseRoll.value||0)+Number(defender.hp||0))/2))
       damage=0;
+    if(defenderSkill2==='얼라이디펜스'&&String(defender.affiliation||'')) {
+      const allies=defendingOwner.units.filter(unit=>unit.instanceId!==defender.instanceId&&
+        String(unit.affiliation||'')===String(defender.affiliation)).length;
+      damage=Math.max(0,Number(damage||0)-allies);
+    }
+    if(defenderSkill2==='레이셜디펜스'&&String(defender.race||'')) {
+      const allies=defendingOwner.units.filter(unit=>unit.instanceId!==defender.instanceId&&
+        String(unit.race||'')===String(defender.race)).length;
+      damage=Math.max(0,Number(damage||0)-allies);
+    }
+    if(defenderSkill2==='프레셔') {
+      const emptySlots=Math.max(0,5-defendingOwner.units.length);
+      damage=Math.max(0,Number(damage||0)-Math.floor(emptySlots/2));
+    }
     const amount=Math.min(Math.max(0,Number(defender.hp||0)),Math.max(0,Number(damage||0)));
     const actual=amount>0&&change(defender,defenderStats,'hp',-amount)?amount:0;
     // Wrath converts actual HP lost while defending into AP immediately, so
