@@ -327,7 +327,7 @@ jobs:
           # Upload the payload directory, not a ZIP containing another ZIP.
           # The downloaded artifact ZIP therefore has cards.json, manifest.json,
           # and images/ at its root and can be selected directly in the APK.
-          path: ${{ runner.temp }}/fm1-pack/**
+          path: ${{ runner.temp }}/fm1-pack/
           if-no-files-found: error
           compression-level: 6
           retention-days: 90
