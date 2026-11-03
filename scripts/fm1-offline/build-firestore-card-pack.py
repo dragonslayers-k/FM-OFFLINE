@@ -311,12 +311,16 @@ def load_normalized_database(db_path, expected_count=TOTAL):
             "SELECT COUNT(*) FROM game_rule_catalog WHERE source_authority='community' AND playable_by_default=1"
         ).fetchone()[0],
     }
-    if (skill_db_counts["manualRuleCount"]!=27 or skill_db_counts["communityRuleCandidateCount"]!=41
+    if skill_db_counts["playableCommunityRuleRows"]!=0:
+        connection.close()
+        raise RuntimeError("T SQLite has executable community-only skill rules")
+    if expected_count==TOTAL and (
+        skill_db_counts["manualRuleCount"]!=27 or skill_db_counts["communityRuleCandidateCount"]!=41
         or skill_db_counts["cardRuleMappingRows"]<15000
         or skill_db_counts["manualSkillMappingRows"]<1000
         or skill_db_counts["communitySkillCandidateRows"]<100
         or skill_db_counts["skillEnumInventoryRows"]<100
-        or skill_db_counts["playableCommunityRuleRows"]!=0):
+    ):
         connection.close()
         raise RuntimeError("T SQLite card-level skill mapping validation failed: "+json.dumps(skill_db_counts,ensure_ascii=False))
     skill_rule_rows={
