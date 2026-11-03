@@ -14,6 +14,7 @@
   let logExpanded = true;
   let imageBaseUri = '';
   let authoritativeCardPack = false;
+  let cardDataReadError = '';
   let cardById = new Map();
   let cardSearchIndex = new Map();
   let libraryVisibleCount = 60;
@@ -33,6 +34,7 @@
   function mergeCards() {
     let external = [];
     let packInfo = {};
+    let diagnostics = {};
     try {
       if (window.FMNative && typeof window.FMNative.getCardsJson === 'function') {
         const parsedPack = JSON.parse(window.FMNative.getCardsJson() || '[]');
@@ -42,11 +44,15 @@
       if (window.FMNative && typeof window.FMNative.getDataPackInfo === 'function') {
         packInfo = JSON.parse(window.FMNative.getDataPackInfo() || '{}');
       }
+      if (window.FMNative && typeof window.FMNative.getCardDataDiagnostics === 'function') {
+        diagnostics = JSON.parse(window.FMNative.getCardDataDiagnostics() || '{}');
+      }
       imageBaseUri = window.FMNative && window.FMNative.getImageBaseUri
         ? window.FMNative.getImageBaseUri() : '';
     } catch (e) { console.warn('외부 카드 데이터팩을 읽지 못했습니다.', e); }
 
     authoritativeCardPack = packInfo.installed === true;
+    cardDataReadError = '';
     const map = new Map();
     if (authoritativeCardPack && Array.isArray(external)) {
       try {
@@ -61,6 +67,18 @@
     // The imported FM1 database is the sole source of playable cards.
     if ((data.extraCards || []).length) { data.extraCards = []; safeWrite(); }
     cards = Array.from(map.values());
+    if (authoritativeCardPack && Number(packInfo.installedCards || 0) > 0 &&
+        cards.length !== Number(packInfo.installedCards)) {
+      const bytes = Number(diagnostics.bytes || 0);
+      const limit = Number(diagnostics.limitBytes || 0);
+      cardDataReadError = diagnostics.reason && diagnostics.reason !== 'ready'
+        ? diagnostics.reason
+        : 'WebView parsed ' + cards.length + ' / ' + Number(packInfo.installedCards) + ' installed cards';
+      if (bytes && limit && bytes > limit) {
+        cardDataReadError += ' (cards.json ' + bytes.toLocaleString() + ' bytes; bridge limit ' + limit.toLocaleString() + ')';
+      }
+      console.error('Installed FM1 card payload could not be loaded completely:', cardDataReadError);
+    }
     cardById = new Map(cards.map(c => [c.id, c]));
     cardSearchIndex = new Map(cards.map(c => [c.id,
       `${c.name || ''} ${c.text || ''} ${c.description || ''} ${c.sourceDescription || ''} ${c.rules?.cardText || ''} ${Object.values(c.rules?.classification || {}).join(' ')} ${Object.values(c.rules?.metadata || {}).join(' ')} ${c.faction || ''} ${c.type || ''} ${c.skill || ''} ${c.unitAbility || ''} ${(c.unitAbilityTags || []).join(' ')} ${c.affiliation || ''} ${c.race || ''} ${c.episode || ''} ${c.rarity || ''} ${c.purchaseRank || ''} ${c.deckLimitText || ''} ${c.triggerTiming || ''} ${c.durationText || ''} ${c.slotLocation || ''} ${c.equipAbility || ''} ${(c.allowedUnitAbilities || []).join(' ')} ${c.itemConditions?.race || ''} ${c.itemConditions?.affiliation || ''}`.toLocaleLowerCase()
@@ -109,11 +127,18 @@
       mergeCards();
       libraryVisibleCount = 60;
       catalogueVisibleCount = 100;
-      startMatch();
       renderData(); renderDeck(); renderLibrary();
       const info = window.FMNative && window.FMNative.getDataPackInfo ? JSON.parse(window.FMNative.getDataPackInfo()) : {};
-      if (packStatus) packStatus.textContent = '설치됨 · 카드 ' + (info.installedCards || cards.length).toLocaleString() + '장 · 이미지 ' + (info.installedImages || 0).toLocaleString() + '개';
-      showDataMessage(message + ' 카드 DB ' + cards.length.toLocaleString() + '장만 사용합니다.', false);
+      if (cardDataReadError || cards.length !== Number(info.installedCards || cards.length)) {
+        const detail = cardDataReadError || ('카드 수 불일치: 읽기 ' + cards.length + ' / 설치 ' + Number(info.installedCards || 0));
+        if (packStatus) packStatus.textContent = '데이터팩은 저장됐지만 카드 읽기에 실패했습니다 · ' + detail;
+        showDataMessage('설치는 완료됐지만 게임 카드 데이터 연결에 실패했습니다. ' + detail, true);
+        switchTab('data');
+        return;
+      }
+      startMatch();
+      if (packStatus) packStatus.textContent = '정상 연결 · 카드 ' + cards.length.toLocaleString() + '장 · 이미지 ' + Number(info.installedImages || 0).toLocaleString() + '개';
+      showDataMessage(message + ' 카드 DB ' + cards.length.toLocaleString() + '장 연결 확인.', false);
     } else {
       if (packStatus) packStatus.textContent = '설치 실패 · 기존 데이터팩은 유지됩니다.';
       showDataMessage(message, true);
@@ -554,7 +579,9 @@
       try {
         const info = JSON.parse(window.FMNative.getDataPackInfo());
         status.textContent = info.installed
-          ? '설치됨 · 카드 ' + Number(info.installedCards || cards.length).toLocaleString() + '장 · 이미지 ' + Number(info.installedImages || 0).toLocaleString() + '개'
+          ? (cardDataReadError || cards.length !== Number(info.installedCards || cards.length)
+              ? '설치됐지만 카드 연결 오류 · ' + cards.length.toLocaleString() + ' / ' + Number(info.installedCards || 0).toLocaleString() + '장 읽음'
+              : '정상 연결 · 카드 ' + cards.length.toLocaleString() + '장 · 이미지 ' + Number(info.installedImages || 0).toLocaleString() + '개')
           : '데이터팩이 설치되지 않았습니다.';
       } catch (_) { status.textContent = '데이터팩 상태를 확인할 수 없습니다.'; }
     }

@@ -64,6 +64,22 @@ public final class MainActivity extends Activity {
                 return readText(f);
             } catch (Exception e) { return "[]"; }
         }
+        @JavascriptInterface public String getCardDataDiagnostics() {
+            try {
+                File f = new File(dataDir, "cards.json");
+                JSONObject result = new JSONObject();
+                result.put("exists", f.isFile());
+                result.put("bytes", f.isFile() ? f.length() : 0);
+                result.put("limitBytes", MAX_CARDS_JSON);
+                result.put("withinLimit", f.isFile() && f.length() > 0 && f.length() <= MAX_CARDS_JSON);
+                result.put("reason", !f.isFile() ? "cards.json is missing" :
+                    (f.length() <= 0 ? "cards.json is empty" :
+                    (f.length() > MAX_CARDS_JSON ? "cards.json exceeds WebView bridge limit" : "ready")));
+                return result.toString();
+            } catch (Exception e) {
+                return "{\"exists\":false,\"bytes\":0,\"withinLimit\":false,\"reason\":\"diagnostics failed\"}";
+            }
+        }
         @JavascriptInterface public String getImageBaseUri() {
             return new File(dataDir, "images").toURI().toString();
         }
