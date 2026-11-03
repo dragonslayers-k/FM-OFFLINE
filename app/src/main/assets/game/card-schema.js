@@ -277,11 +277,29 @@
       n.specialSkill2=htmlToText(raw.specialSkill2||'');
       n.specialSkill1EnumValue=raw.specialSkill1EnumValue==null?null:String(raw.specialSkill1EnumValue);
       n.specialSkill2EnumValue=raw.specialSkill2EnumValue==null?null:String(raw.specialSkill2EnumValue);
-      n.specialSkill2MappingStatus=String(raw.specialSkill2MappingStatus||
-        (n.specialSkill2&&n.specialSkill2!=='없음'?'unmapped':'no_special_skill'));
-      n.specialSkill2RuleId=null;
-      n.specialSkill2ExecutionStatus=n.specialSkill2&&n.specialSkill2!=='없음'
-        ?'disabled-until-skill2-rule-review':'no-skill';
+      n.specialSkill2SourceMappingStatus=String(raw.specialSkill2SourceMappingStatus||
+        raw.specialSkill2MappingStatus||'no_special_skill');
+      const skill2RuleNames={
+        skill2_tactical_initiative:'기선제압',
+        skill2_devoted_defense:'헌신방어',
+        skill2_frenzy_defense:'격노',
+        skill2_holy_aura:'홀리오오라',
+        skill2_alliance_defense:'얼라이디펜스',
+        skill2_racial_defense:'레이셜디펜스',
+        skill2_strong_devoted_defense:'강한헌신방어',
+        skill2_pressure_defense:'프레셔'
+      };
+      const skill2RuleId=raw.specialSkill2RuleId==null?null:String(raw.specialSkill2RuleId);
+      const skill2RuleAllowed=raw.specialSkill2MappingStatus==='source_card_verified'&&
+        raw.specialSkill2RuleAuthority==='card_source'&&
+        Object.prototype.hasOwnProperty.call(skill2RuleNames,skill2RuleId)&&
+        skill2RuleNames[skill2RuleId]===n.specialSkill2;
+      n.specialSkill2MappingStatus=skill2RuleAllowed?'source_card_verified':
+        (n.specialSkill2&&n.specialSkill2!=='없음'?'unmapped':'no_special_skill');
+      n.specialSkill2RuleId=skill2RuleAllowed?skill2RuleId:null;
+      n.specialSkill2RuleAuthority=skill2RuleAllowed?'card_source':null;
+      n.specialSkill2ExecutionStatus=skill2RuleAllowed?'source-card-rule-implemented':
+        (n.specialSkill2&&n.specialSkill2!=='없음'?'disabled-until-skill2-rule-review':'no-skill');
       // Compact card metadata carries only the playable decision. Full per-card
       // Skill1/Skill2 provenance lives in card-skill-mappings.json and the source SQLite DB.
       n.specialSkillMappings=Array.isArray(raw.specialSkillMappings)?raw.specialSkillMappings:[];

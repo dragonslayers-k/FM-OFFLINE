@@ -28,10 +28,20 @@ if (effectData.schemaVersion !== 1 || !Array.isArray(effectData.records) ||
   throw new Error('card-effect-candidates.json has an invalid schema or record count');
 }
 const skill2Data = JSON.parse(fs.readFileSync(skill2File, 'utf8'));
+const SKILL2_SOURCE_VERIFIED_RULES = Object.freeze({
+  '기선제압': {ruleId:'skill2_tactical_initiative',evidenceNeedle:'데미지를 1 덜 받는다'},
+  '헌신방어': {ruleId:'skill2_devoted_defense',evidenceNeedle:'아군 필드 다음 유닛 공방체 +1'},
+  '격노': {ruleId:'skill2_frenzy_defense',evidenceNeedle:'자신의 HP가 깎인 수치만큼 AP 상승'},
+  '홀리오오라': {ruleId:'skill2_holy_aura',evidenceNeedle:'방/체 합 1/2 이하'},
+  '얼라이디펜스': {ruleId:'skill2_alliance_defense',evidenceNeedle:'자신과 동일한 소속의 필드 유닛 수 만큼 받는 데미지 감소'},
+  '레이셜디펜스': {ruleId:'skill2_racial_defense',evidenceNeedle:'자신과 동일한 종족의 필드 유닛 수 만큼 받는 데미지 감소'},
+  '강한헌신방어': {ruleId:'skill2_strong_devoted_defense',evidenceNeedle:'아군 필드 유닛 전체의 공방체가 1증가한다'},
+  '프레셔': {ruleId:'skill2_pressure_defense',evidenceNeedle:'아군 필드 빈공간수 절반(내림) 만큼 받은 데미지를 감소시킨다'}
+});
 if (skill2Data.schemaVersion !== 1 || skill2Data.sourceField !== 'Skill2' ||
     !Array.isArray(skill2Data.records) || skill2Data.entryCount !== skill2Data.records.length ||
-    skill2Data.executableRuleCount !== 0) {
-  throw new Error('skill2-catalogue.json has an invalid schema or attempts to enable unverified Skill2 rules');
+    skill2Data.executableRuleCount !== Object.keys(SKILL2_SOURCE_VERIFIED_RULES).length) {
+  throw new Error('skill2-catalogue.json has an invalid schema or source-verified rule count');
 }
 const skillMappingsByCard = new Map();
 for (const mapping of mappingData.records) {
@@ -63,6 +73,7 @@ if (skill2Actual.size !== skill2Expected.size) {
 const cardsById = new Map(cards.map(card => [String(card.id), card]));
 const skill2Audit = { entries:skill2Data.records.length, activeSkills:0, activeCards:0,
   sourceMappings:0, cardReferences:0, executableRules:0 };
+const executableSkill2RuleIds = new Set();
 for (const [key, expected] of skill2Expected) {
   const actual = skill2Actual.get(key);
   if (!actual) throw new Error('Missing Skill2 enum from catalogue: ' + key);
@@ -84,11 +95,39 @@ for (const [key, expected] of skill2Expected) {
       JSON.stringify([...expected.candidateRuleIds].sort())) {
     throw new Error('Skill2 candidate rule provenance differs: ' + key);
   }
-  if (actual.ruleId !== null || actual.ruleAuthority !== null ||
-      actual.executionStatus !== (actual.verificationStatus === 'no_special_skill'
-        ? 'no-skill' : 'disabled-until-skill2-rule-review')) {
+  const verifiedSpec=SKILL2_SOURCE_VERIFIED_RULES[actual.name];
+  if (verifiedSpec) {
+    if (actual.ruleId !== verifiedSpec.ruleId || actual.ruleAuthority !== 'card_source' ||
+        actual.verificationStatus !== 'source_card_verified' ||
+        actual.executionStatus !== 'source-card-rule-implemented' ||
+        actual.trigger == null || actual.mechanic == null) {
+      throw new Error('Skill2 source-verified rule metadata mismatch: ' + key);
+    }
+    const refsById=new Map((actual.cardReferences||[]).map(ref=>[String(ref.cardId),ref]));
+    const evidenceIds=[...(actual.evidenceCardIds||[])].map(String).sort();
+    const expectedEvidenceIds=(actual.cardReferences||[])
+      .filter(ref=>String(ref.description||'').includes(verifiedSpec.evidenceNeedle))
+      .map(ref=>String(ref.cardId)).sort();
+    if (!evidenceIds.length || JSON.stringify(evidenceIds)!==JSON.stringify(expectedEvidenceIds) ||
+        evidenceIds.some(id=>!refsById.has(id))) {
+      throw new Error('Skill2 verified rule evidence card list is incomplete or not exact: ' + key);
+    }
+    if (actual.evidenceSource !== 'fmlunatic-card-detail-description' ||
+        actual.evidenceUrl !== 'https://fmlunatic.com/cardlist') {
+      throw new Error('Skill2 rule evidence source metadata mismatch: ' + key);
+    }
+    executableSkill2RuleIds.add(actual.ruleId);
     skill2Audit.executableRules++;
-    throw new Error('Skill2 entry must remain non-executable: ' + key);
+  } else {
+    const expectedNoSkill=actual.name === '' || actual.name === '없음' ||
+      (Array.isArray(actual.sourceMappingStatuses) &&
+       actual.sourceMappingStatuses.length === 1 &&
+       actual.sourceMappingStatuses[0] === 'no_special_skill');
+    if (actual.ruleId !== null || actual.ruleAuthority !== null ||
+        actual.verificationStatus !== (expectedNoSkill ? 'no_special_skill' : 'extracted_unverified') ||
+        actual.executionStatus !== (expectedNoSkill ? 'no-skill' : 'disabled-until-skill2-rule-review')) {
+      throw new Error('Unverified Skill2 entry must remain non-executable: ' + key);
+    }
   }
   if (actual.verificationStatus !== 'no_special_skill') skill2Audit.activeSkills++;
   skill2Audit.sourceMappings += expected.cardIds.length;
@@ -116,7 +155,9 @@ const noSkill2CardIds = new Set(skill2Data.records
   .flatMap(x => x.cardIds || []));
 skill2Audit.activeCards = activeSkill2CardIds.size;
 if (skill2Audit.sourceMappings !== skill2Data.mappingRecordCount ||
-    skill2Audit.executableRules !== 0 || skill2Data.activeSkillCount !== skill2Audit.activeSkills ||
+    skill2Audit.executableRules !== Object.keys(SKILL2_SOURCE_VERIFIED_RULES).length ||
+    executableSkill2RuleIds.size !== Object.keys(SKILL2_SOURCE_VERIFIED_RULES).length ||
+    skill2Data.activeSkillCount !== skill2Audit.activeSkills ||
     skill2Data.activeCardCount !== skill2Audit.activeCards ||
     skill2Data.noSkillCardCount !== noSkill2CardIds.size ||
     skill2Data.mappingStatusCounts == null ||
@@ -192,20 +233,26 @@ for (const card of cards) {
   const expectedMappingStatus = sourceSkill1 ? sourceSkill1.mappingStatus : 'no_special_skill';
   if (card.type === 'unit') {
     const sourceSkill2 = skillMappings.find(x => x.sourceField === 'Skill2');
-    const expectedSkill2Status = sourceSkill2 ? sourceSkill2.mappingStatus : 'no_special_skill';
-    if (card.specialSkill2MappingStatus !== expectedSkill2Status) {
-      errors.push(card.id + ': compact Skill2 mapping status does not match card-skill-mappings.json');
+    const expectedSkill2SourceStatus = sourceSkill2 ? sourceSkill2.mappingStatus : 'no_special_skill';
+    const expectedSkill2Name = sourceSkill2?.sourceName || '';
+    const expectedSkill2Rule = SKILL2_SOURCE_VERIFIED_RULES[expectedSkill2Name] || null;
+    const expectedSkill2Status = expectedSkill2Rule ? 'source_card_verified' : expectedSkill2SourceStatus;
+    if (card.specialSkill2SourceMappingStatus !== expectedSkill2SourceStatus ||
+        card.specialSkill2MappingStatus !== expectedSkill2Status) {
+      errors.push(card.id + ': compact Skill2 mapping status does not match source mapping/review rule');
     }
     if (String(card.specialSkill2EnumValue ?? '') !== String(sourceSkill2?.sourceEnumValue ?? '')) {
       errors.push(card.id + ': compact Skill2 enum value does not match card-skill-mappings.json');
     }
-    if ((card.specialSkill2 || '') !== (sourceSkill2?.sourceName || '')) {
+    if ((card.specialSkill2 || '') !== expectedSkill2Name) {
       errors.push(card.id + ': compact Skill2 name does not match card-skill-mappings.json');
     }
-    if (card.specialSkill2RuleId !== null ||
-        card.specialSkill2ExecutionStatus !== ((card.specialSkill2 && card.specialSkill2 !== '없음')
-          ? 'disabled-until-skill2-rule-review' : 'no-skill')) {
-      errors.push(card.id + ': Skill2 has an executable rule or invalid review gate');
+    if (card.specialSkill2RuleId !== (expectedSkill2Rule?.ruleId || null) ||
+        card.specialSkill2RuleAuthority !== (expectedSkill2Rule ? 'card_source' : null) ||
+        card.specialSkill2ExecutionStatus !== (expectedSkill2Rule ? 'source-card-rule-implemented' :
+          ((card.specialSkill2 && card.specialSkill2 !== '없음')
+            ? 'disabled-until-skill2-rule-review' : 'no-skill'))) {
+      errors.push(card.id + ': Skill2 executable rule metadata is not source-verified');
     }
     if (card.specialSkillMappingStatus !== expectedMappingStatus) {
       errors.push(card.id + ': compact Skill1 mapping status does not match card-skill-mappings.json');

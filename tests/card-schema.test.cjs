@@ -498,3 +498,37 @@ test('keeps Skill1 and Skill2 separate and leaves Skill2 reference-only',()=>{
   assert.equal(card.specialSkill2RuleId,null);
   assert.equal(card.specialSkill2ExecutionStatus,'disabled-until-skill2-rule-review');
 });
+
+test('retains only the eight exact source-card verified Skill2 rules',()=>{
+  const card=Schema.normalize({
+    id:'skill2-source-verified',name:'두랄의기사',type:'unit',
+    specialSkill1:'일반공격기술',specialSkill2:'홀리오오라',
+    specialSkill2EnumValue:'source-enum-88',
+    specialSkill2SourceMappingStatus:'unmapped',
+    specialSkill2MappingStatus:'source_card_verified',
+    specialSkill2RuleId:'skill2_holy_aura',
+    specialSkill2RuleAuthority:'card_source',
+    specialSkill2ExecutionStatus:'source-card-rule-implemented',
+    ap:3,dp:2,hp:5,cost:{light:1},costKnown:true,costMapped:true
+  });
+  assert.equal(card.specialSkill2MappingStatus,'source_card_verified');
+  assert.equal(card.specialSkill2SourceMappingStatus,'unmapped');
+  assert.equal(card.specialSkill2RuleId,'skill2_holy_aura');
+  assert.equal(card.specialSkill2RuleAuthority,'card_source');
+  assert.equal(card.specialSkill2ExecutionStatus,'source-card-rule-implemented');
+});
+
+test('rejects Skill2 rule IDs that do not match their source ability name',()=>{
+  const card=Schema.normalize({
+    id:'skill2-spoofed',name:'임의 유닛',type:'unit',
+    specialSkill2:'헌신방어',
+    specialSkill2MappingStatus:'source_card_verified',
+    specialSkill2RuleId:'skill2_holy_aura',
+    specialSkill2RuleAuthority:'card_source',
+    specialSkill2ExecutionStatus:'source-card-rule-implemented',
+    ap:3,dp:2,hp:5,cost:{light:1},costKnown:true,costMapped:true
+  });
+  assert.equal(card.specialSkill2RuleId,null);
+  assert.equal(card.specialSkill2RuleAuthority,null);
+  assert.equal(card.specialSkill2ExecutionStatus,'disabled-until-skill2-rule-review');
+});

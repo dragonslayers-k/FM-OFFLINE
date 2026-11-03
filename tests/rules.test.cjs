@@ -807,3 +807,143 @@ test('a Skill2-only ability never falls through to the Skill1 combat handler',()
   });
   assert.equal(FM._test.normalizeSpecialSkillForEngine(attacker,attacker.specialSkill2),'');
 });
+
+function sourceSkill2(id,name,extra={}){
+  const ruleIds={
+    '기선제압':'skill2_tactical_initiative',
+    '헌신방어':'skill2_devoted_defense',
+    '격노':'skill2_frenzy_defense',
+    '홀리오오라':'skill2_holy_aura',
+    '얼라이디펜스':'skill2_alliance_defense',
+    '레이셜디펜스':'skill2_racial_defense',
+    '강한헌신방어':'skill2_strong_devoted_defense',
+    '프레셔':'skill2_pressure_defense'
+  };
+  return unit(id,{
+    specialSkill2:name,
+    specialSkill2MappingStatus:'source_card_verified',
+    specialSkill2RuleId:ruleIds[name],
+    specialSkill2RuleAuthority:'card_source',
+    specialSkill2ExecutionStatus:'source-card-rule-implemented',
+    ...extra
+  });
+}
+function combatStats(ap,dp,hp){
+  return {ap:{value:ap},dp:{value:dp},hp:{value:hp}};
+}
+
+test('source Skill2 Tactical Initiative reduces incoming damage by one at equal or lower attacker level',()=>{
+  const attacker=unit('attacker',{instanceId:'atk',level:3});
+  const defender=sourceSkill2('defender','기선제압',{instanceId:'def',level:3,hp:5,maxHp:5});
+  const p=player('player',{units:[defender]});
+  const ai=player('ai',{units:[attacker]});
+  const s=state(ai,p);
+  const result=FM._test.resolveUnitAttack(s,ai,p,attacker,defender,{
+    attacker:combatStats(4,0,5),defender:combatStats(2,2,5)
+  });
+  assert.equal(result.damage,1);
+  assert.equal(defender.hp,4);
+});
+
+test('source Skill2 Holy Aura prevents damage when attacker AP is at or below half of defender DP plus HP',()=>{
+  const attacker=unit('attacker',{instanceId:'atk',level:4});
+  const defender=sourceSkill2('defender','홀리오오라',{instanceId:'def',hp:5,maxHp:5});
+  const p=player('player',{units:[defender]});
+  const ai=player('ai',{units:[attacker]});
+  const s=state(ai,p);
+  const result=FM._test.resolveUnitAttack(s,ai,p,attacker,defender,{
+    attacker:combatStats(3,0,5),defender:combatStats(2,1,5)
+  });
+  assert.equal(result.damage,0);
+  assert.equal(defender.hp,5);
+});
+
+test('source Skill2 Wrath converts actual HP lost while defending into immediate AP',()=>{
+  const attacker=unit('attacker',{instanceId:'atk'});
+  const defender=sourceSkill2('defender','격노',{instanceId:'def',hp:6,maxHp:6,ap:2,dp:0});
+  const p=player('player',{units:[defender]});
+  const ai=player('ai',{units:[attacker]});
+  const s=state(ai,p);
+  const result=FM._test.resolveUnitAttack(s,ai,p,attacker,defender,{
+    attacker:combatStats(4,0,5),defender:combatStats(2,0,6)
+  });
+  assert.equal(result.damage,4);
+  assert.equal(defender.hp,2);
+  assert.equal(FM.totalPower(defender,'ap'),6);
+});
+
+test('source Skill2 Devoted Defense buffs the next friendly field unit when the owner is destroyed',()=>{
+  const attacker=unit('attacker',{instanceId:'atk'});
+  const defender=sourceSkill2('defender','헌신방어',{instanceId:'def',hp:1,maxHp:1,ap:2,dp:1});
+  const next=unit('next',{instanceId:'next',hp:4,maxHp:4,ap:3,dp:2});
+  const p=player('player',{units:[defender,next]});
+  const ai=player('ai',{units:[attacker]});
+  const s=state(ai,p);
+  const result=FM._test.resolveUnitAttack(s,ai,p,attacker,defender,{
+    attacker:combatStats(3,0,5),defender:combatStats(2,1,1)
+  });
+  assert.equal(result.defenderAlive,false);
+  assert.equal(FM.totalPower(next,'ap'),4);
+  assert.equal(FM.totalPower(next,'dp'),3);
+  assert.equal(next.hp,5);
+  assert.equal(next.tempHP,1);
+});
+
+test('source Skill2 Alliance Defense reduces damage by each other field unit with the same affiliation',()=>{
+  const attacker=unit('attacker',{instanceId:'atk'});
+  const defender=sourceSkill2('defender','얼라이디펜스',{instanceId:'def',affiliation:'guild-a'});
+  const ally=unit('ally',{instanceId:'ally',affiliation:'guild-a'});
+  const unrelated=unit('unrelated',{instanceId:'other',affiliation:'guild-b'});
+  const p=player('player',{units:[defender,ally,unrelated]});
+  const ai=player('ai',{units:[attacker]});
+  const result=FM._test.resolveUnitAttack(state(ai,p),ai,p,attacker,defender,{
+    attacker:combatStats(4,0,5),defender:combatStats(2,1,5)
+  });
+  assert.equal(result.damage,2);
+  assert.equal(defender.hp,3);
+});
+
+test('source Skill2 Racial Defense reduces damage by each other field unit with the same race',()=>{
+  const attacker=unit('attacker',{instanceId:'atk'});
+  const defender=sourceSkill2('defender','레이셜디펜스',{instanceId:'def',race:'elf'});
+  const ally=unit('ally',{instanceId:'ally',race:'elf'});
+  const unrelated=unit('unrelated',{instanceId:'other',race:'orc'});
+  const p=player('player',{units:[defender,ally,unrelated]});
+  const ai=player('ai',{units:[attacker]});
+  const result=FM._test.resolveUnitAttack(state(ai,p),ai,p,attacker,defender,{
+    attacker:combatStats(4,0,5),defender:combatStats(2,1,5)
+  });
+  assert.equal(result.damage,2);
+  assert.equal(defender.hp,3);
+});
+
+test('source Skill2 Pressure reduces damage by half the number of empty friendly field slots, rounded down',()=>{
+  const attacker=unit('attacker',{instanceId:'atk'});
+  const defender=sourceSkill2('defender','프레셔',{instanceId:'def',hp:6,maxHp:6});
+  const p=player('player',{units:[defender]});
+  const ai=player('ai',{units:[attacker]});
+  const result=FM._test.resolveUnitAttack(state(ai,p),ai,p,attacker,defender,{
+    attacker:combatStats(4,0,5),defender:combatStats(2,0,6)
+  });
+  assert.equal(result.damage,2);
+  assert.equal(defender.hp,4);
+});
+
+test('source Skill2 Strong Devoted Defense buffs every surviving friendly field unit when destroyed',()=>{
+  const attacker=unit('attacker',{instanceId:'atk'});
+  const defender=sourceSkill2('defender','강한헌신방어',{instanceId:'def',hp:1,maxHp:1,ap:2,dp:1});
+  const next=unit('next',{instanceId:'next',hp:4,maxHp:4,ap:3,dp:2});
+  const another=unit('another',{instanceId:'another',hp:3,maxHp:3,ap:1,dp:1});
+  const p=player('player',{units:[defender,next,another]});
+  const ai=player('ai',{units:[attacker]});
+  const result=FM._test.resolveUnitAttack(state(ai,p),ai,p,attacker,defender,{
+    attacker:combatStats(3,0,5),defender:combatStats(2,1,1)
+  });
+  assert.equal(result.defenderAlive,false);
+  assert.equal(FM.totalPower(next,'ap'),4);
+  assert.equal(FM.totalPower(next,'dp'),3);
+  assert.equal(next.hp,5);
+  assert.equal(FM.totalPower(another,'ap'),2);
+  assert.equal(FM.totalPower(another,'dp'),2);
+  assert.equal(another.hp,4);
+});
