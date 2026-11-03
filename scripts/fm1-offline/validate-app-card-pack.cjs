@@ -101,9 +101,12 @@ for (const [key, expected] of skill2Expected) {
     }
     const refsById=new Map((actual.cardReferences||[]).map(ref=>[String(ref.cardId),ref]));
     const evidenceIds=[...(actual.evidenceCardIds||[])].map(String).sort();
-    if (!evidenceIds.length || evidenceIds.some(id=>
-        !refsById.has(id) || !String(refsById.get(id).description||'').includes(verifiedSpec.evidenceNeedle))) {
-      throw new Error('Skill2 verified rule lacks exact card-description evidence: ' + key);
+    const expectedEvidenceIds=(actual.cardReferences||[])
+      .filter(ref=>String(ref.description||'').includes(verifiedSpec.evidenceNeedle))
+      .map(ref=>String(ref.cardId)).sort();
+    if (!evidenceIds.length || JSON.stringify(evidenceIds)!==JSON.stringify(expectedEvidenceIds) ||
+        evidenceIds.some(id=>!refsById.has(id))) {
+      throw new Error('Skill2 verified rule evidence card list is incomplete or not exact: ' + key);
     }
     if (actual.evidenceSource !== 'fmlunatic-card-detail-description' ||
         actual.evidenceUrl !== 'https://fmlunatic.com/cardlist') {
