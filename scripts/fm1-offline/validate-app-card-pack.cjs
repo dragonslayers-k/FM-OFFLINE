@@ -118,12 +118,16 @@ for (const [key, expected] of skill2Expected) {
     }
     executableSkill2RuleIds.add(actual.ruleId);
     skill2Audit.executableRules++;
-  } else if (actual.ruleId !== null || actual.ruleAuthority !== null ||
-      actual.verificationStatus !== (actual.name === '' || actual.name === '없음'
-        ? 'no_special_skill' : 'extracted_unverified') ||
-      actual.executionStatus !== (actual.verificationStatus === 'no_special_skill'
-        ? 'no-skill' : 'disabled-until-skill2-rule-review')) {
-    throw new Error('Unverified Skill2 entry must remain non-executable: ' + key);
+  } else {
+    const expectedNoSkill=actual.name === '' || actual.name === '없음' ||
+      (Array.isArray(actual.sourceMappingStatuses) &&
+       actual.sourceMappingStatuses.length === 1 &&
+       actual.sourceMappingStatuses[0] === 'no_special_skill');
+    if (actual.ruleId !== null || actual.ruleAuthority !== null ||
+        actual.verificationStatus !== (expectedNoSkill ? 'no_special_skill' : 'extracted_unverified') ||
+        actual.executionStatus !== (expectedNoSkill ? 'no-skill' : 'disabled-until-skill2-rule-review')) {
+      throw new Error('Unverified Skill2 entry must remain non-executable: ' + key);
+    }
   }
   if (actual.verificationStatus !== 'no_special_skill') skill2Audit.activeSkills++;
   skill2Audit.sourceMappings += expected.cardIds.length;
