@@ -1079,7 +1079,7 @@ def convert(a):
         "format":"FM1-CARD-DATA","version":"1.3.0",
         "cardsCount":TOTAL,"imagesCount":TOTAL,"cardsSha256":digest,
         "classification":{"source":"current FMLunatic Firestore Category enum + current five-type reference",
-          "types":{"land":289,"unit":8633,"spell":3857,"item":1748,"enchant":823},
+          "types":dict(counts),
           "enchantIsOfficialFifthType":True},
         "source":{"listUrl":"https://fmlunatic.com/cardlist",
           "cardUrlPattern":"https://fmlunatic.com/card/{documentId}",
