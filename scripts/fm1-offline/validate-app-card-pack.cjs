@@ -15,6 +15,7 @@ if (!file || !fs.existsSync(file) || !mappingFile || !fs.existsSync(mappingFile)
 }
 const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
 const cards = Schema.normalizeMany(raw);
+const rawCardsById = new Map(raw.map(card => [String(card.id), card]));
 const mappingData = JSON.parse(fs.readFileSync(mappingFile, 'utf8'));
 if (mappingData.schemaVersion !== 1 || !Array.isArray(mappingData.records) ||
     mappingData.recordCount !== mappingData.records.length) {
@@ -94,10 +95,16 @@ for (const [key, expected] of skill2Expected) {
   skill2Audit.cardReferences += (actual.cardReferences || []).length;
   for (const ref of actual.cardReferences || []) {
     const card = cardsById.get(String(ref.cardId));
-    if (!card || ref.sourceCardUrl !== card.sourceCardUrl ||
+    const rawCard = rawCardsById.get(String(ref.cardId));
+    // Evidence references deliberately preserve exact source HTML/text. Compare
+    // them with the raw pack record, not the normalized display text (which has
+    // tags/entities/line breaks decoded for rendering).
+    if (!card || !rawCard || ref.sourceCardUrl !== card.sourceCardUrl ||
         ref.sourceListUrl !== card.sourceListUrl || ref.name !== card.name ||
-        ref.text !== (card.text || '') || ref.description !== (card.description || '')) {
-      throw new Error('Skill2 card evidence link/text mismatch: ' + String(ref.cardId));
+        ref.text !== (rawCard.text || '') || ref.description !== (rawCard.description || '') ||
+        ref.faction !== card.faction || ref.unitAbility !== card.unitAbility ||
+        ref.level !== card.level || ref.ap !== card.ap || ref.dp !== card.dp || ref.hp !== card.hp) {
+      throw new Error('Skill2 card raw evidence link/text mismatch: ' + String(ref.cardId));
     }
   }
 }
