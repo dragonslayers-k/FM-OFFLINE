@@ -4,11 +4,11 @@ on:
   push:
     branches:
       - main
-# Add [run-emulator] to a PR title to request the long import/emulator validation.
+# PR updates are validated in one deliberate workflow_dispatch batch, not on every commit/title edit.
   pull_request:
     branches:
       - main
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       build_card_pack:
@@ -28,8 +28,9 @@ on:
         default: "fm1-carddb-29"
 
 concurrency:
-  group: fm-offline-android-${{ github.ref }}
-  cancel-in-progress: true
+  # Queue deliberate validation runs; do not cancel a full card-pack/emulator audit.
+  group: fm-offline-android-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
