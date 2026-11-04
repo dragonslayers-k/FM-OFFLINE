@@ -1132,3 +1132,36 @@ test('combat event queue preserves deterministic insertion order and drains once
 
 test('zone transfer moves the exact card and preserves source order',()=>{const {transferCardBetweenZones}=FM._test;const a={instanceId:'a'},b={instanceId:'b'},c={instanceId:'c'};const source=[a,b,c],destination=[];const result=transferCardBetweenZones(source,destination,'b');assert.equal(result.ok,true);assert.equal(result.card,b);assert.equal(result.sourceIndex,1);assert.deepEqual(source,[a,c]);assert.deepEqual(destination,[b]);});
 test('zone transfer rejects missing cards and full destinations without mutation',()=>{const {transferCardBetweenZones}=FM._test;const a={instanceId:'a'},b={instanceId:'b'};const source=[a],destination=[b];const missing=transferCardBetweenZones(source,destination,'missing');assert.equal(missing.ok,false);assert.equal(missing.reason,'card_not_in_source');const full=transferCardBetweenZones(source,destination,'a',{maxDestinationSize:1});assert.equal(full.ok,false);assert.equal(full.reason,'destination_full');assert.deepEqual(source,[a]);assert.deepEqual(destination,[b]);});
+
+
+test('unit destruction emits one card-local event with a pre-transfer snapshot and cause',()=>{
+  const p=player('player');
+  const target=unit('fallen',{instanceId:'fallen-1',ap:4,dp:2,hp:0,maxHp:5,equipmentCards:[{instanceId:'item-1',id:'item-card',name:'방패'}]});
+  p.units.push(target);
+  const s=state(p,player('ai'));
+  FM._test.destroyUnit(s,p,target,{cause:'combat',source:{instanceId:'attacker-1',id:'attacker-card'}});
+  assert.equal(p.units.length,0);
+  assert.equal(p.graveyard[0].instanceId,'fallen-1');
+  assert.equal(s.combatEventQueue.size(),1);
+  const [event]=s.combatEventQueue.drain();
+  assert.equal(event.type,'unit_destroyed');
+  assert.equal(event.ownerId,'player');
+  assert.equal(event.cause,'combat');
+  assert.equal(event.sourceInstanceId,'attacker-1');
+  assert.equal(event.targetInstanceId,'fallen-1');
+  assert.equal(event.fieldIndex,0);
+  assert.equal(event.snapshot.unit.hp,0);
+  assert.deepEqual(event.snapshot.equipment,[{instanceId:'item-1',cardId:'item-card',name:'방패'}]);
+  assert.equal(event.payload.equipmentCount,1);
+  assert.equal(s.combatEventQueue.size(),0);
+});
+
+test('failed zone transfer does not emit a unit destruction event',()=>{
+  const p=player('player');
+  const target=unit('fallen',{instanceId:'fallen-2',hp:0});
+  p.units.push(target);
+  p.graveyard= null;
+  const s=state(p,player('ai'));
+  assert.throws(()=>FM._test.destroyUnit(s,p,target,{cause:'combat'}));
+  assert.equal(s.combatEventQueue.size(),0);
+});
