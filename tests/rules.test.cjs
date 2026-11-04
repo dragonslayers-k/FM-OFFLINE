@@ -48,6 +48,7 @@ test('a missing or empty source cost is not silently treated as free',()=>{
   assert.equal(FM.canPay(p,{forest:0}),true);
 });
 
+// End-to-end payment regression: inferred flexible-neutral cost must consume real generated souls.
 test('inferred NCS/BONUS neutral soul can consume any remaining generated color',()=>{
   const p=player('player',{soulPool:{colored:{forest:1,metal:1},neutral:0}});
   assert.equal(FM.canPay(p,{forest:1,neutral:1}),true);
