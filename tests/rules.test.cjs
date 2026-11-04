@@ -1058,3 +1058,35 @@ test('source Skill2 Tactical Initiative does not reduce damage when attacker lev
   assert.equal(result.damage,3);
   assert.equal(defender.hp,2);
 });
+
+
+test('source Skill2 Devoted Defense buffs the unit immediately after the destroyed field position',()=>{
+  const attacker=unit('attacker',{instanceId:'atk'});
+  const before=unit('before',{instanceId:'before',ap:1,dp:1,hp:3,maxHp:3});
+  const defender=sourceSkill2('devoted','헌신방어',{instanceId:'def',hp:1,maxHp:1,ap:2,dp:1});
+  const next=unit('next',{instanceId:'next',ap:3,dp:2,hp:4,maxHp:4});
+  const owner=player('player',{units:[before,defender,next]});
+  const ai=player('ai',{units:[attacker]});
+  const result=FM._test.resolveUnitAttack(state(ai,owner),ai,owner,attacker,defender,{
+    attacker:combatStats(3,0,5),defender:combatStats(2,1,1)
+  });
+  assert.equal(result.defenderAlive,false);
+  assert.equal(FM.totalPower(before,'ap'),1,'unit before the destroyed slot is unchanged');
+  assert.equal(FM.totalPower(next,'ap'),4,'unit after the destroyed slot receives the buff');
+  assert.equal(FM.totalPower(next,'dp'),3);
+  assert.equal(next.hp,5);
+  assert.equal(next.tempHP,1);
+});
+
+test('source Skill2 Devoted Defense has no target when the destroyed unit was last on field',()=>{
+  const attacker=unit('attacker',{instanceId:'atk'});
+  const defender=sourceSkill2('devoted','헌신방어',{instanceId:'def',hp:1,maxHp:1,ap:2,dp:1});
+  const owner=player('player',{units:[defender]});
+  const ai=player('ai',{units:[attacker]});
+  const result=FM._test.resolveUnitAttack(state(ai,owner),ai,owner,attacker,defender,{
+    attacker:combatStats(3,0,5),defender:combatStats(2,1,1)
+  });
+  assert.equal(result.defenderAlive,false);
+  assert.equal(owner.units.length,0);
+  assert.equal(owner.graveyard.some(card=>card.instanceId==='def'),true);
+});
