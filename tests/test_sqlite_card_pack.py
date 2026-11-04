@@ -179,7 +179,7 @@ class SqliteCardPackTests(unittest.TestCase):
         values["verification_status"] = "semantic_review"
         parsed = CONVERTER.db_cost_to_app(values)
         self.assertTrue(parsed["known"])
-        self.assertEqual(parsed["cost"], {"neutral": 2})
+        self.assertEqual(parsed["cost"], {"metal": 2, "neutral": 2})
         self.assertEqual(parsed["specialSouls"]["ncs"], 1)
 
     def test_load_reads_exact_url_image_hash_and_effect_candidates_from_sqlite(self):
