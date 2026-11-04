@@ -1166,3 +1166,58 @@ test('failed zone transfer does not emit a unit destruction event',()=>{
   assert.equal(p.units.length,1,'unit remains in its source zone when transfer validation fails');
   assert.equal(s.combatEventQueue?.size() || 0,0);
 });
+
+
+test('unit attack emits a resolved event with source, target and actual HP damage',()=>{
+  const attacker=unit('attacker',{instanceId:'attack-a',ap:3});
+  const defender=unit('defender',{instanceId:'attack-d',dp:1,hp:8,maxHp:8,slotIndex:0});
+  const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+  const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:{ap:{value:3},dp:{value:0},hp:{value:10}},
+    defender:{ap:{value:1},dp:{value:1},hp:{value:8}}
+  });
+  assert.equal(result.damage,2);
+  const [event]=s.combatEventQueue.drain();
+  assert.equal(event.type,'unit_attack_resolved');
+  assert.equal(event.ownerId,'player');
+  assert.equal(event.cause,'combat');
+  assert.equal(event.sourceInstanceId,'attack-a');
+  assert.equal(event.targetInstanceId,'attack-d');
+  assert.equal(event.fieldIndex,0);
+  assert.equal(event.payload.damage,2);
+  assert.equal(event.payload.direct,false);
+  assert.equal(event.payload.defenderAlive,true);
+});
+
+test('destroying a defender emits destruction before the enclosing attack-resolved event',()=>{
+  const attacker=unit('attacker',{instanceId:'kill-a',ap:3});
+  const defender=unit('defender',{instanceId:'kill-d',dp:0,hp:2,maxHp:2,slotIndex:0});
+  const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+  FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:{ap:{value:3},dp:{value:0},hp:{value:10}},
+    defender:{ap:{value:1},dp:{value:0},hp:{value:2}}
+  });
+  const events=s.combatEventQueue.drain();
+  assert.deepEqual(events.map(event=>event.type),['unit_destroyed','unit_attack_resolved']);
+  assert.equal(events[0].sourceInstanceId,'kill-a');
+  assert.equal(events[0].targetInstanceId,'kill-d');
+  assert.equal(events[0].cause,'combat');
+  assert.equal(events[1].payload.damage,2);
+  assert.equal(events[1].payload.defenderAlive,false);
+});
+
+test('direct attack emits a resolved event without a unit target',()=>{
+  const attacker=unit('attacker',{instanceId:'direct-a',cost:{forest:2},ap:3});
+  const p=player('player',{units:[attacker]}),ai=player('ai',{deck:[{id:'d1'},{id:'d2'},{id:'d3'}]}),s=state(p,ai);
+  const result=FM._test.resolveUnitAttack(s,p,ai,attacker,null,{
+    attacker:{ap:{value:3},dp:{value:0},hp:{value:10}},defender:null
+  });
+  assert.equal(result.damage,2);
+  const [event]=s.combatEventQueue.drain();
+  assert.equal(event.type,'unit_attack_resolved');
+  assert.equal(event.sourceInstanceId,'direct-a');
+  assert.equal(event.targetInstanceId,null);
+  assert.equal(event.payload.direct,true);
+  assert.equal(event.payload.damage,2);
+  assert.equal(event.payload.invalidCost,false);
+});
