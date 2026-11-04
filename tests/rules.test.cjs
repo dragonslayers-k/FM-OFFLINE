@@ -48,6 +48,20 @@ test('a missing or empty source cost is not silently treated as free',()=>{
   assert.equal(FM.canPay(p,{forest:0}),true);
 });
 
+test('inferred NCS/BONUS neutral soul can consume any remaining generated color',()=>{
+  const p=player('player',{soulPool:{colored:{forest:1,metal:1},neutral:0}});
+  assert.equal(FM.canPay(p,{forest:1,neutral:1}),true);
+  assert.equal(FM.spendSoul(p,{forest:1,neutral:1}),true);
+  assert.deepEqual(p.soulPool,{colored:{forest:0,metal:0},neutral:0});
+});
+
+test('inferred hybrid soul cost still requires each printed color',()=>{
+  const p=player('player',{soulPool:{colored:{forest:1,metal:0},neutral:5}});
+  assert.equal(FM.canPay(p,{forest:1,metal:1}),false);
+  p.soulPool.colored.metal=1;
+  assert.equal(FM.canPay(p,{forest:1,metal:1}),true);
+});
+
 test('opening hand is six cards and contains at least one land for both sides',()=>{
   const lands=Array.from({length:10},(_,i)=>land('land'+i,'forest'));
   const units=Array.from({length:40},(_,i)=>unit('unit'+i));
