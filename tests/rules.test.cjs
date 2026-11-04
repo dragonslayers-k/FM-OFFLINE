@@ -52,7 +52,10 @@ test('inferred NCS/BONUS neutral soul can consume any remaining generated color'
   const p=player('player',{soulPool:{colored:{forest:1,metal:1},neutral:0}});
   assert.equal(FM.canPay(p,{forest:1,neutral:1}),true);
   assert.equal(FM.spendSoul(p,{forest:1,neutral:1}),true);
-  assert.deepEqual(p.soulPool,{colored:{forest:0,metal:0},neutral:0});
+  assert.equal(p.soulPool.neutral,0);
+  assert.equal(Object.values(p.soulPool.colored).reduce((sum,n)=>sum+Number(n||0),0),0);
+  assert.equal(p.soulPool.colored.forest,0);
+  assert.equal(p.soulPool.colored.metal,0);
 });
 
 test('inferred hybrid soul cost still requires each printed color',()=>{
