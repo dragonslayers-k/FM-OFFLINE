@@ -1221,3 +1221,50 @@ test('direct attack emits a resolved event without a unit target',()=>{
   assert.equal(event.payload.damage,2);
   assert.equal(event.payload.invalidCost,false);
 });
+
+
+test('combat event dispatcher rejects unverified and unknown rules fail-closed',()=>{
+  const dispatcher=FM._test.createCombatEventDispatcher();
+  const candidate=dispatcher.register({
+    ruleId:'defense_bypass',mappingStatus:'community_candidate',authority:'community',
+    eventTypes:['unit_attack_resolved']
+  },()=>true);
+  assert.equal(candidate.ok,false);
+  assert.equal(candidate.reason,'rule_not_verified_or_not_implemented');
+  const unknown=dispatcher.register({
+    ruleId:'invented_rule',mappingStatus:'manual_verified',authority:'manual',
+    eventTypes:['unit_attack_resolved']
+  },()=>true);
+  assert.equal(unknown.ok,false);
+  assert.equal(dispatcher.subscriberCount(),0);
+});
+
+test('combat event dispatcher accepts only known verified mappings and dispatches isolated events in order',()=>{
+  const dispatcher=FM._test.createCombatEventDispatcher(),seen=[];
+  const manual=dispatcher.register({
+    ruleId:'defense_bypass',mappingStatus:'manual_verified',authority:'manual',
+    eventTypes:['unit_attack_resolved']
+  },(event,context)=>{seen.push(['manual',event.sequence,context.turn]);event.payload.damage=999;return 'manual-ok';});
+  const source=dispatcher.register({
+    ruleId:'skill2_tactical_initiative',mappingStatus:'source_card_verified',
+    authority:'card_source',executionStatus:'source-card-rule-implemented',
+    eventTypes:['unit_attack_resolved']
+  },(event,context)=>{seen.push(['source',event.sequence,context.turn]);return 'source-ok';});
+  assert.equal(manual.ok,true);
+  assert.equal(source.ok,true);
+  assert.equal(dispatcher.subscriberCount(),2);
+  const duplicate=dispatcher.register({
+    ruleId:'defense_bypass',mappingStatus:'manual_verified',authority:'manual',
+    eventTypes:['unit_attack_resolved']
+  },()=>null);
+  assert.equal(duplicate.ok,false);
+  assert.equal(duplicate.reason,'duplicate_rule_subscription');
+  const queue=FM._test.createCombatEventQueue();
+  queue.enqueue(FM._test.createCombatEvent('unit_attack_resolved',{payload:{damage:2}}));
+  queue.enqueue(FM._test.createCombatEvent('unit_attack_resolved',{payload:{damage:3}}));
+  const original=queue.drain();
+  const results=dispatcher.dispatch(original,{turn:7});
+  assert.deepEqual(seen,[['manual',0,7],['source',0,7],['manual',1,7],['source',1,7]]);
+  assert.deepEqual(results.map(x=>x.ruleId),['defense_bypass','skill2_tactical_initiative','defense_bypass','skill2_tactical_initiative']);
+  assert.deepEqual(original.map(x=>x.payload.damage),[2,3],'subscriber mutations must not alter queued source events');
+});
