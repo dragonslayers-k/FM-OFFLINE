@@ -100,3 +100,9 @@ No game engine rule was promoted from community references by this documentation
 For engine work, `attribute`, `race`, `affiliation`, `card_type`, and unit `ability` must remain distinct. The five card categories are Land/Unit/Item/Spell/Enchant. NamuWiki's detailed 7-attribute page and the main article's later 8-attribute taxonomy are historical layers, not a reason to overwrite DB29 values. The `faction` field in the current app schema is the backward-compatible attribute/color key.
 
 New handlers require Manual or card-ID-specific original text, provenance, and focused tests for activation timing, target, preconditions, cost, formula, duration, ordering, stacking, and failure effect. Community-only candidates, `pattern_candidate`, OCR fuzzy/name-collision results, and unresolved hybrid/NCS/BONUS costs remain non-executable / blocked.
+
+## 2026-11-05 소환 프로필·외부 분류자료 재검토
+- DB29 원문 기반 검토 분류는 에카마엘 7장 + 모래의형상화 1장 + 추억→이서리얼 조건부 프로필 1장으로 구분한다. 이전 '에카마엘 8건' 표기는 정정한다.
+- 에카마엘 무작위 후보 풀, 제외 ID, 0/5 지형 경계는 pending; 모래의형상화의 턴 번호 계산/존 카운트 시점/소환 실패 분기는 pending.
+- NamuWiki/미러·개인 가이드는 카드 도감의 보조 provenance로만 사용. 이 출처만으로 engine handler, effect mapping 또는 비용을 executable로 승격하지 않는다.
+- T의 DB29 immutability, DB30 미발행, main 미병합 상태를 유지한다.
