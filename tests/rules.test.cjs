@@ -982,3 +982,31 @@ test('Manual canonical shield-break label normalizes to the engine keyword',()=>
   assert.equal(FM._test.normalizeSpecialSkillForEngine({},'방패파괴'),'방패파괴공격');
   assert.equal(FM._test.normalizeSpecialSkillForEngine({},'방패파괴기술'),'방패파괴공격');
 });
+
+test('DB29 source-card Skill2 normalization accepts only exact implemented rule/name/authority tuples',()=>{
+  const normalize=FM._test.normalizeSpecialSkill2ForEngine;
+  const accepted={
+    skill2_tactical_initiative:'기선제압',
+    skill2_devoted_defense:'헌신방어',
+    skill2_frenzy_defense:'격노',
+    skill2_holy_aura:'홀리오오라',
+    skill2_alliance_defense:'얼라이디펜스',
+    skill2_racial_defense:'레이셜디펜스',
+    skill2_strong_devoted_defense:'강한헌신방어',
+    skill2_pressure_defense:'프레셔'
+  };
+  assert.equal(Object.keys(FM._test.SKILL2_SOURCE_RULE_NAMES).length,8);
+  for(const [ruleId,name] of Object.entries(accepted)){
+    const good={specialSkill2:name,specialSkill2MappingStatus:'source_card_verified',
+      specialSkill2RuleAuthority:'card_source',specialSkill2ExecutionStatus:'source-card-rule-implemented',
+      specialSkill2RuleId:ruleId};
+    assert.equal(normalize(good),name,ruleId);
+    assert.equal(normalize({...good,specialSkill2:'임의이름'}),'',ruleId+' wrong name');
+    assert.equal(normalize({...good,specialSkill2RuleAuthority:'community'}),'',ruleId+' wrong authority');
+    assert.equal(normalize({...good,specialSkill2MappingStatus:'community_documented_candidate'}),'',ruleId+' candidate');
+    assert.equal(normalize({...good,specialSkill2ExecutionStatus:'not_implemented'}),'',ruleId+' not implemented');
+  }
+  assert.equal(normalize({specialSkill2:'기선제압',specialSkill2MappingStatus:'source_card_verified',
+    specialSkill2RuleAuthority:'card_source',specialSkill2ExecutionStatus:'source-card-rule-implemented',
+    specialSkill2RuleId:'unrecognized'}),'');
+});
