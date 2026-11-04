@@ -746,12 +746,23 @@ if (card.type === 'unit') {
     }
   }
 
+  function transferCardBetweenZones(source, destination, cardOrInstanceId, options) {
+    if (!Array.isArray(source) || !Array.isArray(destination) || source === destination) return {ok:false,reason:'invalid_zones',card:null,sourceIndex:-1};
+    const index = typeof cardOrInstanceId === 'string' ? source.findIndex(card => card && card.instanceId === cardOrInstanceId) : source.indexOf(cardOrInstanceId);
+    if (index < 0) return {ok:false,reason:'card_not_in_source',card:null,sourceIndex:-1};
+    const maxSize = options && options.maxDestinationSize != null ? Number(options.maxDestinationSize) : Infinity;
+    if (!(maxSize >= 0) || destination.length >= maxSize) return {ok:false,reason:'destination_full',card:null,sourceIndex:index};
+    const card=source[index]; source.splice(index,1); destination.push(card);
+    return {ok:true,reason:null,card,sourceIndex:index};
+  }
+
   function destroyUnit(state, owner, unit) {
     const idx = owner.units.findIndex(u => u.instanceId === unit.instanceId);
     if (idx >= 0) {
-      const [gone] = owner.units.splice(idx,1);
+      const transfer = transferCardBetweenZones(owner.units,owner.graveyard,unit.instanceId);
+      if (!transfer.ok) return;
+      const gone = transfer.card;
       (gone.equipmentCards || []).forEach(item => owner.graveyard.push(item));
-      owner.graveyard.push(gone);
       addLog(state,owner.name + '의 ' + gone.name + '이(가) 파괴되었습니다. 장착 아이템도 함께 소멸했습니다.');
       const destructionSkill2=normalizeSpecialSkill2ForEngine(gone);
       if (destructionSkill2 === '헌신방어') {
@@ -1171,7 +1182,7 @@ if (card.type === 'unit') {
     COLORS, COLOR_NAMES, TYPE_NAMES, clone, uid, sumCost, costText, colorName,
     newGame, buildStarterDeck, drawToSix, canPay, spendSoul, totalPower, validateCardForPlay,
     playCard, discardCard, reshuffleHand, endPhase, resolveBattle, runAIPhase, checkWinner, cardArtClass,
-    _test: { makePlayer, beginPhase, rollStat, coinProfile, chooseBlocker, createUnit, applyEffect, resolveUnitAttack, destroyUnit, productionOf, readCost, validateCardForPlay, itemMatchesUnit, resolveSpellSlot, statMarker, canChangeStat, changeUnitStat, setUnitStat, normalizeSpecialSkillForEngine, normalizeSpecialSkill2ForEngine, createCombatEvent, createCombatEventQueue, SPECIAL_SKILL_RULE_KEYWORDS, SKILL2_SOURCE_RULE_NAMES }
+    _test: { makePlayer, beginPhase, rollStat, coinProfile, chooseBlocker, createUnit, applyEffect, resolveUnitAttack, destroyUnit, productionOf, readCost, validateCardForPlay, itemMatchesUnit, resolveSpellSlot, statMarker, canChangeStat, changeUnitStat, setUnitStat, normalizeSpecialSkillForEngine, normalizeSpecialSkill2ForEngine, transferCardBetweenZones, createCombatEvent, createCombatEventQueue, SPECIAL_SKILL_RULE_KEYWORDS, SKILL2_SOURCE_RULE_NAMES }
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.FM = api;

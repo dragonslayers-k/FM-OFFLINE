@@ -1128,3 +1128,7 @@ test('combat event queue preserves deterministic insertion order and drains once
   assert.equal(queue.size(),0);
   assert.deepEqual(queue.drain(),[]);
 });
+
+
+test('zone transfer moves the exact card and preserves source order',()=>{const {transferCardBetweenZones}=FM._test;const a={instanceId:'a'},b={instanceId:'b'},c={instanceId:'c'};const source=[a,b,c],destination=[];const result=transferCardBetweenZones(source,destination,'b');assert.equal(result.ok,true);assert.equal(result.card,b);assert.equal(result.sourceIndex,1);assert.deepEqual(source,[a,c]);assert.deepEqual(destination,[b]);});
+test('zone transfer rejects missing cards and full destinations without mutation',()=>{const {transferCardBetweenZones}=FM._test;const a={instanceId:'a'},b={instanceId:'b'};const source=[a],destination=[b];const missing=transferCardBetweenZones(source,destination,'missing');assert.equal(missing.ok,false);assert.equal(missing.reason,'card_not_in_source');const full=transferCardBetweenZones(source,destination,'a',{maxDestinationSize:1});assert.equal(full.ok,false);assert.equal(full.reason,'destination_full');assert.deepEqual(source,[a]);assert.deepEqual(destination,[b]);});
