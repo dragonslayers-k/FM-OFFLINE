@@ -79,6 +79,67 @@
       race: unit.race || null
     };
   }
+
+  function createCombatEventDispatcher() {
+    const subscribers = new Map();
+    return {
+      register(rule, handler) {
+        if (!rule || typeof rule !== 'object' || typeof handler !== 'function') {
+          return {ok:false,reason:'invalid_registration'};
+        }
+        const ruleId = String(rule.ruleId || '');
+        const mappingStatus = String(rule.mappingStatus || '');
+        const authority = String(rule.authority || '');
+        const executionStatus = String(rule.executionStatus || '');
+        const manualAllowed = mappingStatus === 'manual_verified' &&
+          authority === 'manual' && !!SPECIAL_SKILL_RULE_KEYWORDS[ruleId];
+        const sourceAllowed = mappingStatus === 'source_card_verified' &&
+          authority === 'card_source' &&
+          executionStatus === 'source-card-rule-implemented' &&
+          !!SKILL2_SOURCE_RULE_NAMES[ruleId];
+        if (!manualAllowed && !sourceAllowed) {
+          return {ok:false,reason:'rule_not_verified_or_not_implemented'};
+        }
+        const eventTypes = Array.isArray(rule.eventTypes) ? rule.eventTypes : [];
+        if (!eventTypes.length || eventTypes.some(type => typeof type !== 'string' || !type.trim())) {
+          return {ok:false,reason:'invalid_event_types'};
+        }
+        const added = [];
+        for (const rawType of eventTypes) {
+          const type = rawType.trim();
+          const list = subscribers.get(type) || [];
+          if (list.some(item => item.ruleId === ruleId)) {
+            return {ok:false,reason:'duplicate_rule_subscription'};
+          }
+          list.push({ruleId,handler});
+          subscribers.set(type,list);
+          added.push(type);
+        }
+        return {ok:true,ruleId,eventTypes:added};
+      },
+      dispatch(events, context) {
+        const input = Array.isArray(events) ? events : [events];
+        const results = [];
+        for (const event of input) {
+          if (!event || typeof event.type !== 'string') continue;
+          for (const subscriber of subscribers.get(event.type) || []) {
+            const result = subscriber.handler(clone(event),context || {});
+            results.push({ruleId:subscriber.ruleId,eventType:event.type,sequence:event.sequence ?? null,result});
+          }
+        }
+        return results;
+      },
+      dispatchPending(queue, context) {
+        if (!queue || typeof queue.drain !== 'function') return [];
+        return this.dispatch(queue.drain(),context);
+      },
+      subscriberCount() {
+        let count = 0;
+        for (const list of subscribers.values()) count += list.length;
+        return count;
+      }
+    };
+  }
   function uid(prefix) { return (prefix || 'c') + '_' + Math.random().toString(36).slice(2, 10); }
   function sumCost(cost) { return Object.values(cost || {}).reduce((a, n) => a + (Number(n) || 0), 0); }
   function colorName(key) { return COLOR_NAMES[key] || key || '무속성'; }
@@ -1237,7 +1298,7 @@ if (card.type === 'unit') {
     COLORS, COLOR_NAMES, TYPE_NAMES, clone, uid, sumCost, costText, colorName,
     newGame, buildStarterDeck, drawToSix, canPay, spendSoul, totalPower, validateCardForPlay,
     playCard, discardCard, reshuffleHand, endPhase, resolveBattle, runAIPhase, checkWinner, cardArtClass,
-    _test: { makePlayer, beginPhase, rollStat, coinProfile, chooseBlocker, createUnit, applyEffect, resolveUnitAttack, destroyUnit, productionOf, readCost, validateCardForPlay, itemMatchesUnit, resolveSpellSlot, statMarker, canChangeStat, changeUnitStat, setUnitStat, normalizeSpecialSkillForEngine, normalizeSpecialSkill2ForEngine, transferCardBetweenZones, createCombatEvent, createCombatEventQueue, SPECIAL_SKILL_RULE_KEYWORDS, SKILL2_SOURCE_RULE_NAMES }
+    _test: { makePlayer, beginPhase, rollStat, coinProfile, chooseBlocker, createUnit, applyEffect, resolveUnitAttack, destroyUnit, productionOf, readCost, validateCardForPlay, itemMatchesUnit, resolveSpellSlot, statMarker, canChangeStat, changeUnitStat, setUnitStat, normalizeSpecialSkillForEngine, normalizeSpecialSkill2ForEngine, transferCardBetweenZones, createCombatEvent, createCombatEventQueue, createCombatEventDispatcher, SPECIAL_SKILL_RULE_KEYWORDS, SKILL2_SOURCE_RULE_NAMES }
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.FM = api;
