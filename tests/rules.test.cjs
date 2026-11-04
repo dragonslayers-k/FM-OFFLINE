@@ -1090,3 +1090,41 @@ test('source Skill2 Devoted Defense has no target when the destroyed unit was la
   assert.equal(owner.units.length,0);
   assert.equal(owner.graveyard.some(card=>card.instanceId==='def'),true);
 });
+
+
+test('combat event records preserve source, cause, target slot and an isolated snapshot',()=>{
+  const {createCombatEvent}=FM._test;
+  const snapshot={name:'수호자',ap:3,hp:4,equipment:['shield']};
+  const event=createCombatEvent('unit_destroyed',{
+    ownerId:'player',cause:'combat',source:{instanceId:'src-1',cardId:'card-1'},
+    target:{instanceId:'target-1'},fieldIndex:2,snapshot,payload:{destroyed:true}
+  });
+  snapshot.hp=0;
+  assert.equal(event.type,'unit_destroyed');
+  assert.equal(event.ownerId,'player');
+  assert.equal(event.cause,'combat');
+  assert.equal(event.sourceInstanceId,'src-1');
+  assert.equal(event.sourceCardId,'card-1');
+  assert.equal(event.targetInstanceId,'target-1');
+  assert.equal(event.fieldIndex,2);
+  assert.equal(event.snapshot.hp,4,'event snapshot is isolated from later board mutation');
+  assert.deepEqual(event.payload,{destroyed:true});
+  assert.throws(()=>createCombatEvent('',{}),TypeError);
+});
+
+test('combat event queue preserves deterministic insertion order and drains once',()=>{
+  const {createCombatEvent,createCombatEventQueue}=FM._test;
+  const queue=createCombatEventQueue();
+  const first=createCombatEvent('unit_destroyed',{fieldIndex:1,snapshot:{hp:0}});
+  const second=createCombatEvent('unit_summoned',{fieldIndex:1,snapshot:{hp:5}});
+  queue.enqueue(first);
+  queue.enqueue(second);
+  first.snapshot.hp=99;
+  assert.equal(queue.size(),2);
+  const drained=queue.drain();
+  assert.deepEqual(drained.map(event=>event.type),['unit_destroyed','unit_summoned']);
+  assert.deepEqual(drained.map(event=>event.sequence),[0,1]);
+  assert.equal(drained[0].snapshot.hp,0,'queued event is isolated from caller mutation');
+  assert.equal(queue.size(),0);
+  assert.deepEqual(queue.drain(),[]);
+});

@@ -9,6 +9,50 @@
   const TYPE_NAMES = { land: '지형', unit: '유닛', item: '아이템', spell: '마법', enchant: '인챈트' };
 
   function clone(value) { return JSON.parse(JSON.stringify(value)); }
+
+  // Immutable, card-agnostic combat event records. These are deliberately
+  // descriptive only: existing combat resolution is unchanged until a
+  // source-verified rule subscribes to a specific event type.
+  function createCombatEvent(type, details) {
+    if (typeof type !== 'string' || !type.trim()) throw new TypeError('Combat event type is required.');
+    const data = details && typeof details === 'object' ? details : {};
+    const source = data.source && typeof data.source === 'object' ? data.source : {};
+    const target = data.target && typeof data.target === 'object' ? data.target : {};
+    const fieldIndex = Number(data.fieldIndex);
+    return {
+      type: type.trim(),
+      sequence: null,
+      ownerId: data.ownerId == null ? null : String(data.ownerId),
+      cause: data.cause == null ? null : String(data.cause),
+      sourceInstanceId: data.sourceInstanceId ?? source.instanceId ?? null,
+      sourceCardId: data.sourceCardId ?? source.cardId ?? source.id ?? null,
+      targetInstanceId: data.targetInstanceId ?? target.instanceId ?? null,
+      fieldIndex: Number.isInteger(fieldIndex) && fieldIndex >= 0 ? fieldIndex : null,
+      snapshot: data.snapshot && typeof data.snapshot === 'object' ? clone(data.snapshot) : {},
+      payload: data.payload && typeof data.payload === 'object' ? clone(data.payload) : {}
+    };
+  }
+
+  function createCombatEventQueue() {
+    let nextSequence = 0;
+    let pending = [];
+    return {
+      enqueue(event) {
+        if (!event || typeof event !== 'object' || typeof event.type !== 'string' || !event.type.trim()) {
+          throw new TypeError('A valid combat event is required.');
+        }
+        const queued = { ...clone(event), sequence: nextSequence++ };
+        pending.push(queued);
+        return clone(queued);
+      },
+      drain() {
+        const ready = pending.map(clone);
+        pending = [];
+        return ready;
+      },
+      size() { return pending.length; }
+    };
+  }
   function uid(prefix) { return (prefix || 'c') + '_' + Math.random().toString(36).slice(2, 10); }
   function sumCost(cost) { return Object.values(cost || {}).reduce((a, n) => a + (Number(n) || 0), 0); }
   function colorName(key) { return COLOR_NAMES[key] || key || '무속성'; }
@@ -1127,7 +1171,7 @@ if (card.type === 'unit') {
     COLORS, COLOR_NAMES, TYPE_NAMES, clone, uid, sumCost, costText, colorName,
     newGame, buildStarterDeck, drawToSix, canPay, spendSoul, totalPower, validateCardForPlay,
     playCard, discardCard, reshuffleHand, endPhase, resolveBattle, runAIPhase, checkWinner, cardArtClass,
-    _test: { makePlayer, beginPhase, rollStat, coinProfile, chooseBlocker, createUnit, applyEffect, resolveUnitAttack, destroyUnit, productionOf, readCost, validateCardForPlay, itemMatchesUnit, resolveSpellSlot, statMarker, canChangeStat, changeUnitStat, setUnitStat, normalizeSpecialSkillForEngine, normalizeSpecialSkill2ForEngine, SPECIAL_SKILL_RULE_KEYWORDS, SKILL2_SOURCE_RULE_NAMES }
+    _test: { makePlayer, beginPhase, rollStat, coinProfile, chooseBlocker, createUnit, applyEffect, resolveUnitAttack, destroyUnit, productionOf, readCost, validateCardForPlay, itemMatchesUnit, resolveSpellSlot, statMarker, canChangeStat, changeUnitStat, setUnitStat, normalizeSpecialSkillForEngine, normalizeSpecialSkill2ForEngine, createCombatEvent, createCombatEventQueue, SPECIAL_SKILL_RULE_KEYWORDS, SKILL2_SOURCE_RULE_NAMES }
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.FM = api;
