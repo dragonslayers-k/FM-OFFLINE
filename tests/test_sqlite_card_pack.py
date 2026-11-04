@@ -151,7 +151,7 @@ class SqliteCardPackTests(unittest.TestCase):
         self.assertEqual(parsed["cost"], {"metal": 2})
         self.assertEqual(parsed["sourceStatus"], "enum_decoded")
 
-    def test_hybrid_mapping_review_is_not_a_playable_cost(self):
+    def test_hybrid_mapping_review_is_playable_with_inferred_both_colors(self):
         row = self.db.execute("SELECT * FROM card_costs").fetchone()
         names = [x[1] for x in self.db.execute("PRAGMA table_info(card_costs)")]
         values = dict(zip(names, row))
@@ -162,12 +162,12 @@ class SqliteCardPackTests(unittest.TestCase):
         values["mapping_review"] = 1
         values["verification_status"] = "mapping_review"
         parsed = CONVERTER.db_cost_to_app(values)
-        self.assertFalse(parsed["known"])
-        self.assertEqual(parsed["cost"], {})
+        self.assertTrue(parsed["known"])
+        self.assertEqual(parsed["cost"], {"forest": 1, "metal": 1})
         self.assertEqual(parsed["candidateCost"], {"forest": 1, "metal": 1})
         self.assertTrue(parsed["mappingReview"])
 
-    def test_ncs_semantics_review_is_not_treated_as_neutral_or_free(self):
+    def test_ncs_semantics_review_is_playable_as_flexible_neutral(self):
         row = self.db.execute("SELECT * FROM card_costs").fetchone()
         names = [x[1] for x in self.db.execute("PRAGMA table_info(card_costs)")]
         values = dict(zip(names, row))
@@ -178,8 +178,8 @@ class SqliteCardPackTests(unittest.TestCase):
         values["semantic_review"] = 1
         values["verification_status"] = "semantic_review"
         parsed = CONVERTER.db_cost_to_app(values)
-        self.assertFalse(parsed["known"])
-        self.assertEqual(parsed["cost"], {})
+        self.assertTrue(parsed["known"])
+        self.assertEqual(parsed["cost"], {"neutral": 2})
         self.assertEqual(parsed["specialSouls"]["ncs"], 1)
 
     def test_load_reads_exact_url_image_hash_and_effect_candidates_from_sqlite(self):
