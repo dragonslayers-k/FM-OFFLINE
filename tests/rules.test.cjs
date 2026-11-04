@@ -976,3 +976,9 @@ test('DB29 1.3 Skill1 mapping metadata fails closed unless manual authority and 
   assert.equal(normalize({...base,specialSkillMappingStatus:'manual_verified',specialSkillRuleAuthority:'community'},'방어무시'),'');
   assert.equal(normalize({...base,specialSkillMappingStatus:'manual_verified',specialSkillRuleId:'not_in_manual_catalog'},'방어무시'),'');
 });
+
+
+test('Manual canonical shield-break label normalizes to the engine keyword',()=>{
+  assert.equal(FM._test.normalizeSpecialSkillForEngine({},'방패파괴'),'방패파괴공격');
+  assert.equal(FM._test.normalizeSpecialSkillForEngine({},'방패파괴기술'),'방패파괴');
+});
