@@ -205,12 +205,17 @@ def db_cost_to_app(cost_row):
     soul=json.loads(cost_row["soul_json"] or "{}")
     colors=soul.get("colors") or {}
     candidate={}
+    flexible_special=0
     for key,value in colors.items():
-        if key in ("ncs","bonus"):
-            continue
         amount=integer(value)
-        if amount is not None and amount:
-            candidate["metal" if key=="iron" else key]=amount
+        if amount is None or not amount:
+            continue
+        if key in ("ncs","bonus"):
+            flexible_special+=amount
+            continue
+        candidate["metal" if key=="iron" else key]=amount
+    if flexible_special:
+        candidate["neutral"]=candidate.get("neutral",0)+flexible_special
     mapping_review=bool(cost_row["mapping_review"])
     semantic_review=bool(cost_row["semantic_review"])
     soul_known=bool(cost_row["soul_known"])
