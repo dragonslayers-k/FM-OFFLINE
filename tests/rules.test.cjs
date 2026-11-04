@@ -1010,3 +1010,51 @@ test('DB29 source-card Skill2 normalization accepts only exact implemented rule/
     specialSkill2RuleAuthority:'card_source',specialSkill2ExecutionStatus:'source-card-rule-implemented',
     specialSkill2RuleId:'unrecognized'}),'');
 });
+
+
+// Boundary regressions for source-card verified Skill2 defenses. These guard
+// the rounding and damage-floor semantics rather than only their happy paths.
+test('source Skill2 Pressure rounds down with one empty slot and reduces damage with two',()=>{
+  const attacker=unit('attacker',{instanceId:'atk'});
+  const defender=sourceSkill2('defender','프레셔',{instanceId:'def',hp:6,maxHp:6});
+  const oneEmpty=[defender,unit('a',{instanceId:'a'}),unit('b',{instanceId:'b'}),unit('c',{instanceId:'c'})];
+  const owner=player('player',{units:oneEmpty});
+  const ai=player('ai',{units:[attacker]});
+  let result=FM._test.resolveUnitAttack(state(ai,owner),ai,owner,attacker,defender,{
+    attacker:combatStats(4,0,5),defender:combatStats(2,0,6)
+  });
+  assert.equal(result.damage,4,'one empty slot gives floor(1/2)=0 reduction');
+  defender.hp=6;
+  owner.units=oneEmpty.slice(0,3);
+  result=FM._test.resolveUnitAttack(state(ai,owner),ai,owner,attacker,defender,{
+    attacker:combatStats(4,0,5),defender:combatStats(2,0,6)
+  });
+  assert.equal(result.damage,3,'two empty slots give one damage reduction');
+});
+
+test('source Skill2 Alliance and Racial Defense never reduce incoming damage below zero',()=>{
+  for (const [name,field,value] of [['얼라이디펜스','affiliation','guild-a'],['레이셜디펜스','race','elf']]) {
+    const attacker=unit('attacker',{instanceId:'atk'});
+    const defender=sourceSkill2('defender',name,{instanceId:'def',[field]:value,hp:5,maxHp:5});
+    const allies=Array.from({length:3},(_,i)=>unit('ally'+i,{instanceId:'ally'+i,[field]:value}));
+    const owner=player('player',{units:[defender,...allies]});
+    const ai=player('ai',{units:[attacker]});
+    const result=FM._test.resolveUnitAttack(state(ai,owner),ai,owner,attacker,defender,{
+      attacker:combatStats(1,0,5),defender:combatStats(2,1,5)
+    });
+    assert.equal(result.damage,0,name+' damage floor');
+    assert.equal(defender.hp,5,name+' preserves HP');
+  }
+});
+
+test('source Skill2 Tactical Initiative does not reduce damage when attacker level is higher',()=>{
+  const attacker=unit('attacker',{instanceId:'atk',level:4});
+  const defender=sourceSkill2('defender','기선제압',{instanceId:'def',level:3,hp:5,maxHp:5});
+  const owner=player('player',{units:[defender]});
+  const ai=player('ai',{units:[attacker]});
+  const result=FM._test.resolveUnitAttack(state(ai,owner),ai,owner,attacker,defender,{
+    attacker:combatStats(4,0,5),defender:combatStats(2,1,5)
+  });
+  assert.equal(result.damage,3);
+  assert.equal(defender.hp,2);
+});
