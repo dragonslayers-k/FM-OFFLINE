@@ -965,3 +965,14 @@ test('source Skill2 Strong Devoted Defense buffs every surviving friendly field 
   assert.equal(FM.totalPower(another,'dp'),2);
   assert.equal(another.hp,4);
 });
+
+
+test('DB29 1.3 Skill1 mapping metadata fails closed unless manual authority and verified status agree',()=>{
+  const normalize=FM._test.normalizeSpecialSkillForEngine;
+  const base={specialSkillRuleId:'defense_bypass',specialSkillRuleAuthority:'manual'};
+  assert.equal(normalize({...base,specialSkillMappingStatus:'manual_verified'},'방어무시'),'방어무시');
+  assert.equal(normalize({...base,specialSkillMappingStatus:'community_documented_candidate'},'방어무시'),'');
+  assert.equal(normalize({...base,specialSkillMappingStatus:'unmapped'},'방어무시'),'');
+  assert.equal(normalize({...base,specialSkillMappingStatus:'manual_verified',specialSkillRuleAuthority:'community'},'방어무시'),'');
+  assert.equal(normalize({...base,specialSkillMappingStatus:'manual_verified',specialSkillRuleId:'not_in_manual_catalog'},'방어무시'),'');
+});
