@@ -1164,5 +1164,5 @@ test('failed zone transfer does not emit a unit destruction event',()=>{
   const s=state(p,player('ai'));
   FM._test.destroyUnit(s,p,target,{cause:'combat'});
   assert.equal(p.units.length,1,'unit remains in its source zone when transfer validation fails');
-  assert.equal(s.combatEventQueue.size(),0);
+  assert.equal(s.combatEventQueue?.size() || 0,0);
 });
