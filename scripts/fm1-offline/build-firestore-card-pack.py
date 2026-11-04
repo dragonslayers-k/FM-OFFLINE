@@ -214,14 +214,14 @@ def db_cost_to_app(cost_row):
     mapping_review=bool(cost_row["mapping_review"])
     semantic_review=bool(cost_row["semantic_review"])
     soul_known=bool(cost_row["soul_known"])
-    known=soul_known and not mapping_review and not semantic_review
+    known=soul_known
     review=[]
     if not soul_known:
         review.append("unresolved-source-token")
     if mapping_review:
-        review.append("hybrid-requiresoul-mapping-review")
+        review.append("hybrid-playable-inferred-both-colors")
     if semantic_review:
-        review.append("ncs-bonus-semantics-review")
+        review.append("special-soul-playable-inferred-flexible-neutral")
     # Preserve an explicit NONE/00 source as a known zero-cost object.
     app_cost=dict(candidate) if known else {}
     if known and not app_cost:
