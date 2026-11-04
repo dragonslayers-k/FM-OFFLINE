@@ -377,8 +377,11 @@
   function safeSourceCardUrl(value) {
     try {
       const url = new URL(String(value || ''));
+      const pathParts = url.pathname.split('/').filter(Boolean);
+      const validCardPath = pathParts.length === 2 && pathParts[0] === 'card' &&
+        /^[A-Za-z0-9_-]+$/.test(pathParts[1]);
       if (url.protocol !== 'https:' || url.hostname !== 'fmlunatic.com' ||
-          url.username || url.password || !/^\\/card\\/[A-Za-z0-9_-]+\\/?$/.test(url.pathname)) return null;
+          url.username || url.password || !validCardPath) return null;
       return url.href;
     } catch (_) { return null; }
   }
