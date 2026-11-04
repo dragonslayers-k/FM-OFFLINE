@@ -53,6 +53,32 @@
       size() { return pending.length; }
     };
   }
+
+  function emitCombatEvent(state, type, details) {
+    if (!state || typeof state !== 'object') return null;
+    if (!state.combatEventQueue || typeof state.combatEventQueue.enqueue !== 'function') {
+      state.combatEventQueue = createCombatEventQueue();
+    }
+    return state.combatEventQueue.enqueue(createCombatEvent(type, details));
+  }
+
+  function snapshotCombatUnit(unit) {
+    if (!unit || typeof unit !== 'object') return null;
+    return {
+      instanceId: unit.instanceId ?? null,
+      cardId: unit.cardId ?? unit.id ?? null,
+      name: unit.name ?? null,
+      type: unit.type ?? 'unit',
+      ap: Number(unit.ap || 0),
+      dp: Number(unit.dp || 0),
+      hp: Number(unit.hp || 0),
+      maxHp: Number(unit.maxHp || 0),
+      skill: unit.tempSkill || unit.skill || null,
+      skill2: unit.skill2 || null,
+      affiliation: unit.affiliation || null,
+      race: unit.race || null
+    };
+  }
   function uid(prefix) { return (prefix || 'c') + '_' + Math.random().toString(36).slice(2, 10); }
   function sumCost(cost) { return Object.values(cost || {}).reduce((a, n) => a + (Number(n) || 0), 0); }
   function colorName(key) { return COLOR_NAMES[key] || key || '무속성'; }
@@ -324,6 +350,7 @@
         ai: makePlayer('ai', 'AI 상대', shuffle(aiDeck, rng), true)
       },
       log: [],
+      combatEventQueue: createCombatEventQueue(),
       settings: { difficulty: opts.difficulty || 'normal', deckSize: playerDeck.length },
       rng
     };
@@ -723,7 +750,7 @@ if (card.type === 'unit') {
     if (effect.type === 'damage' && target) {
       const targetOwner = effect.target === 'ownUnit' ? owner : enemy;
       changeUnitStat(target,'hp',-amount);
-      if (target.hp <= 0 && statMarker(target,'hp') !== '*' && statMarker(target,'hp') !== '★') destroyUnit(state,targetOwner,target);
+      if (target.hp <= 0 && statMarker(target,'hp') !== '*' && statMarker(target,'hp') !== '★') destroyUnit(state,targetOwner,target,{cause:'effect'});
     } else if (effect.type === 'buff' && target) {
       changeUnitStat(target,'ap',Number(effect.ap || 0));
       changeUnitStat(target,'dp',Number(effect.dp || 0));
@@ -756,12 +783,23 @@ if (card.type === 'unit') {
     return {ok:true,reason:null,card,sourceIndex:index};
   }
 
-  function destroyUnit(state, owner, unit) {
+  function destroyUnit(state, owner, unit, eventContext) {
     const idx = owner.units.findIndex(u => u.instanceId === unit.instanceId);
     if (idx >= 0) {
+      const before = snapshotCombatUnit(unit);
       const transfer = transferCardBetweenZones(owner.units,owner.graveyard,unit.instanceId);
       if (!transfer.ok) return;
       const gone = transfer.card;
+      const context = eventContext && typeof eventContext === 'object' ? eventContext : {};
+      emitCombatEvent(state, 'unit_destroyed', {
+        ownerId: owner.id,
+        cause: context.cause || 'effect',
+        source: context.source || null,
+        target: gone,
+        fieldIndex: idx,
+        snapshot: { unit: before, equipment: (gone.equipmentCards || []).map(item => ({instanceId:item.instanceId||null,cardId:item.cardId||item.id||null,name:item.name||null})) },
+        payload: { equipmentCount: (gone.equipmentCards || []).length }
+      });
       (gone.equipmentCards || []).forEach(item => owner.graveyard.push(item));
       addLog(state,owner.name + '의 ' + gone.name + '이(가) 파괴되었습니다. 장착 아이템도 함께 소멸했습니다.');
       const destructionSkill2=normalizeSpecialSkill2ForEngine(gone);
@@ -907,11 +945,21 @@ if (card.type === 'unit') {
       const damage=unitSoulCount(attacker);
       if(!Number.isFinite(damage)){
         addLog(state,attacker.name+'의 소환 소울 비용이 확인되지 않아 직접 공격을 처리하지 않았습니다.');
+        emitCombatEvent(state, 'unit_attack_resolved', {
+          ownerId: attackingOwner.id, cause: 'combat', source: attacker,
+          snapshot: { attacker: snapshotCombatUnit(attacker), defender: null },
+          payload: { damage: 0, direct: true, invalidCost: true }
+        });
         return {damage:0,direct:true,invalidCost:true};
       }
       const removed=Math.min(damage,defendingOwner.deck.length);
       defendingOwner.deck.splice(0,removed);
       addLog(state,attacker.name+'의 직접 공격! 상대 덱에서 '+removed+'장을 파괴했습니다.');
+      emitCombatEvent(state, 'unit_attack_resolved', {
+        ownerId: attackingOwner.id, cause: 'combat', source: attacker,
+        snapshot: { attacker: snapshotCombatUnit(attacker), defender: null },
+        payload: { damage: removed, direct: true, invalidCost: false }
+      });
       checkWinner(state);return {damage:removed,direct:true};
     }
     const defenderStats=rolledStats.defender||rollCombatStats(defender,rng),defenseRoll=defenderStats.dp;
@@ -1006,10 +1054,17 @@ if (card.type === 'unit') {
       change(defender,defenderStats,'hp',-lost);change(defender,defenderStats,'ap',lost);
     }
     if(defender.hp<=0&&!['*','★','▲','△'].includes(statMarker(defender,'hp'))){
-      destroyUnit(state,defendingOwner,defender);
+      destroyUnit(state,defendingOwner,defender,{cause:'combat',source:attacker});
       addLog(state,attacker.name+'의 '+(skill||'일반 공격')+'으로 '+defender.name+'이(가) 파괴되었습니다. ('+actual+' 피해)');
     }else addLog(state,attacker.name+'의 '+(skill||'일반 공격')+' → '+defender.name+' ('+actual+' 피해)');
-    return {damage:actual,defenderAlive:defendingOwner.units.includes(defender)};
+    const defenderAlive = defendingOwner.units.includes(defender);
+    emitCombatEvent(state, 'unit_attack_resolved', {
+      ownerId: attackingOwner.id, cause: 'combat', source: attacker, target: defender,
+      fieldIndex: Math.max(0, Number(defender.slotIndex ?? defendingOwner.units.indexOf(defender))),
+      snapshot: { attacker: snapshotCombatUnit(attacker), defender: snapshotCombatUnit(defender) },
+      payload: { damage: actual, direct: false, defenderAlive }
+    });
+    return {damage:actual,defenderAlive};
   }
 
   function resolveBattle(state) {
