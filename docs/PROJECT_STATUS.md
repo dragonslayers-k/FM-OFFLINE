@@ -89,3 +89,14 @@ The engine maps the real current enum names (e.g. `기술봉쇄`, `주문봉쇄`
 ## Android 데이터팩 파일 분리
 
 Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance is not dropped: `card-skill-mappings.json` carries all Skill1/Skill2 mappings and `card-effect-candidates.json` carries all effect pattern candidates and exact clause spans. The manifest records each file's SHA-256 and row counts. The runtime consumes the compact `specialSkillRuleId` / mapping status on unit cards; detailed records remain available as a separate reference library in the ZIP.
+
+
+## External FM1 references and implementation constraints (2026-11-05)
+
+The shared source guide is maintained at `docs/EXTERNAL_FM1_REFERENCE_GUIDE.md`. This adds the NamuWiki 3.4 attribute / 3.5 race-and-affiliation / 3.6 card lists and selected individual card pages, the supplied A.docx excerpt, Neginote's personal guide, the Inven 2017 skill list, historical Gamechosun context, and the retrieval limitation for the Naver jlplace article.
+
+No game engine rule was promoted from community references by this documentation update. The Android app continues to consume immutable T Release `fm1-carddb-29`; the 54 semantic-review rows remain pending/non-executable in T and no DB30 release is authorized.
+
+For engine work, `attribute`, `race`, `affiliation`, `card_type`, and unit `ability` must remain distinct. The five card categories are Land/Unit/Item/Spell/Enchant. NamuWiki's detailed 7-attribute page and the main article's later 8-attribute taxonomy are historical layers, not a reason to overwrite DB29 values. The `faction` field in the current app schema is the backward-compatible attribute/color key.
+
+New handlers require Manual or card-ID-specific original text, provenance, and focused tests for activation timing, target, preconditions, cost, formula, duration, ordering, stacking, and failure effect. Community-only candidates, `pattern_candidate`, OCR fuzzy/name-collision results, and unresolved hybrid/NCS/BONUS costs remain non-executable / blocked.
