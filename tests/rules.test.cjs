@@ -2279,6 +2279,23 @@ test('production Pressure Defense respects the five-slot floor boundary',()=>{
   }
 });
 
+test('production Pressure Defense applies floor(4/2) at the four-empty-slot boundary',()=>{
+  const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
+  const attacker=unit('attacker',{instanceId:'pressure-four-empty-atk'});
+  const defender=sourceSkill2('defender','프레셔',{
+    instanceId:'pressure-four-empty-def',hp:6,maxHp:6,dp:1
+  });
+  const p=s.players.player,ai=s.players.ai;
+  p.units.push(attacker);
+  ai.units.push(defender);
+  const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:combatStats(4,0,5),defender:combatStats(2,1,6)
+  });
+  assert.equal(result.damage,1,'four empty slots produce floor(4/2)=2 damage reduction');
+  assert.equal(defender.hp,5);
+  assert.equal(s.combatEventQueue.size(),0);
+});
+
 test('production dispatcher applies Wrath from actual HP lost before retaliation',()=>{
   const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
   const attacker=unit('attacker',{instanceId:'wrath-atk'});
