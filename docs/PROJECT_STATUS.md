@@ -121,3 +121,13 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 3. Skill2 8개 source excerpt 누락과 inferred mapping 377행은 별도 backlog로 유지한다.
 4. 기존 lifecycle event는 source-verified handler를 붙일 근거가 확보된 경우에만 확장한다.
 5. PR #28 병합, main 수정, DB30 발행은 승인 전 금지.
+
+
+## 2026-11-05 — 저장소 이력 재확인: APK Actions #170
+
+- PR #28: https://github.com/dragonslayers-k/FM-OFFLINE/pull/28 — open / draft / unmerged. Branch `feat/combat-event-foundation`; latest PR HEAD `313368bea61566a83e038a3a16ca41de7b190a52`.
+- Actions #170: https://github.com/dragonslayers-k/FM-OFFLINE/actions/runs/41958670080 — success. Node rule tests, converter tests, immutable T DB29 download/data ZIP build, Debug APK build and package integrity, Android emulator install/launch, imported card-data/WebView smoke test all passed. Run #170 report indicates 15,350/15,350 card data loaded. This confirms build/import/app smoke coverage, not full combat-rule completeness.
+- Recent sequence retained: #167/#168 failed on regression fixtures; #169 passed after correction; #170 is the latest successful full run. Do not erase failed attempts from history; use #170 as current validation point.
+- PR #28 scope remains immutable combat event snapshots/ordered queue and validated zone transfer; existing Skill2 behavior is preserved, and no new inferred effect is enabled. Skill1 Manual 27 mapping track remains separate from Skill2.
+- Next implementation should proceed from CardDB’s exact DB29 Skill1 source-row audit and implement one carefully scoped source-backed interaction with card-local source condition and deterministic tests. Add handlers only after event timing and test coverage justify them.
+- PR #28 unmerged, main unchanged, DB29 immutable, DB30 not issued. No APK release claim beyond run #170 artifacts/validation.
