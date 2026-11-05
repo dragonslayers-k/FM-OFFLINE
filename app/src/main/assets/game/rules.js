@@ -835,6 +835,12 @@ if (card.type === 'unit') {
       p.unitDeployedThisPhase++;
       p.playedAnyCardThisPhase = true;
       addLog(state, `${p.name}이(가) ${card.name}을(를) ${slot}번 슬롯에 소환했습니다.`);
+      emitCombatEvent(state,'unit_summoned',{
+        ownerId,cause:'play_card',source:card,target:unit,fieldIndex:slot-1,
+        snapshot:{unit:snapshotCombatUnit(unit)},
+        payload:{slotIndex:slot}
+      });
+      dispatchPendingCombatEvents(state);
       return { ok: true };
     }
     if (card.type === 'item' || card.type === 'enchant') {

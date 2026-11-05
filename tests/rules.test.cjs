@@ -284,6 +284,50 @@ test('unparsed native item target restrictions fail closed',()=>{
   assert.equal(p.hand.length,1);
 });
 
+test('successful unit summon emits one source-linked event after the field commit',()=>{
+  const card=unit('summon-card',{instanceId:'hand-unit',cost:{forest:0},costKnown:true,costMapped:true});
+  const p=player('player',{hand:[card],unitDeployLimit:1,soulPool:{colored:{},neutral:0}});
+  const s=state(p,player('ai'));
+  s.combatEventQueue=FM._test.createCombatEventQueue();
+  const dispatcher=FM._test.createCombatEventDispatcher();
+  FM._test.attachCombatEventDispatcher(s,dispatcher);
+  const seen=[];
+  dispatcher.register({ruleId:'defense_bypass',mappingStatus:'manual_verified',authority:'manual',
+    eventTypes:['unit_summoned']},event=>{seen.push(event);return true;});
+  const result=FM.playCard(s,'player','hand-unit');
+  assert.equal(result.ok,true);
+  assert.equal(p.units.length,1);
+  assert.equal(seen.length,1);
+  const event=seen[0];
+  assert.equal(event.type,'unit_summoned');
+  assert.equal(event.ownerId,'player');
+  assert.equal(event.cause,'play_card');
+  assert.equal(event.sourceCardId,'summon-card');
+  assert.equal(event.targetInstanceId,p.units[0].instanceId);
+  assert.equal(event.fieldIndex,0);
+  assert.equal(event.payload.slotIndex,1);
+  assert.equal(event.snapshot.unit.cardId,'summon-card');
+  assert.equal(s.combatEventQueue.size(),0);
+});
+
+test('failed unit summon emits no unit_summoned event and leaves the hand unchanged',()=>{
+  const card=unit('summon-blocked',{instanceId:'blocked-unit',cost:{forest:1},costKnown:true,costMapped:true});
+  const p=player('player',{hand:[card],unitDeployLimit:1,soulPool:{colored:{},neutral:0}});
+  const s=state(p,player('ai'));
+  s.combatEventQueue=FM._test.createCombatEventQueue();
+  const dispatcher=FM._test.createCombatEventDispatcher();
+  FM._test.attachCombatEventDispatcher(s,dispatcher);
+  const seen=[];
+  dispatcher.register({ruleId:'defense_bypass',mappingStatus:'manual_verified',authority:'manual',
+    eventTypes:['unit_summoned']},event=>{seen.push(event);return true;});
+  const result=FM.playCard(s,'player','blocked-unit');
+  assert.equal(result.ok,false);
+  assert.equal(p.hand.length,1);
+  assert.equal(p.units.length,0);
+  assert.equal(seen.length,0);
+  assert.equal(s.combatEventQueue.size(),0);
+});
+
 test('a spell is queued in its magic slot and resolves only in battle',()=>{
   const spell={id:'spell',instanceId:'s1',name:'화살',type:'spell',cost:{forest:0},costKnown:true,costMapped:true,
     triggerTiming:'공격/방어',durationTurns:1,effect:{type:'damage',target:'enemyUnit',amount:3}};
