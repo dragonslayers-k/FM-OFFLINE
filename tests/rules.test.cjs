@@ -1268,3 +1268,48 @@ test('combat event dispatcher accepts only known verified mappings and dispatche
   assert.deepEqual(results.map(x=>x.ruleId),['defense_bypass','skill2_tactical_initiative','defense_bypass','skill2_tactical_initiative']);
   assert.deepEqual(original.map(x=>x.payload.damage),[2,3],'subscriber mutations must not alter queued source events');
 });
+
+
+test('attached dispatcher drains combat events only at completed attack boundaries',()=>{
+  const attacker=unit('attacker',{instanceId:'flush-a',ap:3});
+  const defender=unit('defender',{instanceId:'flush-d',dp:1,hp:8,maxHp:8});
+  const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+  const dispatcher=FM._test.createCombatEventDispatcher(),seen=[];
+  assert.equal(FM._test.attachCombatEventDispatcher(s,dispatcher),true);
+  dispatcher.register({
+    ruleId:'defense_bypass',mappingStatus:'manual_verified',authority:'manual',
+    eventTypes:['unit_attack_resolved']
+  },event=>{seen.push(event.type+':'+event.payload.damage);return true;});
+  FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:{ap:{value:3},dp:{value:0},hp:{value:10}},
+    defender:{ap:{value:1},dp:{value:1},hp:{value:8}}
+  });
+  assert.deepEqual(seen,['unit_attack_resolved:2']);
+  assert.equal(s.combatEventQueue.size(),0);
+});
+
+test('events enqueued by a subscriber wait for the next explicit dispatch boundary',()=>{
+  const s=state(player('player'),player('ai'));
+  const dispatcher=FM._test.createCombatEventDispatcher(),seen=[];
+  FM._test.attachCombatEventDispatcher(s,dispatcher);
+  dispatcher.register({
+    ruleId:'defense_bypass',mappingStatus:'manual_verified',authority:'manual',
+    eventTypes:['unit_attack_resolved']
+  },(event,context)=>{
+    seen.push('attack');
+    context.state.combatEventQueue.enqueue(FM._test.createCombatEvent('unit_destroyed',{payload:{nested:true}}));
+  });
+  dispatcher.register({
+    ruleId:'skill2_tactical_initiative',mappingStatus:'source_card_verified',
+    authority:'card_source',executionStatus:'source-card-rule-implemented',
+    eventTypes:['unit_destroyed']
+  },event=>{seen.push('destroyed');});
+  s.combatEventQueue=FM._test.createCombatEventQueue();
+  s.combatEventQueue.enqueue(FM._test.createCombatEvent('unit_attack_resolved',{payload:{damage:1}}));
+  FM._test.dispatchPendingCombatEvents(s);
+  assert.deepEqual(seen,['attack']);
+  assert.equal(s.combatEventQueue.size(),1,'new events are not recursively dispatched in the same drain');
+  FM._test.dispatchPendingCombatEvents(s);
+  assert.deepEqual(seen,['attack','destroyed']);
+  assert.equal(s.combatEventQueue.size(),0);
+});

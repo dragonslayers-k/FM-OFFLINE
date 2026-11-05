@@ -140,6 +140,21 @@
       }
     };
   }
+
+  function attachCombatEventDispatcher(state, dispatcher) {
+    if (!state || typeof state !== 'object' || !dispatcher ||
+        typeof dispatcher.dispatchPending !== 'function') return false;
+    state.combatEventDispatcher = dispatcher;
+    return true;
+  }
+
+  function dispatchPendingCombatEvents(state) {
+    if (!state || !state.combatEventDispatcher ||
+        typeof state.combatEventDispatcher.dispatchPending !== 'function') return [];
+    return state.combatEventDispatcher.dispatchPending(state.combatEventQueue, {
+      state, players: state.players || null
+    });
+  }
   function uid(prefix) { return (prefix || 'c') + '_' + Math.random().toString(36).slice(2, 10); }
   function sumCost(cost) { return Object.values(cost || {}).reduce((a, n) => a + (Number(n) || 0), 0); }
   function colorName(key) { return COLOR_NAMES[key] || key || '무속성'; }
@@ -828,10 +843,11 @@ if (card.type === 'unit') {
     } else if (effect.type === 'drain' && target) {
       const targetOwner = effect.target === 'ownUnit' ? owner : enemy;
       changeUnitStat(target,'hp',-amount);
-      if (target.hp <= 0 && statMarker(target,'hp') !== '*' && statMarker(target,'hp') !== '★') destroyUnit(state,targetOwner,target);
+      if (target.hp <= 0 && statMarker(target,'hp') !== '*' && statMarker(target,'hp') !== '★') destroyUnit(state,targetOwner,target,{cause:'effect'});
       const wounded = owner.units.slice().sort((a, b) => a.hp - b.hp)[0];
       if (wounded) changeUnitStat(wounded,'hp',amount);
     }
+    dispatchPendingCombatEvents(state);
   }
 
   function transferCardBetweenZones(source, destination, cardOrInstanceId, options) {
@@ -1011,6 +1027,7 @@ if (card.type === 'unit') {
           snapshot: { attacker: snapshotCombatUnit(attacker), defender: null },
           payload: { damage: 0, direct: true, invalidCost: true }
         });
+        dispatchPendingCombatEvents(state);
         return {damage:0,direct:true,invalidCost:true};
       }
       const removed=Math.min(damage,defendingOwner.deck.length);
@@ -1021,6 +1038,7 @@ if (card.type === 'unit') {
         snapshot: { attacker: snapshotCombatUnit(attacker), defender: null },
         payload: { damage: removed, direct: true, invalidCost: false }
       });
+      dispatchPendingCombatEvents(state);
       checkWinner(state);return {damage:removed,direct:true};
     }
     const defenderStats=rolledStats.defender||rollCombatStats(defender,rng),defenseRoll=defenderStats.dp;
@@ -1125,6 +1143,7 @@ if (card.type === 'unit') {
       snapshot: { attacker: snapshotCombatUnit(attacker), defender: snapshotCombatUnit(defender) },
       payload: { damage: actual, direct: false, defenderAlive }
     });
+    dispatchPendingCombatEvents(state);
     return {damage:actual,defenderAlive};
   }
 
@@ -1298,7 +1317,7 @@ if (card.type === 'unit') {
     COLORS, COLOR_NAMES, TYPE_NAMES, clone, uid, sumCost, costText, colorName,
     newGame, buildStarterDeck, drawToSix, canPay, spendSoul, totalPower, validateCardForPlay,
     playCard, discardCard, reshuffleHand, endPhase, resolveBattle, runAIPhase, checkWinner, cardArtClass,
-    _test: { makePlayer, beginPhase, rollStat, coinProfile, chooseBlocker, createUnit, applyEffect, resolveUnitAttack, destroyUnit, productionOf, readCost, validateCardForPlay, itemMatchesUnit, resolveSpellSlot, statMarker, canChangeStat, changeUnitStat, setUnitStat, normalizeSpecialSkillForEngine, normalizeSpecialSkill2ForEngine, transferCardBetweenZones, createCombatEvent, createCombatEventQueue, createCombatEventDispatcher, SPECIAL_SKILL_RULE_KEYWORDS, SKILL2_SOURCE_RULE_NAMES }
+    _test: { makePlayer, beginPhase, rollStat, coinProfile, chooseBlocker, createUnit, applyEffect, resolveUnitAttack, destroyUnit, productionOf, readCost, validateCardForPlay, itemMatchesUnit, resolveSpellSlot, statMarker, canChangeStat, changeUnitStat, setUnitStat, normalizeSpecialSkillForEngine, normalizeSpecialSkill2ForEngine, transferCardBetweenZones, createCombatEvent, createCombatEventQueue, createCombatEventDispatcher, attachCombatEventDispatcher, dispatchPendingCombatEvents, SPECIAL_SKILL_RULE_KEYWORDS, SKILL2_SOURCE_RULE_NAMES }
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.FM = api;
