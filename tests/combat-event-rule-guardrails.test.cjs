@@ -66,37 +66,22 @@ test('source-verified Skill2 dispatch requires exact rule provenance and card na
   const seen = [];
   assert.equal(dispatcher.register(SOURCE_RULE, event => seen.push(event)).ok, true);
 
-  const matching = FM._test.createCombatEvent('unit_destroyed', {
-    snapshot: sourceSnapshot(),
-    payload: {actualDamage: 1}
-  });
-  const wrongCardId = FM._test.createCombatEvent('unit_destroyed', {
-    snapshot: sourceSnapshot({cardId: 'card-2'})
-  });
-  const missingCardId = FM._test.createCombatEvent('unit_destroyed', {
-    snapshot: sourceSnapshot({cardId: null})
-  });
-  const emptyCardId = FM._test.createCombatEvent('unit_destroyed', {
-    snapshot: sourceSnapshot({cardId: ''})
-  });
-  const whitespaceCardId = FM._test.createCombatEvent('unit_destroyed', {
-    snapshot: sourceSnapshot({cardId: '   '})
-  });
-  const wrongRuleId = FM._test.createCombatEvent('unit_destroyed', {
-    snapshot: sourceSnapshot({specialSkill2RuleId: 'skill2_devoted_defense'})
-  });
-  const wrongMappingStatus = FM._test.createCombatEvent('unit_destroyed', {
-    snapshot: sourceSnapshot({specialSkill2MappingStatus: 'community_documented_candidate'})
-  });
-  const wrongAuthority = FM._test.createCombatEvent('unit_destroyed', {
-    snapshot: sourceSnapshot({specialSkill2RuleAuthority: 'community'})
-  });
-  const wrongExecution = FM._test.createCombatEvent('unit_destroyed', {
-    snapshot: sourceSnapshot({specialSkill2ExecutionStatus: 'candidate-only'})
-  });
-  const wrongPrintedName = FM._test.createCombatEvent('unit_destroyed', {
-    snapshot: sourceSnapshot({skill2: '헌신방어'})
-  });
+  const eventFor = (overrides = {}, payload = {}) => {
+    const unit = {...sourceSnapshot().unit, ...overrides};
+    return FM._test.createCombatEvent('unit_destroyed', {
+      target: {cardId: unit.cardId}, snapshot: {unit}, payload
+    });
+  };
+  const matching = eventFor({}, {actualDamage: 1});
+  const wrongCardId = eventFor({cardId: 'card-2'});
+  const missingCardId = eventFor({cardId: null});
+  const emptyCardId = eventFor({cardId: ''});
+  const whitespaceCardId = eventFor({cardId: '   '});
+  const wrongRuleId = eventFor({specialSkill2RuleId: 'skill2_devoted_defense'});
+  const wrongMappingStatus = eventFor({specialSkill2MappingStatus: 'community_documented_candidate'});
+  const wrongAuthority = eventFor({specialSkill2RuleAuthority: 'community'});
+  const wrongExecution = eventFor({specialSkill2ExecutionStatus: 'candidate-only'});
+  const wrongPrintedName = eventFor({skill2: '헌신방어'});
 
   const results = dispatcher.dispatch([
     matching, wrongCardId, missingCardId, emptyCardId, whitespaceCardId, wrongRuleId, wrongMappingStatus, wrongAuthority, wrongExecution, wrongPrintedName
@@ -111,12 +96,11 @@ test('source Skill2 printed name normalization permits spacing only, not alias s
   const seen = [];
   assert.equal(dispatcher.register(SOURCE_RULE, event => seen.push(event)).ok, true);
 
-  dispatcher.dispatch(FM._test.createCombatEvent('unit_destroyed', {
-    snapshot: sourceSnapshot({skill2: '기선 제압'})
-  }), {});
-  dispatcher.dispatch(FM._test.createCombatEvent('unit_destroyed', {
-    snapshot: sourceSnapshot({skill2: '기선제압기술'})
-  }), {});
+  const eventFor = skill2 => FM._test.createCombatEvent('unit_destroyed', {
+    target: {cardId: 'card-1'}, snapshot: sourceSnapshot({skill2})
+  });
+  dispatcher.dispatch(eventFor('기선 제압'), {});
+  dispatcher.dispatch(eventFor('기선제압기술'), {});
 
   assert.equal(seen.length, 1);
   assert.equal(seen[0].snapshot.unit.skill2, '기선 제압');
