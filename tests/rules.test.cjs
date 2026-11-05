@@ -376,7 +376,7 @@ test('failed terrain installation emits no event and preserves the original hand
 test('successful item equip emits target and stat payload after the equipment commit',()=>{
   const target=unit('event-target',{instanceId:'event-target-1'});
   const item={id:'event-item',instanceId:'event-item-1',name:'강화검',type:'item',
-    cost:{forest:0},costKnown:true,costMapped:true,apBonus:2,dpBonus:1,hpBonus:0};
+    cost:{forest:0},costKnown:true,costMapped:true,allowedUnitAbilities:['장비'],apBonus:2,dpBonus:1,hpBonus:0};
   const p=player('player',{hand:[item],units:[target],soulPool:{colored:{},neutral:0}});
   const s=state(p,player('ai'));
   s.combatEventQueue=FM._test.createCombatEventQueue();
@@ -415,7 +415,7 @@ test('failed item targeting emits no equipment event and leaves item in hand',()
 
 test('successful spell queue emits a source-linked event after slot assignment',()=>{
   const spell={id:'event-spell',instanceId:'event-spell-1',name:'화살',type:'spell',
-    cost:{forest:0},costKnown:true,costMapped:true,triggerTiming:'공격턴',effect:{type:'damage',target:'none'}};
+    cost:{forest:0},costKnown:true,costMapped:true,triggerTiming:'공격턴',effect:{type:'draw',amount:1}};
   const p=player('player',{hand:[spell],soulPool:{colored:{},neutral:0}});
   const s=state(p,player('ai'));
   s.combatEventQueue=FM._test.createCombatEventQueue();
