@@ -1520,6 +1520,20 @@ test('source Skill2 Wrath converts actual HP lost while defending into immediate
   assert.equal(FM.totalPower(defender,'ap'),6);
 });
 
+test('source Skill2 Wrath gains AP only for HP actually lost when the defender survives',()=>{
+  const attacker=unit('attacker',{instanceId:'atk'});
+  const defender=sourceSkill2('defender','격노',{instanceId:'def',hp:3,maxHp:3,ap:1,dp:0});
+  const p=player('player',{units:[defender]});
+  const ai=player('ai',{units:[attacker]});
+  const result=FM._test.resolveUnitAttack(state(ai,p),ai,p,attacker,defender,{
+    attacker:combatStats(5,0,5),defender:combatStats(1,0,3)
+  });
+  assert.equal(result.damage,2);
+  assert.equal(result.defenderAlive,true);
+  assert.equal(defender.hp,1);
+  assert.equal(FM.totalPower(defender,'ap'),3,'Wrath gains only the two HP actually lost');
+});
+
 test('source Skill2 Wrath does not gain AP from zero damage or lethal HP loss',()=>{
   const attacker=unit('attacker',{instanceId:'atk'});
   const p=player('player');
