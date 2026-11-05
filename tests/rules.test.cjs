@@ -815,6 +815,46 @@ test('DB29 Manual Vampiric Attack uses actual HP damage, rounds half up, and res
   assert.equal(x.attacker.tempHP||0,0);
 });
 
+test('DB29 Manual Regeneration restores one HP on attack even when defender DP blocks all damage',()=>{
+  // Representative exact Manual Skill1 match from DB29:
+  // 울프라이더 / 10010624560 / Skill1=재생능력.
+  const run=({attackerHp=2,attackerMaxHp=5,defenderDP=5,attackerHpMarker=''}={})=>{
+    const attacker=unit('10010624560',{
+      instanceId:'regeneration-attacker',
+      name:'울프라이더',
+      skill:'재생능력',
+      ap:1,hp:attackerHp,maxHp:attackerMaxHp,
+      specialSkillRuleId:'regeneration',
+      specialSkillMappingStatus:'manual_verified',
+      specialSkillRuleAuthority:'manual',
+      statMarkers:attackerHpMarker?{hp:attackerHpMarker}:{}
+    });
+    const defender=unit('regeneration-defender',{
+      instanceId:'regeneration-defender',
+      dp:defenderDP,hp:10,maxHp:10
+    });
+    const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+    const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+      attacker:{ap:{value:1},dp:{value:0},hp:{value:attackerMaxHp}},
+      defender:{ap:{value:1},dp:{value:defenderDP},hp:{value:10}}
+    });
+    return {attacker,defender,result};
+  };
+
+  let x=run({attackerHp:2,defenderDP:5});
+  assert.equal(x.result.damage,0,'defender DP blocks all HP damage');
+  assert.equal(x.attacker.hp,3,'Manual Regeneration restores one HP when the unit attacks');
+
+  x=run({attackerHp:2,defenderDP:0});
+  assert.equal(x.result.damage,1);
+  assert.equal(x.attacker.hp,3,'the regeneration amount remains one HP when damage is dealt');
+
+  x=run({attackerHp:2,defenderDP:5,attackerHpMarker:'▼'});
+  assert.equal(x.result.damage,0);
+  assert.equal(x.attacker.hp,2,'HP-increase prohibition marker prevents regeneration');
+  assert.equal(x.attacker.tempHP||0,0);
+});
+
 test('DB29 Manual catalogue exposes all 27 rule IDs with their actual source Skill1 labels',()=>{
   const normalize=FM._test.normalizeSpecialSkillForEngine;
   const cases={
