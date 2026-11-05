@@ -248,7 +248,7 @@ class SqliteCardPackTests(unittest.TestCase):
             ("701","기선제압","데미지를 1 덜 받는다","skill2_tactical_initiative"),
             ("702","헌신방어","아군 필드 다음 유닛 공방체 +1","skill2_devoted_defense"),
             ("703","격노","자신의 HP가 깎인 수치만큼 AP 상승","skill2_frenzy_defense"),
-            ("704","홀리오오라","방/체 합 1/2 이하(내림)","skill2_holy_aura"),
+            ("704","홀리오오라","방어시 적군 유닛의 AP가 자신 방/체 합 1/2 이하(내림)일 경우에는 데미지를 입지 않는다.","skill2_holy_aura"),
             ("705","얼라이디펜스","자신과 동일한 소속의 필드 유닛 수 만큼 받는 데미지 감소","skill2_alliance_defense"),
             ("706","레이셜디펜스","자신과 동일한 종족의 필드 유닛 수 만큼 받는 데미지 감소","skill2_racial_defense"),
             ("707","강한헌신방어","아군 필드 유닛 전체의 공방체가 1증가한다","skill2_strong_devoted_defense"),
@@ -349,6 +349,19 @@ class SqliteCardPackTests(unittest.TestCase):
         },{"Skill2":{"181":"홀리오오라"},"SoulType":{"41":"FOREST"}},{},{})
         self.assertEqual(holy_generic["specialSkill2MappingStatus"],"inferred")
         self.assertIsNone(holy_generic["specialSkill2RuleId"])
+
+        holy_explicit = CONVERTER.build_card({
+            "card_id":"holy-explicit","name":"홀리오오라 내림표기","raw_payload":{
+                "ID":"holy-explicit","Name":"홀리오오라 내림표기","Category":2,"SoulType":41,
+                "RequireSoul":"4101","ATK":3,"DEF":2,"HP":5,"LV":3,"Skill2":"181",
+                "TextBase":"","TextExtra":"방어시, 상대 AP가 자신 방/체 합 1/2 이하(내림)이면 피해를 받지 않는다."
+            },
+            "normalized_cost":{"known":True,"cost":{"forest":1},"review":[],"sourceStatus":"test","soulKnown":True},
+            "skill_mappings":[{"sourceField":"Skill2","sourceEnumValue":"181",
+                "sourceName":"홀리오오라","mappingStatus":"inferred","ruleId":None}]
+        },{"Skill2":{"181":"홀리오오라"},"SoulType":{"41":"FOREST"}},{},{})
+        self.assertEqual(holy_explicit["specialSkill2MappingStatus"],"source_card_verified")
+        self.assertEqual(holy_explicit["specialSkill2RuleId"],"skill2_holy_aura")
 
     def test_load_refuses_missing_or_fabricated_card_url(self):
         self.db.execute("UPDATE cards SET source_card_url=? WHERE card_id=?", (
