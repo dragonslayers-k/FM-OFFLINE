@@ -10,6 +10,12 @@
 
   function clone(value) { return JSON.parse(JSON.stringify(value)); }
 
+  function deepFreeze(value) {
+    if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
+    for (const child of Object.values(value)) deepFreeze(child);
+    return Object.freeze(value);
+  }
+
   // Immutable, card-agnostic combat event records. These are deliberately
   // descriptive only: existing combat resolution is unchanged until a
   // source-verified rule subscribes to a specific event type.
@@ -19,7 +25,7 @@
     const source = data.source && typeof data.source === 'object' ? data.source : {};
     const target = data.target && typeof data.target === 'object' ? data.target : {};
     const fieldIndex = Number(data.fieldIndex);
-    return {
+    return deepFreeze({
       type: type.trim(),
       sequence: null,
       ownerId: data.ownerId == null ? null : String(data.ownerId),
@@ -30,7 +36,7 @@
       fieldIndex: Number.isInteger(fieldIndex) && fieldIndex >= 0 ? fieldIndex : null,
       snapshot: data.snapshot && typeof data.snapshot === 'object' ? clone(data.snapshot) : {},
       payload: data.payload && typeof data.payload === 'object' ? clone(data.payload) : {}
-    };
+    });
   }
 
   function createCombatEventQueue() {
@@ -41,7 +47,7 @@
         if (!event || typeof event !== 'object' || typeof event.type !== 'string' || !event.type.trim()) {
           throw new TypeError('A valid combat event is required.');
         }
-        const queued = { ...clone(event), sequence: nextSequence++ };
+        const queued = deepFreeze({ ...clone(event), sequence: nextSequence++ });
         pending.push(queued);
         return clone(queued);
       },

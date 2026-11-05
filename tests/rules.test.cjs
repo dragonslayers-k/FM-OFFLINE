@@ -1645,6 +1645,9 @@ test('combat event records preserve source, cause, target slot and an isolated s
   assert.equal(event.fieldIndex,2);
   assert.equal(event.snapshot.hp,4,'event snapshot is isolated from later board mutation');
   assert.deepEqual(event.payload,{destroyed:true});
+  assert.equal(Object.isFrozen(event),true,'event envelope is immutable');
+  assert.equal(Object.isFrozen(event.snapshot),true,'nested snapshot is immutable');
+  assert.equal(Object.isFrozen(event.snapshot.equipment),true,'nested arrays are immutable');
   assert.throws(()=>createCombatEvent('',{}),TypeError);
 });
 
@@ -1661,6 +1664,8 @@ test('combat event queue preserves deterministic insertion order and drains once
   assert.deepEqual(drained.map(event=>event.type),['unit_destroyed','unit_summoned']);
   assert.deepEqual(drained.map(event=>event.sequence),[0,1]);
   assert.equal(drained[0].snapshot.hp,0,'queued event is isolated from caller mutation');
+  assert.equal(Object.isFrozen(first),true,'queued source event remains frozen');
+  assert.equal(Object.isFrozen(first.snapshot),true,'queued source snapshot remains frozen');
   assert.equal(queue.size(),0);
   assert.deepEqual(queue.drain(),[]);
 });
