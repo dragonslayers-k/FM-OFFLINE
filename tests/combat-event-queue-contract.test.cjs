@@ -83,3 +83,62 @@ test('combat event dispatcher drains each queued event once and preserves sequen
   assert.equal(queue.size(), 0);
   assert.deepEqual(dispatcher.dispatchPending(queue, {}), []);
 });
+
+
+test('zone transfer rejects invalid zone references without mutation', () => {
+  const source = [{instanceId:'a'}];
+  const destination = [{instanceId:'b'}];
+  assert.equal(FM._test.transferCardBetweenZones(source, destination, 'a').reason, 'invalid_zones');
+  assert.equal(FM._test.transferCardBetweenZones(source, source, 'a').reason, 'invalid_zones');
+  assert.deepEqual(source.map(card => card.instanceId), ['a']);
+  assert.deepEqual(destination.map(card => card.instanceId), ['b']);
+});
+
+test('zone transfer finds a card by instance ID and preserves card identity', () => {
+  const card = {instanceId:'unit-7', name:'검증 유닛'};
+  const source = [{instanceId:'unit-6'}, card, {instanceId:'unit-8'}];
+  const destination = [{instanceId:'existing'}];
+  const result = FM._test.transferCardBetweenZones(source, destination, 'unit-7');
+
+  assert.equal(result.ok, true);
+  assert.equal(result.sourceIndex, 1);
+  assert.equal(result.card, card);
+  assert.equal(destination[1], card);
+  assert.deepEqual(source.map(item => item.instanceId), ['unit-6','unit-8']);
+});
+
+test('zone transfer accepts a direct card reference and appends in order', () => {
+  const first = {instanceId:'first'};
+  const second = {instanceId:'second'};
+  const source = [first, second];
+  const destination = [{instanceId:'existing'}];
+  const result = FM._test.transferCardBetweenZones(source, destination, second);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.card, second);
+  assert.deepEqual(source, [first]);
+  assert.deepEqual(destination, [{instanceId:'existing'}, second]);
+});
+
+test('zone transfer leaves both zones unchanged when card is missing or destination is full', () => {
+  const card = {instanceId:'unit-9'};
+  const source = [card];
+  const destination = [{instanceId:'existing'}];
+  const missing = FM._test.transferCardBetweenZones(source, destination, 'not-here');
+  assert.equal(missing.ok, false);
+  assert.equal(missing.reason, 'card_not_in_source');
+
+  const full = FM._test.transferCardBetweenZones(source, destination, 'unit-9', {maxDestinationSize:1});
+  assert.equal(full.ok, false);
+  assert.equal(full.reason, 'destination_full');
+  assert.deepEqual(source, [card]);
+  assert.deepEqual(destination, [{instanceId:'existing'}]);
+});
+
+test('zone transfer enforces a zero-capacity destination and rejects invalid limits', () => {
+  const card = {instanceId:'unit-10'};
+  const source = [card];
+  assert.equal(FM._test.transferCardBetweenZones(source, [], 'unit-10', {maxDestinationSize:0}).reason, 'destination_full');
+  assert.equal(FM._test.transferCardBetweenZones(source, [], 'unit-10', {maxDestinationSize:-1}).reason, 'destination_full');
+  assert.deepEqual(source, [card]);
+});
