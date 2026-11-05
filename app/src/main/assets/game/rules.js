@@ -153,7 +153,8 @@
             if (subscriber.sourceMatch === 'skill2') {
               const subject = event.snapshot && event.snapshot.unit;
               const expectedName = SKILL2_SOURCE_RULE_NAMES[subscriber.ruleId];
-              if (!subject || (subscriber.sourceCardId !== null && String(subject.cardId || '') !== subscriber.sourceCardId) ||
+              if (!subject || !String(subject.cardId || '').trim() ||
+                  (subscriber.sourceCardId !== null && String(subject.cardId || '') !== subscriber.sourceCardId) ||
                   subject.specialSkill2RuleId !== subscriber.ruleId ||
                   subject.specialSkill2MappingStatus !== subscriber.mappingStatus ||
                   subject.specialSkill2RuleAuthority !== subscriber.authority ||
