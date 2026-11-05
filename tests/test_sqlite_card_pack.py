@@ -248,7 +248,7 @@ class SqliteCardPackTests(unittest.TestCase):
             ("701","기선제압","데미지를 1 덜 받는다","skill2_tactical_initiative"),
             ("702","헌신방어","아군 필드 다음 유닛 공방체 +1","skill2_devoted_defense"),
             ("703","격노","자신의 HP가 깎인 수치만큼 AP 상승","skill2_frenzy_defense"),
-            ("704","홀리오오라","방어시 적군 유닛의 AP가 자신 방/체 합 1/2 이하(내림)일 경우에는 데미지를 입지 않는다.","skill2_holy_aura"),
+            ("704","홀리오오라","방어시 적군 유닛의 AP가 자신 방/체 합 1/2 이하(내림)일 경우에는 데미지를 입지 않는다. 내림","skill2_holy_aura"),
             ("705","얼라이디펜스","자신과 동일한 소속의 필드 유닛 수 만큼 받는 데미지 감소","skill2_alliance_defense"),
             ("706","레이셜디펜스","자신과 동일한 종족의 필드 유닛 수 만큼 받는 데미지 감소","skill2_racial_defense"),
             ("707","강한헌신방어","아군 필드 유닛 전체의 공방체가 1증가한다","skill2_strong_devoted_defense"),
@@ -263,7 +263,7 @@ class SqliteCardPackTests(unittest.TestCase):
                 "sourceName":name,"mappingStatus":"unmapped","ruleId":None
             })
             cards.append({
-                "id":card_id,"name":"검증 카드 "+name,
+                "id":card_id,"name":"검증 카드 "+name,"type":"unit",
                 "sourceCardUrl":"https://fmlunatic.com/card/"+card_id,
                 "sourceListUrl":"https://fmlunatic.com/cardlist",
                 "specialSkill1":"일반공격기술","text":"",
@@ -284,6 +284,36 @@ class SqliteCardPackTests(unittest.TestCase):
             self.assertTrue(any(evidence in ref["description"] for ref in entry["cardReferences"]))
 
 
+
+
+    def test_skill2_catalogue_does_not_use_item_text_as_unit_rule_evidence(self):
+        mappings = [
+            {"cardId":"holy-unit-no-rounding","sourceField":"Skill2","sourceEnumValue":"181",
+             "sourceName":"홀리오오라","mappingStatus":"inferred","ruleId":None},
+            {"cardId":"holy-item-floor-only","sourceField":"Skill2","sourceEnumValue":"181",
+             "sourceName":"홀리오오라","mappingStatus":"inferred","ruleId":None},
+        ]
+        cards = [
+            {"id":"holy-unit-no-rounding","name":"두랄의기사","type":"unit",
+             "sourceCardUrl":"https://fmlunatic.com/card/holy-unit-no-rounding",
+             "sourceListUrl":"https://fmlunatic.com/cardlist","specialSkill1":"",
+             "specialSkill2":"홀리오오라","description":"방어시 적군 유닛의 AP가 자신 방/체 합 1/2 이하일 경우 데미지를 입지 않는다."},
+            {"id":"holy-item-floor-only","name":"천상의악보","type":"item",
+             "sourceCardUrl":"https://fmlunatic.com/card/holy-item-floor-only",
+             "sourceListUrl":"https://fmlunatic.com/cardlist","specialSkill1":"",
+             "specialSkill2":"홀리오오라","description":"방어시 적군 유닛의 AP가 자신 방/체 합 1/2 이하(내림)일 경우 데미지를 입지 않는다."},
+        ]
+        catalogue = CONVERTER.build_skill2_catalogue(mappings,cards,"test-release")
+        self.assertEqual(catalogue["executableRuleCount"],0)
+        entry = catalogue["records"][0]
+        self.assertEqual(entry["name"],"홀리오오라")
+        self.assertEqual(entry["verificationStatus"],"extracted_unverified")
+        self.assertEqual(entry["executionStatus"],"disabled-until-skill2-rule-review")
+        self.assertIsNone(entry["ruleId"])
+        self.assertEqual(entry["evidenceCardIds"],[])
+        refs = {x["cardId"]:x for x in entry["cardReferences"]}
+        self.assertEqual(refs["holy-unit-no-rounding"]["cardType"],"unit")
+        self.assertEqual(refs["holy-item-floor-only"]["cardType"],"item")
 
     def test_skill2_card_mapping_requires_each_card_own_text_extra_evidence(self):
         cases = [

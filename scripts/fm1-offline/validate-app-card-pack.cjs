@@ -96,19 +96,21 @@ for (const [key, expected] of skill2Expected) {
     throw new Error('Skill2 candidate rule provenance differs: ' + key);
   }
   const verifiedSpec=SKILL2_SOURCE_VERIFIED_RULES[actual.name];
-  if (verifiedSpec) {
+  const evidenceNeedle=verifiedSpec
+    ? (verifiedSpec.cardVerificationNeedle || verifiedSpec.evidenceNeedle) : null;
+  const refsById=new Map((actual.cardReferences||[]).map(ref=>[String(ref.cardId),ref]));
+  const expectedEvidenceIds=(actual.cardReferences||[])
+    .filter(ref=>ref.cardType==='unit' && evidenceNeedle &&
+      String(ref.description||'').includes(evidenceNeedle))
+    .map(ref=>String(ref.cardId)).sort();
+  if (verifiedSpec && expectedEvidenceIds.length) {
     if (actual.ruleId !== verifiedSpec.ruleId || actual.ruleAuthority !== 'card_source' ||
         actual.verificationStatus !== 'source_card_verified' ||
         actual.executionStatus !== 'source-card-rule-implemented' ||
         actual.trigger == null || actual.mechanic == null) {
       throw new Error('Skill2 source-verified rule metadata mismatch: ' + key);
     }
-    const refsById=new Map((actual.cardReferences||[]).map(ref=>[String(ref.cardId),ref]));
     const evidenceIds=[...(actual.evidenceCardIds||[])].map(String).sort();
-    const evidenceNeedle=verifiedSpec.cardVerificationNeedle || verifiedSpec.evidenceNeedle;
-    const expectedEvidenceIds=(actual.cardReferences||[])
-      .filter(ref=>String(ref.description||'').includes(evidenceNeedle))
-      .map(ref=>String(ref.cardId)).sort();
     if (!evidenceIds.length || JSON.stringify(evidenceIds)!==JSON.stringify(expectedEvidenceIds) ||
         evidenceIds.some(id=>!refsById.has(id))) {
       throw new Error('Skill2 verified rule evidence card list is incomplete or not exact: ' + key);
@@ -126,7 +128,9 @@ for (const [key, expected] of skill2Expected) {
        actual.sourceMappingStatuses[0] === 'no_special_skill');
     if (actual.ruleId !== null || actual.ruleAuthority !== null ||
         actual.verificationStatus !== (expectedNoSkill ? 'no_special_skill' : 'extracted_unverified') ||
-        actual.executionStatus !== (expectedNoSkill ? 'no-skill' : 'disabled-until-skill2-rule-review')) {
+        actual.executionStatus !== (expectedNoSkill ? 'no-skill' : 'disabled-until-skill2-rule-review') ||
+        (actual.evidenceCardIds||[]).length !== 0 ||
+        actual.mechanic !== null || actual.trigger !== null) {
       throw new Error('Unverified Skill2 entry must remain non-executable: ' + key);
     }
   }
@@ -150,6 +154,7 @@ for (const [key, expected] of skill2Expected) {
     const rawEvidenceFields = [
       ['sourceCardUrl', rawCard.sourceCardUrl ?? null],
       ['sourceListUrl', rawCard.sourceListUrl ?? null],
+      ['cardType', rawCard.type ?? null],
       ['name', rawCard.name ?? null],
       ['text', rawCard.text || ''],
       ['description', rawCard.description || ''],
@@ -186,8 +191,8 @@ const noSkill2CardIds = new Set(skill2Data.records
   .flatMap(x => x.cardIds || []));
 skill2Audit.activeCards = activeSkill2CardIds.size;
 if (skill2Audit.sourceMappings !== skill2Data.mappingRecordCount ||
-    skill2Audit.executableRules !== Object.keys(SKILL2_SOURCE_VERIFIED_RULES).length ||
-    executableSkill2RuleIds.size !== Object.keys(SKILL2_SOURCE_VERIFIED_RULES).length ||
+    skill2Audit.executableRules !== Number(skill2Data.executableRuleCount || 0) ||
+    executableSkill2RuleIds.size !== Number(skill2Data.executableRuleCount || 0) ||
     skill2Data.activeSkillCount !== skill2Audit.activeSkills ||
     skill2Data.activeCardCount !== skill2Audit.activeCards ||
     skill2Data.noSkillCardCount !== noSkill2CardIds.size ||

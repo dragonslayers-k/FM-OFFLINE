@@ -871,7 +871,7 @@ def build_skill2_catalogue(mapping_records, cards, release_tag):
             if card is None:
                 raise RuntimeError("Skill2 mapping references missing cards.json record: "+card_id)
             refs.append({
-                "cardId":card_id,"name":card.get("name"),
+                "cardId":card_id,"name":card.get("name"),"cardType":card.get("type"),
                 "sourceCardUrl":card.get("sourceCardUrl"),
                 "sourceListUrl":card.get("sourceListUrl"),
                 "faction":card.get("faction"),"unitAbility":card.get("unitAbility"),
@@ -890,11 +890,15 @@ def build_skill2_catalogue(mapping_records, cards, release_tag):
         source_name=entry["name"]
         no_skill=source_name in ("","없음") or entry["sourceMappingStatuses"]=={"no_special_skill"}
         spec=SKILL2_SOURCE_VERIFIED_RULES.get(source_name) if not no_skill else None
-        if spec:
-            evidence_needle=spec.get("cardVerificationNeedle") or spec["evidenceNeedle"]
-            evidence_refs=[ref for ref in refs if evidence_needle in (ref.get("description") or "")]
-            if not evidence_refs:
-                raise RuntimeError("Skill2 rule has no matching exact card-source evidence: "+source_name)
+        evidence_needle=(spec.get("cardVerificationNeedle") or spec["evidenceNeedle"]) if spec else None
+        # Skill2 defensive handlers are unit mechanics. Item descriptions may
+        # mention the same label/wording but cannot verify a unit's rule mapping.
+        evidence_refs=[
+            ref for ref in refs
+            if spec and ref.get("cardType")=="unit"
+            and evidence_needle in (ref.get("description") or "")
+        ]
+        if spec and evidence_refs:
             executable_rules.add(spec["ruleId"])
             verification="source_card_verified"
             execution="source-card-rule-implemented"
