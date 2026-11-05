@@ -2542,8 +2542,8 @@ test('DB29 source card 견습수도사 uses Manual confusion attack to exchange 
     attacker:{ap:{value:1},dp:{value:0},hp:{value:5}},
     defender:{ap:{value:3},dp:{value:0},hp:{value:5}}
   });
-  assert.equal(FM.totalPower(defender,'ap'),4,'target AP becomes its HP remaining after the attack');
-  assert.equal(defender.hp,3,'target HP becomes its AP before the exchange');
+  assert.equal(FM.totalPower(defender,'ap'),5,'the Manual rule exchanges the target AP with its HP at the hit-resolution point');
+  assert.equal(defender.hp,2,'the one-point attack damage is applied after the AP/HP exchange');
 });
 
 test('DB29 source card 블라인드랩터 gains one DP from Manual stealth attack even when DP blocks all HP damage',()=>{
