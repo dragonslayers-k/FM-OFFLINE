@@ -2142,6 +2142,32 @@ test('production dispatcher applies Strong Devoted Defense to all survivors',()=
   assert.equal(s.combatEventQueue.size(),0);
 });
 
+test('production Strong Devoted Defense buffs only surviving friendly field units and excludes enemy units',()=>{
+  const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
+  const attacker=unit('attacker',{instanceId:'strong-boundary-atk'});
+  const defender=sourceSkill2('defender','강한헌신방어',{
+    instanceId:'strong-boundary-def',hp:1,maxHp:1,ap:5,dp:2
+  });
+  const survivor=unit('survivor',{instanceId:'strong-boundary-survivor',hp:4,maxHp:4,ap:2,dp:1});
+  const second=unit('second',{instanceId:'strong-boundary-second',hp:3,maxHp:3,ap:1,dp:0});
+  const enemy=unit('enemy',{instanceId:'strong-boundary-enemy',hp:5,maxHp:5,ap:4,dp:3});
+  const p=s.players.player,ai=s.players.ai;
+  p.units.push(attacker,enemy); ai.units.push(defender,survivor,second);
+  FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:combatStats(3,0,5),defender:combatStats(2,0,1)
+  });
+  for(const ally of [survivor,second]){
+    assert.equal(FM.totalPower(ally,'ap'),ally.ap+1);
+    assert.equal(FM.totalPower(ally,'dp'),ally.dp+1);
+    assert.equal(ally.tempHP,1);
+  }
+  assert.equal(FM.totalPower(enemy,'ap'),4);
+  assert.equal(FM.totalPower(enemy,'dp'),3);
+  assert.equal(enemy.tempHP||0,0);
+  assert.equal(s.combatEventQueue.size(),0);
+});
+
+
 test('production Skill2 dispatcher remains fail-closed for inferred card mappings',()=>{
   const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
   const attacker=unit('attacker',{instanceId:'inferred-atk'});
