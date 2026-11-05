@@ -857,8 +857,9 @@ test('pre-attack attacker roll destruction dispatches Devoted Defense before the
   const ai=player('ai',{units:[target]});
   const s=state(p,ai,{activeId:'ai',prepared:{player:true,ai:true},rng:()=>0.9});
   FM.resolveBattle(s);
-  const buffIndex=s.log.findIndex(line=>line.includes('헌신방어!'));
-  const attackIndex=s.log.findIndex(line=>line.includes('ally의')&&line.includes('target (2 피해)'));
+  const chronologicalLog=s.log.slice().reverse().map(entry=>entry.text);
+  const buffIndex=chronologicalLog.findIndex(line=>line.includes('헌신방어!'));
+  const attackIndex=chronologicalLog.findIndex(line=>line.includes('ally의')&&line.includes('target (2 피해)'));
   assert.ok(buffIndex>=0,'attacker-side destruction trigger should resolve');
   assert.ok(attackIndex>=0,'the next friendly unit should attack with its buffed AP');
   assert.ok(buffIndex<attackIndex,'destruction trigger must resolve before the next unit attacks');
@@ -876,8 +877,9 @@ test('pre-attack defender roll destruction dispatches Devoted Defense before the
   const ai=player('ai',{units:[doomed,ally]});
   const s=state(p,ai,{activeId:'ai',prepared:{player:true,ai:true},rng:()=>0.9});
   FM.resolveBattle(s);
-  const buffIndex=s.log.findIndex(line=>line.includes('헌신방어!'));
-  const directIndex=s.log.findIndex(line=>line.includes('직접 공격!'));
+  const chronologicalLog=s.log.slice().reverse().map(entry=>entry.text);
+  const buffIndex=chronologicalLog.findIndex(line=>line.includes('헌신방어!'));
+  const directIndex=chronologicalLog.findIndex(line=>line.includes('직접 공격!'));
   assert.ok(buffIndex>=0,'defender-side destruction trigger should resolve');
   assert.ok(directIndex>=0,'the attacker should proceed with the now-unblocked direct attack');
   assert.ok(buffIndex<directIndex,'destruction trigger must resolve before the direct attack');
