@@ -1837,3 +1837,20 @@ test('compact DB29 Skill1 mapping executes only source-authorized Manual rules i
     specialSkillRuleAuthority:'community'}),10,
     'community candidate metadata must not activate the Manual handler');
 });
+
+
+test('compact DB29 Manual defense-bypass Skill1 clamps zero attack power and preserves target HP',()=>{
+  const a=unit('compact-zero-a',{instanceId:'compact-zero-a',skill:'방어무시공격기술',ap:0,
+    specialSkillRuleId:'defense_bypass',specialSkillMappingStatus:'manual_verified',
+    specialSkillRuleAuthority:'manual'});
+  const d=unit('compact-zero-d',{instanceId:'compact-zero-d',dp:7,hp:3,maxHp:3});
+  const p=player('player',{units:[a]}),ai=player('ai',{units:[d]}),s=state(p,ai);
+  const rolls={
+    attacker:{ap:{value:0},dp:{value:0},hp:{value:3}},
+    defender:{ap:{value:0},dp:{value:7},hp:{value:3}}
+  };
+  const result=FM._test.resolveUnitAttack(s,p,ai,a,d,rolls);
+  assert.equal(result.damage,0,'zero AP cannot cause negative or fabricated damage');
+  assert.equal(d.hp,3,'defense bypass skips DP, not the zero-damage clamp');
+  assert.equal(s.combatEventQueue.size(),0);
+});
