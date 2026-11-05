@@ -182,6 +182,21 @@
     };
   }
 
+  function findNextFriendlyFieldUnit(owner, destroyedFieldIndex, fallbackIndex) {
+    if (!owner || !Array.isArray(owner.units)) return null;
+    const fieldIndex = Number(destroyedFieldIndex);
+    const hasSlotOrder = owner.units.some(unit =>
+      Number.isInteger(Number(unit.slotIndex)) && Number(unit.slotIndex) > 0);
+    if (Number.isInteger(fieldIndex) && fieldIndex >= 0 && hasSlotOrder) {
+      const destroyedSlot = fieldIndex + 1;
+      return owner.units
+        .filter(unit => Number.isInteger(Number(unit.slotIndex)) &&
+          Number(unit.slotIndex) > destroyedSlot)
+        .sort((a,b) => Number(a.slotIndex) - Number(b.slotIndex))[0] || null;
+    }
+    return owner.units[Number(fallbackIndex)] || null;
+  }
+
   function createCoreCombatEventDispatcher() {
     const dispatcher = createCombatEventDispatcher();
     const common = {
@@ -195,7 +210,7 @@
       ...common,ruleId:'skill2_devoted_defense'
     },(event,context)=>{
       const owner = context.players && context.players[event.ownerId];
-      const nextUnit = owner && owner.units[Number(event.fieldIndex)] || null;
+      const nextUnit = findNextFriendlyFieldUnit(owner,event.fieldIndex,event.fieldIndex);
       if (!nextUnit) return {applied:false,reason:'next_friendly_unit_missing'};
       changeUnitStat(nextUnit,'ap',1);
       changeUnitStat(nextUnit,'dp',1);
@@ -1046,7 +1061,7 @@ if (card.type === 'unit') {
         cause: context.cause || 'effect',
         source: context.source || null,
         target: gone,
-        fieldIndex: idx,
+        fieldIndex: Number.isInteger(Number(gone.slotIndex)) && Number(gone.slotIndex) > 0 ? Number(gone.slotIndex) - 1 : idx,
         snapshot: { unit: before, equipment: (gone.equipmentCards || []).map(item => ({instanceId:item.instanceId||null,cardId:item.cardId||item.id||null,name:item.name||null})) },
         payload: { equipmentCount: (gone.equipmentCards || []).length }
       });
@@ -1056,7 +1071,7 @@ if (card.type === 'unit') {
         const destructionSkill2=normalizeSpecialSkill2ForEngine(gone);
         if (destructionSkill2 === '헌신방어') {
           // Compatibility path for isolated test/custom states without the core dispatcher.
-          const nextUnit=owner.units[idx]||null;
+          const nextUnit=findNextFriendlyFieldUnit(owner,Number(gone.slotIndex)-1,idx);
           if (nextUnit) {
             changeUnitStat(nextUnit,'ap',1);
             changeUnitStat(nextUnit,'dp',1);

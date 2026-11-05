@@ -1454,6 +1454,55 @@ test('pre-attack attacker roll destruction dispatches Devoted Defense before the
   assert.equal(s.combatEventQueue.size(),0);
 });
 
+function destroyWithDevotedDispatcher(units, doomedId) {
+  const p=player('player',{units});
+  const ai=player('ai');
+  const s=state(p,ai);
+  s.combatEventQueue=FM._test.createCombatEventQueue();
+  s.combatEventDispatcher=FM._test.createCoreCombatEventDispatcher();
+  const doomed=p.units.find(card=>card.instanceId===doomedId);
+  FM._test.destroyUnit(s,p,doomed,{cause:'test'});
+  FM._test.dispatchPendingCombatEvents(s);
+  return {p,s};
+}
+
+test('Devoted Defense selects the next physical field slot even when array insertion order differs',()=>{
+  const doomed=sourceSkill2('doomed','헌신방어',{instanceId:'doomed',slotIndex:1});
+  const slotThree=unit('slot-three',{instanceId:'slot-three',slotIndex:3,ap:2,dp:2,hp:5,maxHp:5});
+  const slotTwo=unit('slot-two',{instanceId:'slot-two',slotIndex:2,ap:2,dp:2,hp:5,maxHp:5});
+  const {p}=destroyWithDevotedDispatcher([doomed,slotThree,slotTwo],'doomed');
+  const chosen=p.units.find(card=>card.instanceId==='slot-two');
+  const skipped=p.units.find(card=>card.instanceId==='slot-three');
+  assert.equal(chosen.tempAP,1);
+  assert.equal(chosen.tempDP,1);
+  assert.equal(chosen.tempHP,1);
+  assert.equal(chosen.hp,6);
+  assert.equal(skipped.tempAP,0);
+  assert.equal(skipped.tempDP,0);
+  assert.equal(skipped.tempHP,0);
+});
+
+test('Devoted Defense does not wrap from the last physical slot to an earlier survivor',()=>{
+  const earlier=unit('earlier',{instanceId:'earlier',slotIndex:2,ap:2,dp:2,hp:5,maxHp:5});
+  const doomed=sourceSkill2('doomed','헌신방어',{instanceId:'doomed',slotIndex:5});
+  const {p}=destroyWithDevotedDispatcher([earlier,doomed],'doomed');
+  assert.equal(p.units.length,1);
+  assert.equal(p.units[0].tempAP,0);
+  assert.equal(p.units[0].tempDP,0);
+  assert.equal(p.units[0].tempHP,0);
+});
+
+test('Devoted Defense temporary AP, DP and HP bonuses expire at the next preparation phase',()=>{
+  const doomed=sourceSkill2('doomed','헌신방어',{instanceId:'doomed',slotIndex:1});
+  const ally=unit('ally',{instanceId:'ally',slotIndex:2,ap:2,dp:2,hp:5,maxHp:5});
+  const {p,s}=destroyWithDevotedDispatcher([doomed,ally],'doomed');
+  assert.deepEqual([ally.tempAP,ally.tempDP,ally.tempHP],[1,1,1]);
+  assert.equal(ally.hp,6);
+  FM._test.beginPhase(s,'player');
+  assert.deepEqual([ally.tempAP,ally.tempDP,ally.tempHP],[0,0,0]);
+  assert.equal(ally.hp,5);
+});
+
 test('pre-attack defender roll destruction dispatches Devoted Defense before the direct attack',()=>{
   const attacker=unit('attacker',{instanceId:'attacker',ap:3,dp:0,hp:5,maxHp:5,slotIndex:1});
   const doomed=sourceSkill2('doomed','헌신방어',{
