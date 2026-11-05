@@ -2227,3 +2227,22 @@ test('unit destruction transfers the unit before ordered equipment and preserves
   ]);
   assert.equal(event.payload.equipmentCount,2);
 });
+
+
+test('production Skill2 Devoted Defense resolves when a verified unit is destroyed by a spell effect',()=>{
+  const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
+  const doomed=sourceSkill2('spell-doomed','헌신방어',{instanceId:'spell-doomed-1',hp:1,maxHp:1,dp:0});
+  const next=unit('spell-next',{instanceId:'spell-next-1',hp:4,maxHp:4,ap:3,dp:2});
+  const p=s.players.player,ai=s.players.ai;
+  ai.units.push(doomed,next);
+
+  const result=FM._test.applyEffect(s,'player',{type:'damage',target:'enemyUnit',amount:1},doomed);
+
+  assert.equal(result,true);
+  assert.deepEqual(ai.units.map(card=>card.instanceId),['spell-next-1']);
+  assert.equal(FM.totalPower(next,'ap'),4);
+  assert.equal(FM.totalPower(next,'dp'),3);
+  assert.equal(next.hp,5);
+  assert.equal(next.tempHP,1);
+  assert.equal(s.combatEventQueue.size(),0,'production event dispatch drains after the spell effect boundary');
+});
