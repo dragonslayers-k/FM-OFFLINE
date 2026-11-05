@@ -89,3 +89,35 @@ The engine maps the real current enum names (e.g. `기술봉쇄`, `주문봉쇄`
 ## Android 데이터팩 파일 분리
 
 Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance is not dropped: `card-skill-mappings.json` carries all Skill1/Skill2 mappings and `card-effect-candidates.json` carries all effect pattern candidates and exact clause spans. The manifest records each file's SHA-256 and row counts. The runtime consumes the compact `specialSkillRuleId` / mapping status on unit cards; detailed records remain available as a separate reference library in the ZIP.
+
+
+## 2026-11-05 최신 재개 상태 — PR #28 / Actions #169
+
+### 저장소 및 검증
+- 작업 브랜치: `feat/combat-event-foundation`
+- PR #28 HEAD: `70d61831ace43f7e36c55f98d6f5dcdae7b57ced`, open/draft/unmerged.
+- Actions #169: https://github.com/dragonslayers-k/FM-OFFLINE/actions/runs/41955677080 — success.
+- Node tests 148/148, converter self-test, Python tests 11개, DB29 SQLite/release manifest, Debug APK build/package integrity, emulator 설치 및 앱 내부 데이터팩 import/WebView 전체 로딩 성공.
+- 에뮬레이터 최종 확인: `Emulator card-data import + WebView load smoke test: PASS`, 15,350/15,350 cards.
+- #167은 16개, #168은 2개 Node test failure가 있었으며 #169에서 item equip/spell queue 성공 테스트 fixture를 보완해 통과했다. 과거 실패는 이력으로 유지한다.
+- Artifacts: build output 13383111704, DB29 import pack 13382942450. 서명 secrets 미설정 시 signed Release APK가 생성됐다고 보고하지 않는다.
+
+### ADB 부팅 중 offline 로그 판정
+- #160 및 #169에서 에뮬레이터 초기 부팅 중 `adb: device offline`가 일시 발생했지만, boot 완료 확인 후 APK install 및 카드팩 import가 성공했다.
+- #160에서는 `sys.boot_completed=1` 확인 후 streamed install, 앱 실행, WebView 15,350/15,350 로딩 PASS가 이어졌다. #169도 약 31.7초 부팅 후 정상 통과했다.
+- 해당 로그는 부팅 중 ADB transport 준비 전의 일시 상태이며 지속 장애가 아니다. 최종 boot timeout, 반복 offline, install/app crash, WebView count mismatch를 실제 실패 기준으로 삼는다.
+
+### 전투 이벤트 기반의 정확한 범위
+- production `newGame()`은 match-local queue/dispatcher를 생성한다.
+- lifecycle events: `land_installed`, `unit_summoned`, `item_equipped`, `spell_queued`, `unit_destroyed`, `unit_attack_resolved`.
+- Skill2 subscriber event types: `unit_destroyed`, `unit_damage_prevention_requested`, `unit_hp_damage_applied`.
+- 여섯 lifecycle event가 존재한다는 사실은 여섯 효과 handler가 구현됐다는 뜻이 아니다. subscriber 없는 이벤트는 descriptive-only로 유지한다.
+- Skill2 core handler는 8개 등록되지만 DB29 카드팩의 executable rule은 7개다. 홀리오오라는 현재 unit card-local source phrase가 충족되지 않아 비실행 유지.
+- Skill1의 Manual 27개와 Skill2 8개는 별도 실행 트랙이다. Skill1은 manual_verified mapping gate를 유지하며, exact source card evidence와 rule별 regression tests 없이 bulk promotion하지 않는다.
+
+### 다음 단계
+1. Skill1 Manual 27개를 DB29 exact card ID/source text와 연결하고, unmatched는 pending 유지.
+2. source-backed rule 한 건씩 positive/negative/boundary/interaction tests를 추가한다.
+3. Skill2 8개 source excerpt 누락과 inferred mapping 377행은 별도 backlog로 유지한다.
+4. 기존 lifecycle event는 source-verified handler를 붙일 근거가 확보된 경우에만 확장한다.
+5. PR #28 병합, main 수정, DB30 발행은 승인 전 금지.
