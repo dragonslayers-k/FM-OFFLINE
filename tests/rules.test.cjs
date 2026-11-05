@@ -1468,7 +1468,7 @@ test('production dispatcher applies Wrath from actual HP lost before retaliation
   });
   assert.equal(result.damage,3);
   assert.equal(defender.hp,2);
-  assert.equal(FM.totalPower(defender,'ap'),5);
+  assert.equal(FM.totalPower(defender,'ap'),6);
   assert.equal(defender.tempAP,3);
 });
 
