@@ -248,7 +248,7 @@ class SqliteCardPackTests(unittest.TestCase):
             ("701","기선제압","데미지를 1 덜 받는다","skill2_tactical_initiative"),
             ("702","헌신방어","아군 필드 다음 유닛 공방체 +1","skill2_devoted_defense"),
             ("703","격노","자신의 HP가 깎인 수치만큼 AP 상승","skill2_frenzy_defense"),
-            ("704","홀리오오라","방/체 합 1/2 이하","skill2_holy_aura"),
+            ("704","홀리오오라","방/체 합 1/2 이하 (절반(내림))","skill2_holy_aura"),
             ("705","얼라이디펜스","자신과 동일한 소속의 필드 유닛 수 만큼 받는 데미지 감소","skill2_alliance_defense"),
             ("706","레이셜디펜스","자신과 동일한 종족의 필드 유닛 수 만큼 받는 데미지 감소","skill2_racial_defense"),
             ("707","강한헌신방어","아군 필드 유닛 전체의 공방체가 1증가한다","skill2_strong_devoted_defense"),
@@ -282,6 +282,26 @@ class SqliteCardPackTests(unittest.TestCase):
             self.assertEqual(entry["executionStatus"],"source-card-rule-implemented")
             self.assertEqual(entry["cardReferences"][0]["sourceCardUrl"],cards[cases.index((_enum_value,name,evidence,rule_id))]["sourceCardUrl"])
             self.assertTrue(any(evidence in ref["description"] for ref in entry["cardReferences"]))
+
+
+
+    def test_skill2_card_mapping_requires_each_card_own_text_extra_evidence(self):
+        cases = [
+            ("기선제압", "데미지를 1 덜 받는다", True),
+            ("기선제압", "방어시, 상대의 레벨이 자신보다 낮은 경우 받는 데미지를 1 감소시킨다.", False),
+            ("헌신방어", "아군 필드 다음 유닛 공방체 +1", True),
+            ("헌신방어", "", False),
+            ("홀리오오라", "방/체 합 1/2 이하", False),
+            ("홀리오오라", "자신 방/체 합의 절반(내림) 이하", True),
+            ("얼라이디펜스", "자신과 동일한 소속의 필드 유닛 수 만큼 받는 데미지 감소", True),
+        ]
+        for name, text_extra, expected in cases:
+            with self.subTest(name=name, text_extra=text_extra):
+                spec = CONVERTER.verified_skill2_rule_for_card("unit", name, text_extra)
+                self.assertEqual(spec is not None, expected)
+        self.assertIsNone(CONVERTER.verified_skill2_rule_for_card(
+            "spell", "기선제압", "데미지를 1 덜 받는다"
+        ))
 
     def test_load_refuses_missing_or_fabricated_card_url(self):
         self.db.execute("UPDATE cards SET source_card_url=? WHERE card_id=?", (

@@ -519,6 +519,8 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
     skill2_name=label(enums,"Skill2",f.get("Skill2"))
     source_skill1=next((m for m in (row.get("skill_mappings") or []) if m.get("sourceField")=="Skill1"),None)
     source_skill2=next((m for m in (row.get("skill_mappings") or []) if m.get("sourceField")=="Skill2"),None)
+    verified_skill2_spec=verified_skill2_rule_for_card(typ,skill2_name,extra)
+    skill2_named=bool(skill2_name and skill2_name!="없음")
     card={
         "id":cid,"name":name,"type":typ,"faction":color,
         "cost":c["cost"] if cost_known else {},
@@ -548,24 +550,19 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
         "specialSkill1EnumValue":f.get("Skill1") if typ=="unit" else None,
         "specialSkill2EnumValue":f.get("Skill2") if typ=="unit" else None,
         "specialSkill2MappingStatus":(
-            "source_card_verified" if typ=="unit" and skill2_name in SKILL2_SOURCE_VERIFIED_RULES
-            else (source_skill2.get("mappingStatus","no_special_skill") if typ=="unit" and source_skill2 else "no_special_skill")
+            "source_card_verified" if verified_skill2_spec is not None
+            else (source_skill2.get("mappingStatus","unmapped") if typ=="unit" and source_skill2
+                  else ("unmapped" if typ=="unit" and skill2_named else "no_special_skill"))
         ),
         "specialSkill2SourceMappingStatus":(
-            source_skill2.get("mappingStatus","no_special_skill") if typ=="unit" and source_skill2 else "no_special_skill"
+            source_skill2.get("mappingStatus","unmapped") if typ=="unit" and source_skill2
+            else ("unmapped" if typ=="unit" and skill2_named else "no_special_skill")
         ),
-        "specialSkill2RuleId":(
-            SKILL2_SOURCE_VERIFIED_RULES[skill2_name]["ruleId"]
-            if typ=="unit" and skill2_name in SKILL2_SOURCE_VERIFIED_RULES else None
-        ),
-        "specialSkill2RuleAuthority":(
-            SKILL2_SOURCE_VERIFIED_RULES[skill2_name]["ruleAuthority"]
-            if typ=="unit" and skill2_name in SKILL2_SOURCE_VERIFIED_RULES else None
-        ),
+        "specialSkill2RuleId":verified_skill2_spec["ruleId"] if verified_skill2_spec else None,
+        "specialSkill2RuleAuthority":verified_skill2_spec["ruleAuthority"] if verified_skill2_spec else None,
         "specialSkill2ExecutionStatus":(
-            "source-card-rule-implemented" if typ=="unit" and skill2_name in SKILL2_SOURCE_VERIFIED_RULES
-            else ("no-skill" if typ!="unit" or not skill2_name or skill2_name=="없음"
-                  else "disabled-until-skill2-rule-review")
+            "source-card-rule-implemented" if verified_skill2_spec else
+            ("disabled-until-skill2-rule-review" if typ=="unit" and skill2_named else "no-skill")
         ),
         "specialSkillMappingStatus":(
             source_skill1.get("mappingStatus","no_special_skill") if typ=="unit" and source_skill1 else "no_special_skill"
@@ -758,6 +755,19 @@ def self_test():
     assert magic_many["known"] and magic_many["magicLand"] is True
     print("converter self-test: PASS")
 
+def verified_skill2_rule_for_card(card_type, skill2_name, text_extra):
+    """Return a Skill2 rule only when this exact card carries its rule evidence in TextExtra."""
+    if card_type != "unit":
+        return None
+    spec = SKILL2_SOURCE_VERIFIED_RULES.get(str(skill2_name or ""))
+    if not spec:
+        return None
+    needle = spec.get("cardVerificationNeedle") or spec.get("evidenceNeedle")
+    if not needle or needle not in str(text_extra or ""):
+        return None
+    return spec
+
+
 SKILL2_SOURCE_VERIFIED_RULES = {
     "기선제압": {
         "ruleId":"skill2_tactical_initiative",
@@ -786,6 +796,9 @@ SKILL2_SOURCE_VERIFIED_RULES = {
         "trigger":"before_incoming_damage",
         "mechanic":"방어시 공격 유닛 AP가 자신의 DP+HP 합의 절반(내림) 이하이면 받는 데미지 무효",
         "evidenceNeedle":"방/체 합 1/2 이하",
+        # The other DB29 card has the same shorthand but omits floor rounding.
+        # Only the explicit floor(rounded down) source wording verifies this card.
+        "cardVerificationNeedle":"절반(내림)",
     },
     "얼라이디펜스": {
         "ruleId":"skill2_alliance_defense",
@@ -878,7 +891,8 @@ def build_skill2_catalogue(mapping_records, cards, release_tag):
         no_skill=source_name in ("","없음") or entry["sourceMappingStatuses"]=={"no_special_skill"}
         spec=SKILL2_SOURCE_VERIFIED_RULES.get(source_name) if not no_skill else None
         if spec:
-            evidence_refs=[ref for ref in refs if spec["evidenceNeedle"] in (ref.get("description") or "")]
+            evidence_needle=spec.get("cardVerificationNeedle") or spec["evidenceNeedle"]
+            evidence_refs=[ref for ref in refs if evidence_needle in (ref.get("description") or "")]
             if not evidence_refs:
                 raise RuntimeError("Skill2 rule has no matching exact card-source evidence: "+source_name)
             executable_rules.add(spec["ruleId"])
