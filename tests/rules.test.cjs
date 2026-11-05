@@ -1345,3 +1345,24 @@ test('spell effect transaction dispatches its destruction event after applying t
   assert.deepEqual(seen,[{type:'unit_destroyed',cause:'effect',target:'effect-target-1'}]);
   assert.equal(s.combatEventQueue.size(),0);
 });
+
+
+test('newGame initializes a per-match dispatcher and routes completed attack events through it',()=>{
+  const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
+  assert.equal(typeof s.combatEventDispatcher.dispatchPending,'function');
+  const p=s.players.player,ai=s.players.ai;
+  const attacker=unit('production-attacker',{instanceId:'production-a',ap:3});
+  const defender=unit('production-defender',{instanceId:'production-d',dp:1,hp:5,maxHp:5});
+  p.units.push(attacker);ai.units.push(defender);
+  const seen=[];
+  s.combatEventDispatcher.register({
+    ruleId:'defense_bypass',mappingStatus:'manual_verified',authority:'manual',
+    eventTypes:['unit_attack_resolved']
+  },event=>seen.push({type:event.type,damage:event.payload.damage}));
+  FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:{ap:{value:3},dp:{value:0},hp:{value:5}},
+    defender:{ap:{value:1},dp:{value:1},hp:{value:5}}
+  });
+  assert.deepEqual(seen,[{type:'unit_attack_resolved',damage:2}]);
+  assert.equal(s.combatEventQueue.size(),0);
+});

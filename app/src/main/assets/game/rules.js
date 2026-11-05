@@ -434,6 +434,7 @@
       },
       log: [],
       combatEventQueue: createCombatEventQueue(),
+      combatEventDispatcher: createCombatEventDispatcher(),
       settings: { difficulty: opts.difficulty || 'normal', deckSize: playerDeck.length },
       rng
     };
