@@ -113,6 +113,7 @@
         const mappingStatus = String(rule.mappingStatus || '');
         const authority = String(rule.authority || '');
         const executionStatus = String(rule.executionStatus || '');
+        const sourceCardId = rule.sourceCardId == null ? null : String(rule.sourceCardId);
         const manualAllowed = mappingStatus === 'manual_verified' &&
           authority === 'manual' && !!SPECIAL_SKILL_RULE_KEYWORDS[ruleId];
         const sourceAllowed = mappingStatus === 'source_card_verified' &&
@@ -136,7 +137,7 @@
         for (const type of normalizedTypes) {
           const list = subscribers.get(type) || [];
           list.push({
-            ruleId,handler,mappingStatus,authority,executionStatus,
+            ruleId,handler,mappingStatus,authority,executionStatus,sourceCardId,
             sourceMatch:rule.sourceMatch === 'skill2' ? 'skill2' : null
           });
           subscribers.set(type,list);
@@ -152,7 +153,8 @@
             if (subscriber.sourceMatch === 'skill2') {
               const subject = event.snapshot && event.snapshot.unit;
               const expectedName = SKILL2_SOURCE_RULE_NAMES[subscriber.ruleId];
-              if (!subject || subject.specialSkill2RuleId !== subscriber.ruleId ||
+              if (!subject || (subscriber.sourceCardId !== null && String(subject.cardId || '') !== subscriber.sourceCardId) ||
+                  subject.specialSkill2RuleId !== subscriber.ruleId ||
                   subject.specialSkill2MappingStatus !== subscriber.mappingStatus ||
                   subject.specialSkill2RuleAuthority !== subscriber.authority ||
                   subject.specialSkill2ExecutionStatus !== subscriber.executionStatus ||
