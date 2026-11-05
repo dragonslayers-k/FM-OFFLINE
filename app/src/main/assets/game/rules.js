@@ -104,18 +104,19 @@
         if (!eventTypes.length || eventTypes.some(type => typeof type !== 'string' || !type.trim())) {
           return {ok:false,reason:'invalid_event_types'};
         }
-        const added = [];
-        for (const rawType of eventTypes) {
-          const type = rawType.trim();
+        const normalizedTypes = eventTypes.map(type => type.trim());
+        if (new Set(normalizedTypes).size !== normalizedTypes.length) {
+          return {ok:false,reason:'invalid_event_types'};
+        }
+        if (normalizedTypes.some(type => (subscribers.get(type) || []).some(item => item.ruleId === ruleId))) {
+          return {ok:false,reason:'duplicate_rule_subscription'};
+        }
+        for (const type of normalizedTypes) {
           const list = subscribers.get(type) || [];
-          if (list.some(item => item.ruleId === ruleId)) {
-            return {ok:false,reason:'duplicate_rule_subscription'};
-          }
           list.push({ruleId,handler});
           subscribers.set(type,list);
-          added.push(type);
         }
-        return {ok:true,ruleId,eventTypes:added};
+        return {ok:true,ruleId,eventTypes:normalizedTypes};
       },
       dispatch(events, context) {
         const input = Array.isArray(events) ? events : [events];
@@ -150,10 +151,16 @@
 
   function dispatchPendingCombatEvents(state) {
     if (!state || !state.combatEventDispatcher ||
-        typeof state.combatEventDispatcher.dispatchPending !== 'function') return [];
-    return state.combatEventDispatcher.dispatchPending(state.combatEventQueue, {
-      state, players: state.players || null
-    });
+        typeof state.combatEventDispatcher.dispatchPending !== 'function' ||
+        state.combatEventDispatching === true) return [];
+    state.combatEventDispatching = true;
+    try {
+      return state.combatEventDispatcher.dispatchPending(state.combatEventQueue, {
+        state, players: state.players || null
+      });
+    } finally {
+      state.combatEventDispatching = false;
+    }
   }
   function uid(prefix) { return (prefix || 'c') + '_' + Math.random().toString(36).slice(2, 10); }
   function sumCost(cost) { return Object.values(cost || {}).reduce((a, n) => a + (Number(n) || 0), 0); }
