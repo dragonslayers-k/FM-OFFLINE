@@ -2853,3 +2853,41 @@ test('DB29 환상낚시꾼 ability seal changes Skill1 only and preserves the se
   assert.equal(defender.specialSkill2RuleId,'devoted_defense');
   assert.equal(defender.specialSkill2MappingStatus,'source_card_verified');
 });
+
+test('production Racial Defense counts only other matching friendly field units and ignores missing or enemy races',()=>{
+  const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
+  const attacker=unit('attacker',{instanceId:'racial-boundary-atk'});
+  const defender=sourceSkill2('defender','레이셜디펜스',{
+    instanceId:'racial-boundary-def',hp:8,maxHp:8,dp:0,race:'elf'
+  });
+  const matching=unit('matching',{instanceId:'racial-boundary-match',race:'elf'});
+  const mismatched=unit('mismatched',{instanceId:'racial-boundary-mismatch',race:'orc'});
+  const missing=unit('missing',{instanceId:'racial-boundary-missing'});
+  const enemyMatching=unit('enemy-matching',{instanceId:'racial-enemy-match',race:'elf'});
+  const p=s.players.player,ai=s.players.ai;
+  p.units.push(defender,matching,mismatched,missing);
+  ai.units.push(attacker,enemyMatching);
+  const result=FM._test.resolveUnitAttack(s,ai,p,attacker,defender,{
+    attacker:combatStats(4,0,5),defender:combatStats(1,0,8)
+  });
+  assert.equal(result.damage,3,'only one other friendly unit with the exact race reduces raw damage 4');
+  assert.equal(defender.hp,5);
+  assert.equal(enemyMatching.hp,5,'enemy-side race does not contribute to defending-side count');
+});
+
+test('production Racial Defense gives no reduction when the defender has no race',()=>{
+  const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
+  const attacker=unit('attacker',{instanceId:'racial-empty-atk'});
+  const defender=sourceSkill2('defender','레이셜디펜스',{
+    instanceId:'racial-empty-def',hp:8,maxHp:8,dp:0,race:''
+  });
+  const ally=unit('ally',{instanceId:'racial-empty-ally',race:'elf'});
+  const p=s.players.player,ai=s.players.ai;
+  p.units.push(defender,ally); ai.units.push(attacker);
+  const result=FM._test.resolveUnitAttack(s,ai,p,attacker,defender,{
+    attacker:combatStats(4,0,5),defender:combatStats(1,0,8)
+  });
+  assert.equal(result.damage,4);
+  assert.equal(defender.hp,4);
+});
+
