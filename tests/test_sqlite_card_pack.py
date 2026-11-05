@@ -349,7 +349,8 @@ class SqliteCardPackTests(unittest.TestCase):
         },{"Skill2":{"181":"홀리오오라"},"SoulType":{"41":"FOREST"}},{},{})
         self.assertEqual(holy_generic["specialSkill2MappingStatus"],"inferred")
         self.assertIsNone(holy_generic["specialSkill2RuleId"])
-\n    def test_load_refuses_missing_or_fabricated_card_url(self):
+
+    def test_load_refuses_missing_or_fabricated_card_url(self):
         self.db.execute("UPDATE cards SET source_card_url=? WHERE card_id=?", (
             "https://fmlunatic.com/card/other-id", self.card_id
         ))
