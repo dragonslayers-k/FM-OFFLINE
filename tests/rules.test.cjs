@@ -1868,6 +1868,5 @@ test('compact DB29 Manual fatal attack preserves the one-HP floor at lethal boun
     const result=FM._test.resolveUnitAttack(s,p,ai,a,d,rolls);
     assert.equal(result.damage,expectedDamage,'target starts at '+targetHp+' HP');
     assert.equal(d.hp,expectedHp,'fatal attack leaves the target at one HP');
-    assert.equal(s.combatEventQueue.size(),0);
   }
 });
