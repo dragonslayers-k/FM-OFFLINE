@@ -1328,3 +1328,20 @@ test('events enqueued by a subscriber wait for the next explicit dispatch bounda
   assert.deepEqual(seen,['attack','destroyed']);
   assert.equal(s.combatEventQueue.size(),0);
 });
+
+
+test('spell effect transaction dispatches its destruction event after applying the effect',()=>{
+  const p=player('player'),aiTarget=unit('effect-target',{instanceId:'effect-target-1',hp:3,maxHp:3});
+  const ai=player('ai',{units:[aiTarget]}),s=state(p,ai),seen=[];
+  const dispatcher=FM._test.createCombatEventDispatcher();
+  FM._test.attachCombatEventDispatcher(s,dispatcher);
+  dispatcher.register({
+    ruleId:'skill2_devoted_defense',mappingStatus:'source_card_verified',
+    authority:'card_source',executionStatus:'source-card-rule-implemented',
+    eventTypes:['unit_destroyed']
+  },event=>{seen.push({type:event.type,cause:event.cause,target:event.targetInstanceId});});
+  FM._test.applyEffect(s,'player',{type:'damage',target:'enemyUnit',amount:3},aiTarget);
+  assert.equal(ai.units.length,0);
+  assert.deepEqual(seen,[{type:'unit_destroyed',cause:'effect',target:'effect-target-1'}]);
+  assert.equal(s.combatEventQueue.size(),0);
+});
