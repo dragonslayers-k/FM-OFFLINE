@@ -2222,7 +2222,7 @@ test('Skill2 dispatcher requires exact card-source rule tuple and canonical name
     eventTypes:['unit_destroyed'],sourceMatch:'skill2'};
   assert.equal(dispatcher.register(rule,()=>{calls++;return {applied:true};}).ok,true);
   const eventFor=(unit)=>FM._test.createCombatEvent('unit_destroyed',{sourceCardId:unit.id,snapshot:{unit}});
-  const base={specialSkill2:'헌신방어',specialSkill2RuleId:'skill2_devoted_defense',
+  const base={id:'devoted-defense-source-card',specialSkill2:'헌신방어',specialSkill2RuleId:'skill2_devoted_defense',
     specialSkill2MappingStatus:'source_card_verified',specialSkill2RuleAuthority:'card_source',
     specialSkill2ExecutionStatus:'source-card-rule-implemented'};
   dispatcher.dispatch([
