@@ -2654,3 +2654,39 @@ test('DB29 리듬포이 defense conversion leaves zero and negative DP unchanged
   assert.equal(FM.totalPower(x.defender,'dp'),-2,'negative DP is not inverted a second time');
   assert.equal(x.result.damage,3,'signed negative DP still contributes to ordinary attack damage');
 });
+
+
+test('DB29 진실의거울 copy attack produces no damage when the copied target AP is zero',()=>{
+  const attacker=db29ManualSkill1('10050441147','진실의거울','공격복제','copy_attack',{ap:4,dp:0,hp:5,maxHp:5});
+  const defender=unit('copy-zero-ap-target',{instanceId:'copy-zero-ap-target',ap:0,dp:2,hp:10,maxHp:10});
+  const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+  const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:{ap:{value:4},dp:{value:0},hp:{value:5}},
+    defender:{ap:{value:0},dp:{value:2},hp:{value:10}}
+  });
+  assert.equal(result.damage,0,'copy attack uses the target AP, not the attacker AP');
+  assert.equal(defender.hp,10);
+});
+
+test('DB29 환상낚시꾼 ability seal changes Skill1 only and preserves the separate Skill2 tuple',()=>{
+  const attacker=db29ManualSkill1('10020324644','환상낚시꾼','기술봉쇄','ability_seal',{ap:1,dp:0,hp:5,maxHp:5});
+  const defender=unit('ability-seal-skill2-target',{
+    instanceId:'ability-seal-skill2-target',
+    skill:'방어무시기술',
+    specialSkill2:'헌신방어',
+    specialSkill2RuleId:'devoted_defense',
+    specialSkill2MappingStatus:'source_card_verified',
+    specialSkill2RuleAuthority:'card_source',
+    specialSkill2ExecutionStatus:'source-card-rule-implemented',
+    ap:2,dp:0,hp:10,maxHp:10
+  });
+  const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+  FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:{ap:{value:1},dp:{value:0},hp:{value:5}},
+    defender:{ap:{value:2},dp:{value:0},hp:{value:10}}
+  });
+  assert.equal(defender.skill,'일반공격기술','Skill1 ability seal only converts the Skill1 field');
+  assert.equal(defender.specialSkill2,'헌신방어');
+  assert.equal(defender.specialSkill2RuleId,'devoted_defense');
+  assert.equal(defender.specialSkill2MappingStatus,'source_card_verified');
+});
