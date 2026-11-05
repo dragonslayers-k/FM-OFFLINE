@@ -855,6 +855,45 @@ test('DB29 Manual Regeneration restores one HP on attack even when defender DP b
   assert.equal(x.attacker.tempHP||0,0);
 });
 
+test('DB29 Manual source-backed Skill1 cards preserve petrify, aging and charge attack rules',()=>{
+  const run=({id,name,skill,ruleId,attackerAP=1,attackerDP=0,defenderAP=4,defenderDP=2}={})=>{
+    const attacker=unit(id,{
+      instanceId:'manual-source-attacker',
+      name,skill,ap:attackerAP,dp:attackerDP,hp:5,maxHp:5,
+      specialSkillRuleId:ruleId,
+      specialSkillMappingStatus:'manual_verified',
+      specialSkillRuleAuthority:'manual'
+    });
+    const defender=unit('manual-source-defender',{
+      instanceId:'manual-source-defender',
+      ap:defenderAP,dp:defenderDP,hp:10,maxHp:10
+    });
+    const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+    const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+      attacker:{ap:{value:attackerAP},dp:{value:attackerDP},hp:{value:5}},
+      defender:{ap:{value:defenderAP},dp:{value:defenderDP},hp:{value:10}}
+    });
+    return {attacker,defender,result};
+  };
+
+  // DB29 exact Manual Skill1 source matches: 파프니르 / 10010624589 / 석화공격.
+  let x=run({id:'10010624589',name:'파프니르',skill:'석화공격',ruleId:'petrify_attack'});
+  assert.equal(FM.totalPower(x.defender,'ap'),0);
+  assert.equal(FM.totalPower(x.defender,'dp'),3);
+  assert.equal(x.defender.hp,10);
+
+  // DB29 exact Manual Skill1 source matches: 타락자 / 13020626691 / 노화공격.
+  x=run({id:'13020626691',name:'타락자',skill:'노화공격',ruleId:'aging_attack',defenderDP:0});
+  assert.equal(FM.totalPower(x.defender,'ap'),2);
+  assert.equal(x.defender.hp,9);
+
+  // DB29 exact Manual Skill1 source matches: 패스파인더 / 10010624588 / 돌진공격.
+  x=run({id:'10010624588',name:'패스파인더',skill:'돌진공격',ruleId:'charge_attack',
+    attackerAP:2,attackerDP:3,defenderDP:1});
+  assert.equal(x.result.damage,4,'charge uses AP plus DP before the defender DP is applied');
+  assert.equal(x.defender.hp,6);
+});
+
 test('DB29 Manual catalogue exposes all 27 rule IDs with their actual source Skill1 labels',()=>{
   const normalize=FM._test.normalizeSpecialSkillForEngine;
   const cases={
