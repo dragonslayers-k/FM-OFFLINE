@@ -1315,6 +1315,8 @@ if (card.type === 'unit') {
         attackingUnit.hp = attackerStats.hp.value;
         if (attackingUnit.hp <= 0) {
           destroyUnit(state,attacker,attackingUnit);
+          // Resolve destruction-triggered abilities before the next slot is rolled.
+          dispatchPendingCombatEvents(state);
           continue;
         }
       }
@@ -1322,6 +1324,8 @@ if (card.type === 'unit') {
         defendingUnit.hp = defenderStats.hp.value;
         if (defendingUnit.hp <= 0) {
           destroyUnit(state,defender,defendingUnit);
+          // Resolve the defender's destruction triggers before the direct attack proceeds.
+          dispatchPendingCombatEvents(state);
           defendingUnit = null;
           defenderStats = null;
         }

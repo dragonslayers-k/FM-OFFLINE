@@ -846,6 +846,44 @@ function sourceSkill2(id,name,extra={}){
     ...extra
   });
 }
+test('pre-attack attacker roll destruction dispatches Devoted Defense before the next friendly attack',()=>{
+  const doomed=sourceSkill2('doomed','헌신방어',{
+    instanceId:'doomed',hp:1,maxHp:1,
+    coinTech:{sharedTosses:1,stats:{hp:{coin:[{operation:'subtract',multiplier:1,tosses:1}]}}}
+  });
+  const ally=unit('ally',{instanceId:'ally',ap:1,dp:0,hp:5,maxHp:5,slotIndex:2});
+  const target=unit('target',{instanceId:'target',ap:0,dp:0,hp:8,maxHp:8,slotIndex:1});
+  const p=player('player',{units:[doomed,ally]});
+  const ai=player('ai',{units:[target]});
+  const s=state(p,ai,{activeId:'ai',prepared:{player:true,ai:true},rng:()=>0.9});
+  FM.resolveBattle(s);
+  const buffIndex=s.log.findIndex(line=>line.includes('헌신방어!'));
+  const attackIndex=s.log.findIndex(line=>line.includes('ally의')&&line.includes('target (2 피해)'));
+  assert.ok(buffIndex>=0,'attacker-side destruction trigger should resolve');
+  assert.ok(attackIndex>=0,'the next friendly unit should attack with its buffed AP');
+  assert.ok(buffIndex<attackIndex,'destruction trigger must resolve before the next unit attacks');
+  assert.equal(s.combatEventQueue.size(),0);
+});
+
+test('pre-attack defender roll destruction dispatches Devoted Defense before the direct attack',()=>{
+  const attacker=unit('attacker',{instanceId:'attacker',ap:3,dp:0,hp:5,maxHp:5,slotIndex:1});
+  const doomed=sourceSkill2('doomed','헌신방어',{
+    instanceId:'doomed',hp:1,maxHp:1,
+    coinTech:{sharedTosses:1,stats:{hp:{coin:[{operation:'subtract',multiplier:1,tosses:1}]}}}
+  });
+  const ally=unit('defender-ally',{instanceId:'defender-ally',ap:1,dp:0,hp:5,maxHp:5,slotIndex:2});
+  const p=player('player',{units:[attacker]});
+  const ai=player('ai',{units:[doomed,ally]});
+  const s=state(p,ai,{activeId:'ai',prepared:{player:true,ai:true},rng:()=>0.9});
+  FM.resolveBattle(s);
+  const buffIndex=s.log.findIndex(line=>line.includes('헌신방어!'));
+  const directIndex=s.log.findIndex(line=>line.includes('직접 공격!'));
+  assert.ok(buffIndex>=0,'defender-side destruction trigger should resolve');
+  assert.ok(directIndex>=0,'the attacker should proceed with the now-unblocked direct attack');
+  assert.ok(buffIndex<directIndex,'destruction trigger must resolve before the direct attack');
+  assert.equal(s.combatEventQueue.size(),0);
+});
+
 function combatStats(ap,dp,hp){
   return {ap:{value:ap},dp:{value:dp},hp:{value:hp}};
 }
