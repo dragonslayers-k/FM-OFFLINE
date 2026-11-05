@@ -44,3 +44,22 @@ DB29에는 189개의 Skill2 enum 항목이 있다. 이 중 1개는 미보유/없
 - Skill1 매뉴얼 규칙과 Skill2 규칙은 서로 대체하거나 상속하지 않는다.
 - 카드 스키마 테스트는 다른 Skill2 이름에 허용되지 않은 Rule ID를 주입해도 거부되는지 확인한다.
 - 전투 테스트는 기선제압, 헌신방어, 격노, 홀리오오라, 얼라이디펜스, 레이셜디펜스, 강한헌신방어, 프레셔를 각 발동 시점에서 독립적으로 확인한다.
+
+
+## DB29 full import + emulator verification and current executable gate (2026-11-05 / Actions #160)
+
+- PR #28 HEAD: `56f2cd5378de3bb528ed298d36c7487cf506e6b7`, open/draft/unmerged.
+- Actions #160: https://github.com/dragonslayers-k/FM-OFFLINE/actions/runs/41949790050 succeeded. Node tests: 138 passed / 0 failed. Converter self-test: PASS; 11 Python tests passed; SQLite integrity and audited release manifest verification passed; Debug APK build and package validation passed.
+- Emulator test is a real data-import test, not launch-only: it streamed the generated DB29 ZIP into the app-private files, invoked the guarded importer, then waited for the WebView loader to confirm all 15,350 cards. Log: `Emulator card-data import + WebView load smoke test: PASS`; loaded count 15,350/15,350. This does not claim physical-device, online login, or complete match-scenario coverage.
+- Artifacts: `FM1-CardData-v1.3.0-IMPORT-DB29` (13379674035) and `FantasyMastersOffline-build-output` (13379164984). Release signing was not configured in this run.
+
+### Distinguish handler registration from DB29 executable rules
+
+- The production dispatcher registers all eight Skill2 handlers. This is code capability, not evidence that all eight are mapped to executable DB29 cards.
+- Current DB29 pack audit: 189 Skill2 enum entries; 188 active skill names; 1,366 active cards; 10,381 source mappings/references; **7 executable rules**.
+- Holy Aura remains pending for current DB29 unit mappings. The exact floor-rounding phrase used as the executable evidence needle occurs on an item reference, not the relevant unit card's own TextExtra. Item text cannot authorize a unit combat rule. The handler remains registered and synthetic arithmetic/boundary tests remain, but no DB29 unit mapping is promoted until card-local evidence supports it.
+- Other seven rules remain subject to exact card-level source metadata and runtime gate. Inferred/community mappings remain fail-closed.
+
+### Cost review gate
+
+- DB29 audit identifies 14,244 known non-land costs and 817 review-required non-land costs (38 mapping-review, 779 semantic-review). The converter preserves candidate cost data for inspection but must not expose review-required costs as playable/known. Do not turn unknown cost into free cost.
