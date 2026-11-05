@@ -614,6 +614,18 @@
     return true;
   }
 
+  function concede(state, id) {
+    if (!state || state.status !== 'playing' || !state.players ||
+        (id !== 'player' && id !== 'ai') || !state.players[id] ||
+        !state.players[opponentId(id)]) return false;
+    const winnerId = opponentId(id);
+    state.status = 'finished';
+    state.result = winnerId;
+    addLog(state, player(state, id).name + '이(가) 항복했습니다. ' +
+      player(state, winnerId).name + ' 승리!');
+    return true;
+  }
+
   function drawToSix(state, id) {
     const p = player(state, id);
     while (p.hand.length < 6 && p.deck.length > 0) {
@@ -1501,7 +1513,7 @@ if (card.type === 'unit') {
 
   const api = {
     COLORS, COLOR_NAMES, TYPE_NAMES, clone, uid, sumCost, costText, colorName,
-    newGame, buildStarterDeck, drawToSix, canPay, spendSoul, totalPower, validateCardForPlay,
+    newGame, buildStarterDeck, drawToSix, concede, canPay, spendSoul, totalPower, validateCardForPlay,
     playCard, discardCard, reshuffleHand, endPhase, resolveBattle, runAIPhase, checkWinner, cardArtClass,
     _test: { makePlayer, beginPhase, rollStat, coinProfile, chooseBlocker, createUnit, applyEffect, resolveUnitAttack, destroyUnit, productionOf, readCost, validateCardForPlay, itemMatchesUnit, resolveSpellSlot, statMarker, canChangeStat, changeUnitStat, setUnitStat, normalizeSpecialSkillForEngine, normalizeSpecialSkill2ForEngine, transferCardBetweenZones, createCombatEvent, createCombatEventQueue, createCombatEventDispatcher, createCoreCombatEventDispatcher, attachCombatEventDispatcher, dispatchPendingCombatEvents, SPECIAL_SKILL_RULE_KEYWORDS, SKILL2_SOURCE_RULE_NAMES }
   };

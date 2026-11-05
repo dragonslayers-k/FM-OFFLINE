@@ -24,6 +24,29 @@ function state(p,ai,extra={}){
     prepared:{player:false,ai:false},players:{player:p,ai},log:[],rng:()=>0.1,...extra};
 }
 
+test('conceding while a match is active awards the win to the opponent',()=>{
+  const p=player('player',{name:'플레이어'});
+  const ai=player('ai',{name:'상대'});
+  const s=state(p,ai);
+  assert.equal(FM.concede(s,'ai'),true);
+  assert.equal(s.status,'finished');
+  assert.equal(s.result,'player');
+  assert.match(s.log[0].text,/항복했습니다/);
+  assert.match(s.log[0].text,/플레이어 승리/);
+  assert.equal(FM.concede(s,'player'),false);
+  assert.equal(s.result,'player');
+});
+
+test('concession rejects unknown sides and incomplete match state',()=>{
+  const p=player('player');
+  const ai=player('ai');
+  const s=state(p,ai);
+  assert.equal(FM.concede(s,'spectator'),false);
+  assert.equal(FM.concede(null,'player'),false);
+  assert.equal(FM.concede({...s,status:'finished'},'player'),false);
+  assert.equal(s.status,'playing');
+});
+
 test('slot-specific FM1 spell stat effects resolve against the named enemy slot',()=>{
   const target=unit('target',{instanceId:'target-1',slotIndex:1,ap:5,dp:2,hp:8,maxHp:8});
   const spell={id:'spell-slot-debuff',instanceId:'spell-1',name:'적 유닛 약화',type:'spell',
