@@ -2180,6 +2180,43 @@ test('production dispatcher applies Alliance and Racial Defense through pre-dama
   }
 });
 
+test('production Alliance Defense counts only other matching friendly field units and ignores missing or enemy affiliations',()=>{
+  const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
+  const attacker=unit('attacker',{instanceId:'alliance-boundary-atk'});
+  const defender=sourceSkill2('defender','얼라이디펜스',{
+    instanceId:'alliance-boundary-def',hp:8,maxHp:8,dp:0,affiliation:'guild-a'
+  });
+  const matching=unit('matching',{instanceId:'alliance-boundary-match',affiliation:'guild-a'});
+  const mismatched=unit('mismatched',{instanceId:'alliance-boundary-mismatch',affiliation:'guild-b'});
+  const missing=unit('missing',{instanceId:'alliance-boundary-missing'});
+  const enemyMatching=unit('enemy-matching',{instanceId:'alliance-enemy-match',affiliation:'guild-a'});
+  const p=s.players.player,ai=s.players.ai;
+  p.units.push(defender,matching,mismatched,missing);
+  ai.units.push(attacker,enemyMatching);
+  const result=FM._test.resolveUnitAttack(s,ai,p,attacker,defender,{
+    attacker:combatStats(4,0,5),defender:combatStats(1,0,8)
+  });
+  assert.equal(result.damage,3,'only one other friendly unit with the exact affiliation reduces raw damage 4');
+  assert.equal(defender.hp,5);
+  assert.equal(enemyMatching.hp,5,'enemy-side affiliation does not contribute to defending-side count');
+});
+
+test('production Alliance Defense gives no reduction when the defender has no affiliation',()=>{
+  const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
+  const attacker=unit('attacker',{instanceId:'alliance-empty-atk'});
+  const defender=sourceSkill2('defender','얼라이디펜스',{
+    instanceId:'alliance-empty-def',hp:8,maxHp:8,dp:0,affiliation:''
+  });
+  const ally=unit('ally',{instanceId:'alliance-empty-ally',affiliation:'guild-a'});
+  const p=s.players.player,ai=s.players.ai;
+  p.units.push(defender,ally); ai.units.push(attacker);
+  const result=FM._test.resolveUnitAttack(s,ai,p,attacker,defender,{
+    attacker:combatStats(4,0,5),defender:combatStats(1,0,8)
+  });
+  assert.equal(result.damage,4);
+  assert.equal(defender.hp,4);
+});
+
 test('production dispatcher applies Pressure Defense from empty friendly slots',()=>{
   const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
   const attacker=unit('attacker',{instanceId:'pressure-atk'});
