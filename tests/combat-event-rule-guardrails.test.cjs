@@ -79,6 +79,9 @@ test('source-verified Skill2 dispatch requires exact rule provenance and card na
   const emptyCardId = FM._test.createCombatEvent('unit_destroyed', {
     snapshot: sourceSnapshot({cardId: ''})
   });
+  const whitespaceCardId = FM._test.createCombatEvent('unit_destroyed', {
+    snapshot: sourceSnapshot({cardId: '   '})
+  });
   const wrongRuleId = FM._test.createCombatEvent('unit_destroyed', {
     snapshot: sourceSnapshot({specialSkill2RuleId: 'skill2_devoted_defense'})
   });
@@ -96,7 +99,7 @@ test('source-verified Skill2 dispatch requires exact rule provenance and card na
   });
 
   const results = dispatcher.dispatch([
-    matching, wrongCardId, missingCardId, emptyCardId, wrongRuleId, wrongMappingStatus, wrongAuthority, wrongExecution, wrongPrintedName
+    matching, wrongCardId, missingCardId, emptyCardId, whitespaceCardId, wrongRuleId, wrongMappingStatus, wrongAuthority, wrongExecution, wrongPrintedName
   ], {});
   assert.equal(results.length, 1);
   assert.equal(seen.length, 1);
