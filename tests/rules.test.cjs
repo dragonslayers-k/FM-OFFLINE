@@ -809,7 +809,7 @@ test('DB29 Manual Vampiric Attack uses actual HP damage, rounds half up, and res
   assert.equal(x.result.damage,0,'DP blocks all HP damage');
   assert.equal(x.attacker.hp,2,'blocked damage must not trigger vampiric healing');
 
-  x=run({attackerHp:2,defenderDP:0,attackAP:3,attackerHpMarker:'▲'});
+  x=run({attackerHp:2,defenderDP:0,attackAP:3,attackerHpMarker:'▼'});
   assert.equal(x.result.damage,3);
   assert.equal(x.attacker.hp,2,'HP-increase marker prevents vampiric healing');
   assert.equal(x.attacker.tempHP||0,0);
