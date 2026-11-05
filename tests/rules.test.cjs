@@ -440,6 +440,26 @@ test('a card with numeric cost but no verified original cost flag cannot be play
   assert.equal(p.hand.length,1);
 });
 
+test('hybrid soul payment candidates remain blocked until their payment rule is verified',()=>{
+  const card={...unit('hybrid-review'),instanceId:'hybrid-review-1',
+    cost:{forest:1,light:1},costKnown:true,costMapped:true,costMappingReview:true};
+  const p=player('player',{hand:[card],soulPool:{colored:{forest:10,light:10},neutral:10},unitDeployLimit:10});
+  const result=FM.playCard(state(p,player('ai')),'player','hybrid-review-1');
+  assert.equal(result.ok,false);
+  assert.match(result.reason,/검토 대기 비용/);
+  assert.equal(p.hand.length,1);
+});
+
+test('NCS or BONUS semantic-review costs remain blocked even when token parsing succeeded',()=>{
+  const card={...unit('special-review'),instanceId:'special-review-1',
+    cost:{neutral:1},costKnown:true,costMapped:true,costSemanticReview:true,costTokenParsed:true};
+  const p=player('player',{hand:[card],soulPool:{colored:{forest:10},neutral:10},unitDeployLimit:10});
+  const result=FM.playCard(state(p,player('ai')),'player','special-review-1');
+  assert.equal(result.ok,false);
+  assert.match(result.reason,/검토 대기 비용/);
+  assert.equal(p.hand.length,1);
+});
+
 test('stat markers block changes in the protected direction',()=>{
   const immutable=unit('fixed',{statMarkers:{ap:'*'}});
   const noDecrease=unit('up-only',{statMarkers:{ap:'▲'}});

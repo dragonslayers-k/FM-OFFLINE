@@ -196,7 +196,7 @@
   function validateCardForPlay(card) {
     if(!card||!['land','unit','item','spell','enchant'].includes(card.type))return {ok:false,reason:'카드 종류 또는 데이터가 올바르지 않습니다.'};
     if(card.type!=='land'){
-      if(card.costKnown!==true||card.costMapped!==true)return {ok:false,reason:'원본 카드 이미지의 소울 구슬 비용이 아직 검증되지 않았습니다. 무료 카드로 취급하지 않습니다.'};
+      if(card.costKnown!==true||card.costMapped!==true||card.costMappingReview===true||card.costSemanticReview===true)return {ok:false,reason:'원본 카드 이미지의 소울 구슬 비용이 아직 검증되지 않았습니다. 검토 대기 비용은 플레이할 수 없습니다.'};
       const parsed=readCost(card.cost);if(!parsed.ok)return parsed;
     }
     if(card.type==='unit'&&(!Number.isFinite(Number(card.ap))||!Number.isFinite(Number(card.dp))||!Number.isFinite(Number(card.hp))||Number(card.hp)<=0))
