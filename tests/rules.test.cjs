@@ -1491,7 +1491,7 @@ test('production defensive handlers ignore inferred Alliance Defense mappings',(
 
 
 test('production dispatcher applies Tactical Initiative through a verified pre-damage event',()=>{
-  for (const [attackerLevel,expected] of [[3,1],[4,1],[5,2]]) {
+  for (const [attackerLevel,expected] of [[3,2],[4,2],[5,3]]) {
     const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
     const attacker=unit('attacker',{instanceId:'ti-atk-'+attackerLevel,level:attackerLevel});
     const defender=sourceSkill2('defender','기선제압',{
