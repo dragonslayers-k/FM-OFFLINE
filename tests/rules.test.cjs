@@ -1520,6 +1520,32 @@ test('source Skill2 Wrath converts actual HP lost while defending into immediate
   assert.equal(FM.totalPower(defender,'ap'),6);
 });
 
+test('source Skill2 Wrath does not gain AP from zero damage or lethal HP loss',()=>{
+  const attacker=unit('attacker',{instanceId:'atk'});
+  const p=player('player');
+  const ai=player('ai');
+  const defender=sourceSkill2('defender','격노',{instanceId:'def',hp:2,maxHp:2,ap:2,dp:0});
+  p.units.push(defender);
+  let s=state(ai,p);
+  let result=FM._test.resolveUnitAttack(s,ai,p,attacker,defender,{
+    attacker:combatStats(2,0,5),defender:combatStats(4,0,2)
+  });
+  assert.equal(result.damage,0);
+  assert.equal(defender.hp,2);
+  assert.equal(FM.totalPower(defender,'ap'),2);
+
+  const lethal=sourceSkill2('lethal-defender','격노',{instanceId:'lethal',hp:2,maxHp:2,ap:2,dp:0});
+  const p2=player('player',{units:[lethal]});
+  const ai2=player('ai');
+  s=state(ai2,p2);
+  result=FM._test.resolveUnitAttack(s,ai2,p2,attacker,lethal,{
+    attacker:combatStats(4,0,5),defender:combatStats(1,0,2)
+  });
+  assert.equal(result.defenderAlive,false);
+  assert.equal(lethal.hp,0);
+  assert.equal(FM.totalPower(lethal,'ap'),2,'Wrath does not apply after lethal damage');
+});
+
 test('source Skill2 Devoted Defense buffs the next friendly field unit when the owner is destroyed',()=>{
   const attacker=unit('attacker',{instanceId:'atk'});
   const defender=sourceSkill2('defender','헌신방어',{instanceId:'def',hp:1,maxHp:1,ap:2,dp:1});
