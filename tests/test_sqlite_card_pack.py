@@ -286,6 +286,36 @@ class SqliteCardPackTests(unittest.TestCase):
 
 
 
+
+    def test_review_required_database_costs_are_not_exposed_as_playable_costs(self):
+        base = {
+            "card_id":"cost-review-test","name":"비용 검토 유닛","raw_payload":{
+                "ID":"cost-review-test","Name":"비용 검토 유닛","Category":2,"SoulType":41,
+                "RequireSoul":"4101","ATK":3,"DEF":2,"HP":5,"LV":3,"Skill2":"0",
+                "TextBase":"","TextExtra":""
+            },
+            "skill_mappings":[]
+        }
+        for review_flags in (
+            {"mappingReview":True,"semanticReview":False},
+            {"mappingReview":False,"semanticReview":True},
+            {"mappingReview":True,"semanticReview":True},
+        ):
+            with self.subTest(**review_flags):
+                row = dict(base)
+                row["normalized_cost"] = {
+                    "known":True,"cost":{"forest":1},"candidateCost":{"forest":1,"metal":1},
+                    "review":["review-required"],"sourceStatus":"test",
+                    "soulKnown":True,"mappingReview":review_flags["mappingReview"],
+                    "semanticReview":review_flags["semanticReview"]
+                }
+                card = CONVERTER.build_card(row,{"Skill2":{"0":"없음"},"SoulType":{"41":"FOREST"}},{},{})
+                self.assertFalse(card["costKnown"])
+                self.assertFalse(card["costMapped"])
+                self.assertEqual(card["cost"],{})
+                self.assertEqual(card["costCandidate"],{"forest":1,"metal":1})
+                self.assertTrue(card["costMappingReview"] or card["costSemanticReview"])
+
     def test_skill2_catalogue_does_not_use_item_text_as_unit_rule_evidence(self):
         mappings = [
             {"cardId":"holy-unit-no-rounding","sourceField":"Skill2","sourceEnumValue":"181",

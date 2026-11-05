@@ -274,8 +274,14 @@ for (const card of cards) {
     const sourceSkill2 = skillMappings.find(x => x.sourceField === 'Skill2');
     const expectedSkill2SourceStatus = sourceSkill2 ? sourceSkill2.mappingStatus : 'no_special_skill';
     const expectedSkill2Name = sourceSkill2?.sourceName || '';
-    const expectedSkill2Rule = SKILL2_SOURCE_VERIFIED_RULES[expectedSkill2Name] || null;
-    const expectedSkill2Status = expectedSkill2Rule ? 'source_card_verified' : expectedSkill2SourceStatus;
+    const expectedSkill2Spec = SKILL2_SOURCE_VERIFIED_RULES[expectedSkill2Name] || null;
+    const skill2EvidenceNeedle = expectedSkill2Spec
+      ? (expectedSkill2Spec.cardVerificationNeedle || expectedSkill2Spec.evidenceNeedle) : null;
+    const expectedSkill2Rule = expectedSkill2Spec && card.type === 'unit' &&
+      skill2EvidenceNeedle && String(card.description || '').includes(skill2EvidenceNeedle)
+      ? expectedSkill2Spec : null;
+    const expectedSkill2Status = expectedSkill2Rule ? 'source_card_verified' :
+      (expectedSkill2Name && expectedSkill2Name !== '없음' ? 'unmapped' : 'no_special_skill');
     if (card.specialSkill2SourceMappingStatus !== expectedSkill2SourceStatus ||
         card.specialSkill2MappingStatus !== expectedSkill2Status) {
       errors.push(card.id + ': compact Skill2 mapping status does not match source mapping/review rule');

@@ -514,7 +514,7 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
     if extra: tabs["텍스트"].append({"label":"추가 설명","text":extra})
 
     c=row.get("normalized_cost") or parse_cost(f.get("RequireSoul"),require_soul_enum)
-    cost_known=(c["known"] and typ!="land")
+    cost_known=(c["known"] and not c.get("mappingReview",False) and not c.get("semanticReview",False) and typ!="land")
     skill1_name=label(enums,"Skill1",f.get("Skill1"))
     skill2_name=label(enums,"Skill2",f.get("Skill2"))
     source_skill1=next((m for m in (row.get("skill_mappings") or []) if m.get("sourceField")=="Skill1"),None)
