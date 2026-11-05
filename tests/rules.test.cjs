@@ -1111,6 +1111,34 @@ test('DB29 Manual beast tamer, spell suppression and weapon suppression require 
   assert.equal(FM.totalPower(x.defender,'ap'),4,'non-equipment target is unaffected');
 });
 
+test('DB29 source card Eunryong Sword uses the Manual ordinary-attack baseline',()=>{
+  // Exact DB29 source row: 은룡의검 / 10020341112 / Skill1 일반공격.
+  // Manual specialability.htm §1 defines ordinary AP-vs-DP combat as the baseline.
+  const attacker=unit('10020341112',{
+    instanceId:'db29-eunryong-sword',
+    name:'은룡의검',
+    skill:'일반공격',
+    ap:3,dp:1,hp:8,maxHp:8,
+    specialSkillRuleId:'normal_attack',
+    specialSkillMappingStatus:'manual_verified',
+    specialSkillRuleAuthority:'manual'
+  });
+  const defender=unit('normal-attack-target',{
+    instanceId:'normal-attack-target',
+    ap:1,dp:1,hp:8,maxHp:8
+  });
+  const p=player('player',{units:[attacker]});
+  const ai=player('ai',{units:[defender]});
+  const s=state(p,ai);
+  const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:{ap:{value:3},dp:{value:1},hp:{value:8}},
+    defender:{ap:{value:1},dp:{value:1},hp:{value:8}}
+  });
+  assert.equal(result.damage,2,'ordinary attack applies AP minus defender DP');
+  assert.equal(defender.hp,6);
+  assert.equal(defender.dp,1,'ordinary attack does not mutate defender DP');
+});
+
 test('DB29 Manual catalogue exposes all 27 rule IDs with their actual source Skill1 labels',()=>{
   const normalize=FM._test.normalizeSpecialSkillForEngine;
   const cases={
