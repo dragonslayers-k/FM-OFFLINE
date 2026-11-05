@@ -1791,7 +1791,7 @@ test('combat dispatcher sends isolated event copies to every subscriber in stabl
   assert.deepEqual(seen,['defense_bypass','fatal_attack']);
   assert.deepEqual(result.map(item=>item.ruleId),seen);
   assert.equal(event.snapshot.unit.hp,0,'handler mutation must not leak to source event');
-  assert.deepEqual(result.map(item=>item.sequence),[12,12]);
+  assert.deepEqual(result.map(item=>item.sequence),[null,null], 'unsequenced event records retain null sequence until queued');
 });
 
 test('Skill2 dispatcher requires exact card-source rule tuple and canonical name',()=>{
