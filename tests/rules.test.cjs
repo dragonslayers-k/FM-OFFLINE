@@ -1757,3 +1757,60 @@ test('production Tactical Initiative and Holy Aura do not activate from inferred
     assert.equal(defender.hp,4);
   }
 });
+
+
+// Batched dispatcher contract tests: registration gate, duplicate protection,
+// event fan-out isolation and card-local source tuple validation.
+test('combat dispatcher rejects unverified authority, duplicate event types, and duplicate subscriptions',()=>{
+  const dispatcher=FM._test.createCombatEventDispatcher();
+  const handler=()=>({ok:true});
+  const manual={ruleId:'defense_bypass',mappingStatus:'manual_verified',authority:'manual',
+    eventTypes:['unit_destroyed']};
+  assert.equal(dispatcher.register({...manual,authority:'community'},handler).reason,
+    'rule_not_verified_or_not_implemented');
+  assert.equal(dispatcher.register({...manual,eventTypes:['unit_destroyed','unit_destroyed']},handler).reason,
+    'invalid_event_types');
+  assert.equal(dispatcher.register(manual,handler).ok,true);
+  assert.equal(dispatcher.register(manual,handler).reason,'duplicate_rule_subscription');
+  assert.equal(dispatcher.subscriberCount(),1);
+});
+
+test('combat dispatcher sends isolated event copies to every subscriber in stable order',()=>{
+  const dispatcher=FM._test.createCombatEventDispatcher();
+  const seen=[];
+  for(const ruleId of ['defense_bypass','fatal_attack']){
+    assert.equal(dispatcher.register({ruleId,mappingStatus:'manual_verified',authority:'manual',
+      eventTypes:['unit_destroyed']},event=>{
+        seen.push(ruleId);
+        event.snapshot.unit.hp=999;
+        return {observed:ruleId};
+      }).ok,true);
+  }
+  const event=FM._test.createCombatEvent('unit_destroyed',{sequence:12,snapshot:{unit:{hp:0}}});
+  const result=dispatcher.dispatch(event,{});
+  assert.deepEqual(seen,['defense_bypass','fatal_attack']);
+  assert.deepEqual(result.map(item=>item.ruleId),seen);
+  assert.equal(event.snapshot.unit.hp,0,'handler mutation must not leak to source event');
+  assert.deepEqual(result.map(item=>item.sequence),[12,12]);
+});
+
+test('Skill2 dispatcher requires exact card-source rule tuple and canonical name',()=>{
+  const dispatcher=FM._test.createCombatEventDispatcher();
+  let calls=0;
+  const rule={ruleId:'skill2_devoted_defense',mappingStatus:'source_card_verified',
+    authority:'card_source',executionStatus:'source-card-rule-implemented',
+    eventTypes:['unit_destroyed'],sourceMatch:'skill2'};
+  assert.equal(dispatcher.register(rule,()=>{calls++;return {applied:true};}).ok,true);
+  const eventFor=(unit)=>FM._test.createCombatEvent('unit_destroyed',{snapshot:{unit}});
+  const base={specialSkill2:'헌신방어',specialSkill2RuleId:'skill2_devoted_defense',
+    specialSkill2MappingStatus:'source_card_verified',specialSkill2RuleAuthority:'card_source',
+    specialSkill2ExecutionStatus:'source-card-rule-implemented'};
+  dispatcher.dispatch([
+    eventFor({...base,skill2:'헌신방어'}),
+    eventFor({...base,skill2:'헌신방어',specialSkill2RuleAuthority:'community'}),
+    eventFor({...base,skill2:'헌신방어',specialSkill2MappingStatus:'inferred'}),
+    eventFor({...base,skill2:'다른기술'}),
+    eventFor({...base,skill2:'헌신방어',specialSkill2RuleId:'unknown'})
+  ],{});
+  assert.equal(calls,1,'only the exact canonical source tuple is allowed through');
+});
