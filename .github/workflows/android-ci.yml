@@ -211,7 +211,23 @@ jobs:
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]')) }}
         run: |
           set -euo pipefail
-          sdkmanager "platforms;android-34" "emulator" "system-images;android-34;google_apis;x86_64"
+          # Hosted SDK downloads can occasionally arrive truncated (sdkmanager reports
+          # "Error reading Zip content from a SeekableByteChannel"). Retry the
+          # exact same immutable packages after clearing only SDK Manager's download cache.
+          for attempt in 1 2 3; do
+            if sdkmanager "platforms;android-34" "emulator" "system-images;android-34;google_apis;x86_64"; then
+              echo "Android emulator SDK packages installed (attempt $attempt)."
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::Android emulator SDK package install failed after 3 attempts."
+              exit 1
+            fi
+            echo "::warning::SDK package download/install failed on attempt $attempt; clearing download cache and retrying."
+            rm -rf "$HOME/.android/cache"
+            rm -rf "$ANDROID_HOME/system-images/android-34/google_apis/x86_64"
+            sleep "$((attempt * 5))"
+          done
 
       - name: Prepare optional release signing
         run: |
