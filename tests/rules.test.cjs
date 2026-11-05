@@ -1603,6 +1603,18 @@ test('source Skill2 Pressure reduces damage by half the number of empty friendly
   assert.equal(defender.hp,4);
 });
 
+test('source Skill2 Pressure cannot reduce incoming damage below zero',()=>{
+  const attacker=unit('attacker',{instanceId:'atk'});
+  const defender=sourceSkill2('defender','프레셔',{instanceId:'def',hp:6,maxHp:6});
+  const p=player('player',{units:[defender]});
+  const ai=player('ai',{units:[attacker]});
+  const result=FM._test.resolveUnitAttack(state(ai,p),ai,p,attacker,defender,{
+    attacker:combatStats(1,0,5),defender:combatStats(2,0,6)
+  });
+  assert.equal(result.damage,0);
+  assert.equal(defender.hp,6);
+});
+
 test('source Skill2 Strong Devoted Defense buffs every surviving friendly field unit when destroyed',()=>{
   const attacker=unit('attacker',{instanceId:'atk'});
   const defender=sourceSkill2('defender','강한헌신방어',{instanceId:'def',hp:1,maxHp:1,ap:2,dp:1});
