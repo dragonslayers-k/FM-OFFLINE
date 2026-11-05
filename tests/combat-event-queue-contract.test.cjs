@@ -65,7 +65,7 @@ test('combat event dispatcher drains each queued event once and preserves sequen
   const dispatcher = FM._test.createCombatEventDispatcher();
   const seen = [];
   const rule = {
-    ruleId:'skill1_test_event_probe',
+    ruleId:'normal_attack',
     mappingStatus:'manual_verified',
     authority:'manual',
     eventTypes:['unit_destroyed']
