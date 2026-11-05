@@ -33,6 +33,7 @@
       sourceInstanceId: data.sourceInstanceId ?? source.instanceId ?? null,
       sourceCardId: data.sourceCardId ?? source.cardId ?? source.id ?? null,
       targetInstanceId: data.targetInstanceId ?? target.instanceId ?? null,
+      targetCardId: data.targetCardId ?? target.cardId ?? target.id ?? null,
       fieldIndex: Number.isInteger(fieldIndex) && fieldIndex >= 0 ? fieldIndex : null,
       snapshot: data.snapshot && typeof data.snapshot === 'object' ? clone(data.snapshot) : {},
       payload: data.payload && typeof data.payload === 'object' ? clone(data.payload) : {}
@@ -154,6 +155,8 @@
               const subject = event.snapshot && event.snapshot.unit;
               const expectedName = SKILL2_SOURCE_RULE_NAMES[subscriber.ruleId];
               if (!subject || !String(subject.cardId || '').trim() ||
+                  !String(event.targetCardId || '').trim() ||
+                  String(subject.cardId || '') !== String(event.targetCardId || '') ||
                   (subscriber.sourceCardId !== null && String(subject.cardId || '') !== subscriber.sourceCardId) ||
                   subject.specialSkill2RuleId !== subscriber.ruleId ||
                   subject.specialSkill2MappingStatus !== subscriber.mappingStatus ||
