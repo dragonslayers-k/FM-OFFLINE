@@ -131,3 +131,13 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - PR #28 scope remains immutable combat event snapshots/ordered queue and validated zone transfer; existing Skill2 behavior is preserved, and no new inferred effect is enabled. Skill1 Manual 27 mapping track remains separate from Skill2.
 - Next implementation should proceed from CardDB’s exact DB29 Skill1 source-row audit and implement one carefully scoped source-backed interaction with card-local source condition and deterministic tests. Add handlers only after event timing and test coverage justify them.
 - PR #28 unmerged, main unchanged, DB29 immutable, DB30 not issued. No APK release claim beyond run #170 artifacts/validation.
+
+
+## 2026-11-05 — APK Actions #171 failure analysis and retry fix
+
+- Actions #171: https://github.com/dragonslayers-k/FM-OFFLINE/actions/runs/41961018914 — failed at the **Install Android emulator components** step, before Debug APK build, signature/package verification, and emulator install/launch.
+- Root cause from job log: SDK Manager failed while installing the Android 34 Google APIs x86_64 system image; message: `Error reading Zip content from a SeekableByteChannel`. This is a truncated/corrupt SDK archive/download, not a JS rule test, converter, DB29 SQLite integrity, source data, Gradle compilation, or app runtime failure.
+- Steps before the failure passed: Node syntax/rule tests, Python converter checks, DB29 immutable release download + SHA/SQLite checks, Android card ZIP generation and validation. Build report/data archive artifacts were uploaded; #171 does **not** establish that an APK was built or emulator smoke test passed.
+- Workflow correction committed to this branch: `7fa4b34a02333bfdfa1b81035b10c0fa7196b0f9`. The emulator SDK package installation now retries up to 3 times; between attempts it clears the SDK Manager download cache and the partial Android 34 Google APIs x86_64 system-image directory, with a short increasing delay. Package versions remain pinned to the same SDK components.
+- Next verification: let the single PR-triggered run from this workflow correction complete. If it fails again, inspect its first failing step and avoid unrelated code changes. #170 remains the last confirmed full emulator success (15,350/15,350 loaded).
+- PR #28 stays open/draft/unmerged; main unchanged; DB29 immutable and DB30 not issued.
