@@ -2584,7 +2584,7 @@ test('DB29 은룡의검 ordinary attack has zero-damage and zero-AP boundaries',
   assert.equal(x.defender.hp,8);
 });
 
-test('DB29 타락자 aging attack clamps AP reduction at zero',()=>{
+test('DB29 타락자 aging attack applies the full AP-2 below zero',()=>{
   const attacker=db29ManualSkill1('13020626691','타락자','노화공격','aging_attack',{ap:1,dp:0,hp:5,maxHp:5});
   const defender=unit('aging-floor-target',{instanceId:'aging-floor-target',ap:1,dp:0,hp:10,maxHp:10});
   const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
@@ -2592,12 +2592,12 @@ test('DB29 타락자 aging attack clamps AP reduction at zero',()=>{
     attacker:{ap:{value:1},dp:{value:0},hp:{value:5}},
     defender:{ap:{value:1},dp:{value:0},hp:{value:10}}
   });
-  assert.equal(FM.totalPower(defender,'ap'),0,'AP 1 minus 2 is clamped at zero');
+  assert.equal(FM.totalPower(defender,'ap'),-1,'Manual AP-2 has no documented zero floor');
   assert.equal(result.damage,1);
   assert.equal(defender.hp,9);
 });
 
-test('DB29 울프라이더 regeneration cannot exceed maximum HP',()=>{
+test('DB29 울프라이더 regeneration always adds one HP at printed maximum HP',()=>{
   const attacker=db29ManualSkill1('10010624560','울프라이더','재생능력','regeneration',{ap:1,dp:0,hp:5,maxHp:5});
   const defender=unit('regeneration-cap-target',{instanceId:'regeneration-cap-target',dp:5,hp:10,maxHp:10});
   const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
@@ -2606,7 +2606,7 @@ test('DB29 울프라이더 regeneration cannot exceed maximum HP',()=>{
     defender:{ap:{value:1},dp:{value:5},hp:{value:10}}
   });
   assert.equal(result.damage,0,'defender DP blocks the attack');
-  assert.equal(attacker.hp,5,'regeneration at maximum HP does not over-heal');
+  assert.equal(attacker.hp,6,'Manual says HP +1 unconditionally, including at printed maximum HP');
   assert.equal(defender.hp,10);
 });
 
