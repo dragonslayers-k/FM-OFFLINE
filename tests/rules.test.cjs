@@ -1044,6 +1044,50 @@ test('DB29 Manual defense-convert attack makes positive target DP negative',()=>
   assert.equal(FM.totalPower(defender,'dp'),-4,'Manual rule changes DP to a negative value');
 });
 
+test('DB29 Manual beast tamer, spell suppression and weapon suppression require the exact target ability',()=>{
+  const run=({id,name,skill,ruleId,targetAbility,targetTags,ap=4}={})=>{
+    const attacker=unit(id,{
+      instanceId:'ability-gate-attacker',name,skill,ap:1,dp:0,hp:5,maxHp:5,
+      specialSkillRuleId:ruleId,specialSkillMappingStatus:'manual_verified',
+      specialSkillRuleAuthority:'manual'
+    });
+    const defender=unit('ability-gate-defender',{
+      instanceId:'ability-gate-defender',ap,dp:0,hp:10,maxHp:10,
+      unitAbility:targetAbility,unitAbilityTags:targetTags
+    });
+    const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+    const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+      attacker:{ap:{value:1},dp:{value:0},hp:{value:5}},
+      defender:{ap:{value:ap},dp:{value:0},hp:{value:10}}
+    });
+    return {defender,result};
+  };
+
+  // DB29 exact Manual Skill1: 네추럴마스터 / 11011925567 / 야수조련.
+  let x=run({id:'11011925567',name:'네추럴마스터',skill:'야수조련',ruleId:'beast_tamer',
+    targetAbility:'야수능력',targetTags:['야수']});
+  assert.equal(FM.totalPower(x.defender,'ap'),0,'beast ability is suppressed');
+  x=run({id:'11011925567',name:'네추럴마스터',skill:'야수조련',ruleId:'beast_tamer',
+    targetAbility:'장비능력',targetTags:['장비']});
+  assert.equal(FM.totalPower(x.defender,'ap'),4,'non-beast target is unaffected');
+
+  // DB29 exact Manual Skill1: 혼드비스트 / 10010624550 / 주문봉쇄.
+  x=run({id:'10010624550',name:'혼드비스트',skill:'주문봉쇄',ruleId:'spell_suppression',
+    targetAbility:'마법능력',targetTags:['마법']});
+  assert.equal(FM.totalPower(x.defender,'ap'),0,'magic ability is suppressed');
+  x=run({id:'10010624550',name:'혼드비스트',skill:'주문봉쇄',ruleId:'spell_suppression',
+    targetAbility:'야수능력',targetTags:['야수']});
+  assert.equal(FM.totalPower(x.defender,'ap'),4,'non-magic target is unaffected');
+
+  // DB29 exact Manual Skill1: 데크라프 / 10010624543 / 무기봉쇄.
+  x=run({id:'10010624543',name:'데크라프',skill:'무기봉쇄',ruleId:'weapon_suppression',
+    targetAbility:'장비능력',targetTags:['장비']});
+  assert.equal(FM.totalPower(x.defender,'ap'),0,'equipment ability is suppressed');
+  x=run({id:'10010624543',name:'데크라프',skill:'무기봉쇄',ruleId:'weapon_suppression',
+    targetAbility:'마법능력',targetTags:['마법']});
+  assert.equal(FM.totalPower(x.defender,'ap'),4,'non-equipment target is unaffected');
+});
+
 test('DB29 Manual catalogue exposes all 27 rule IDs with their actual source Skill1 labels',()=>{
   const normalize=FM._test.normalizeSpecialSkillForEngine;
   const cases={
