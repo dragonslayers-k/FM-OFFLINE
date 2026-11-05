@@ -292,7 +292,7 @@ class SqliteCardPackTests(unittest.TestCase):
             ("헌신방어", "아군 필드 다음 유닛 공방체 +1", True),
             ("헌신방어", "", False),
             ("홀리오오라", "방/체 합 1/2 이하", False),
-            ("홀리오오라", "자신 방/체 합의 절반(내림) 이하", True),
+            ("홀리오오라", "자신 방/체 합 1/2 이하(내림)", True),
             ("얼라이디펜스", "자신과 동일한 소속의 필드 유닛 수 만큼 받는 데미지 감소", True),
         ]
         for name, text_extra, expected in cases:

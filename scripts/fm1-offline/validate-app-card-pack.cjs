@@ -105,8 +105,9 @@ for (const [key, expected] of skill2Expected) {
     }
     const refsById=new Map((actual.cardReferences||[]).map(ref=>[String(ref.cardId),ref]));
     const evidenceIds=[...(actual.evidenceCardIds||[])].map(String).sort();
+    const evidenceNeedle=verifiedSpec.cardVerificationNeedle || verifiedSpec.evidenceNeedle;
     const expectedEvidenceIds=(actual.cardReferences||[])
-      .filter(ref=>String(ref.description||'').includes(verifiedSpec.evidenceNeedle))
+      .filter(ref=>String(ref.description||'').includes(evidenceNeedle))
       .map(ref=>String(ref.cardId)).sort();
     if (!evidenceIds.length || JSON.stringify(evidenceIds)!==JSON.stringify(expectedEvidenceIds) ||
         evidenceIds.some(id=>!refsById.has(id))) {

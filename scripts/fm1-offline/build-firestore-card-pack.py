@@ -798,7 +798,7 @@ SKILL2_SOURCE_VERIFIED_RULES = {
         "evidenceNeedle":"방/체 합 1/2 이하",
         # The other DB29 card has the same shorthand but omits floor rounding.
         # Only the explicit floor(rounded down) source wording verifies this card.
-        "cardVerificationNeedle":"절반(내림)",
+        "cardVerificationNeedle":"1/2 이하(내림)",
     },
     "얼라이디펜스": {
         "ruleId":"skill2_alliance_defense",
