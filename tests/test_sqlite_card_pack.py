@@ -303,7 +303,53 @@ class SqliteCardPackTests(unittest.TestCase):
             "spell", "기선제압", "데미지를 1 덜 받는다"
         ))
 
-    def test_load_refuses_missing_or_fabricated_card_url(self):
+
+
+    def test_card_pack_skill2_mapping_requires_exact_card_local_text_extra(self):
+        def build(skill2_text_extra, skill2_text_base=""):
+            card_id = "skill2-card-" + ("verified" if skill2_text_extra else "unverified")
+            raw = {
+                "ID":card_id,"Name":"기선제압 검증 유닛","Category":2,"SoulType":41,
+                "RequireSoul":"4101","ATK":3,"DEF":2,"HP":5,"LV":3,
+                "Skill2":"18","TextBase":skill2_text_base,"TextExtra":skill2_text_extra
+            }
+            return CONVERTER.build_card({
+                "card_id":card_id,"name":raw["Name"],"raw_payload":raw,
+                "normalized_cost":{"known":True,"cost":{"forest":1},"review":[],"sourceStatus":"test","soulKnown":True},
+                "skill_mappings":[{"sourceField":"Skill2","sourceEnumValue":"18",
+                    "sourceName":"기선제압","mappingStatus":"inferred","ruleId":None}]
+            },{"Skill2":{"18":"기선제압"},"SoulType":{"41":"FOREST"}},{},{})
+
+        verified = build("적군이 아군보다 이하 레벨일 경우 데미지를 1 덜 받는다.")
+        self.assertEqual(verified["specialSkill2MappingStatus"],"source_card_verified")
+        self.assertEqual(verified["specialSkill2SourceMappingStatus"],"inferred")
+        self.assertEqual(verified["specialSkill2RuleId"],"skill2_tactical_initiative")
+        self.assertEqual(verified["specialSkill2RuleAuthority"],"card_source")
+        self.assertEqual(verified["specialSkill2ExecutionStatus"],"source-card-rule-implemented")
+
+        unverified = build("", "적군이 아군보다 이하 레벨일 경우 데미지를 1 덜 받는다.")
+        self.assertEqual(unverified["specialSkill2MappingStatus"],"inferred")
+        self.assertIsNone(unverified["specialSkill2RuleId"])
+        self.assertIsNone(unverified["specialSkill2RuleAuthority"])
+        self.assertEqual(unverified["specialSkill2ExecutionStatus"],"disabled-until-skill2-rule-review")
+
+        different_variant = build("방어시, 상대의 레벨이 자신보다 낮은 경우 받는 데미지를 1 감소시킨다.")
+        self.assertEqual(different_variant["specialSkill2MappingStatus"],"inferred")
+        self.assertIsNone(different_variant["specialSkill2RuleId"])
+
+        holy_generic = CONVERTER.build_card({
+            "card_id":"holy-generic","name":"홀리오오라","raw_payload":{
+                "ID":"holy-generic","Name":"홀리오오라","Category":2,"SoulType":41,
+                "RequireSoul":"4101","ATK":3,"DEF":2,"HP":5,"LV":3,"Skill2":"181",
+                "TextBase":"","TextExtra":"자신 방/체 합 1/2 이하일 경우 데미지를 받지 않는다."
+            },
+            "normalized_cost":{"known":True,"cost":{"forest":1},"review":[],"sourceStatus":"test","soulKnown":True},
+            "skill_mappings":[{"sourceField":"Skill2","sourceEnumValue":"181",
+                "sourceName":"홀리오오라","mappingStatus":"inferred","ruleId":None}]
+        },{"Skill2":{"181":"홀리오오라"},"SoulType":{"41":"FOREST"}},{},{})
+        self.assertEqual(holy_generic["specialSkill2MappingStatus"],"inferred")
+        self.assertIsNone(holy_generic["specialSkill2RuleId"])
+\n    def test_load_refuses_missing_or_fabricated_card_url(self):
         self.db.execute("UPDATE cards SET source_card_url=? WHERE card_id=?", (
             "https://fmlunatic.com/card/other-id", self.card_id
         ))

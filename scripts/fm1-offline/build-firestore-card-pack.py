@@ -519,7 +519,7 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
     skill2_name=label(enums,"Skill2",f.get("Skill2"))
     source_skill1=next((m for m in (row.get("skill_mappings") or []) if m.get("sourceField")=="Skill1"),None)
     source_skill2=next((m for m in (row.get("skill_mappings") or []) if m.get("sourceField")=="Skill2"),None)
-    verified_skill2_spec=verified_skill2_rule_for_card(typ,skill2_name,extra)
+    verified_skill2_spec=verified_skill2_rule_for_card(typ,skill2_name,extra) if source_skill2 is not None else None
     skill2_named=bool(skill2_name and skill2_name!="없음")
     card={
         "id":cid,"name":name,"type":typ,"faction":color,
