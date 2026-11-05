@@ -1259,13 +1259,18 @@ test('combat event dispatcher accepts only known verified mappings and dispatche
   },()=>null);
   assert.equal(duplicate.ok,false);
   assert.equal(duplicate.reason,'duplicate_rule_subscription');
+  const existing=dispatcher.register({
+    ruleId:'ability_seal',mappingStatus:'manual_verified',authority:'manual',
+    eventTypes:['unit_attack_resolved']
+  },()=>null);
+  assert.equal(existing.ok,true);
   const partial=dispatcher.register({
     ruleId:'ability_seal',mappingStatus:'manual_verified',authority:'manual',
     eventTypes:['unit_summoned','unit_attack_resolved']
   },()=>null);
   assert.equal(partial.ok,false);
   assert.equal(partial.reason,'duplicate_rule_subscription');
-  assert.equal(dispatcher.subscriberCount(),2,'failed multi-event registration must not leave a partial subscriber');
+  assert.equal(dispatcher.subscriberCount(),3,'failed multi-event registration must not leave a partial subscriber');
   assert.deepEqual(dispatcher.dispatch(FM._test.createCombatEvent('unit_summoned'),{}),[]);
   const queue=FM._test.createCombatEventQueue();
   queue.enqueue(FM._test.createCombatEvent('unit_attack_resolved',{payload:{damage:2}}));
