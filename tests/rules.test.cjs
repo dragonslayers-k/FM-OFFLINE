@@ -1814,3 +1814,26 @@ test('Skill2 dispatcher requires exact card-source rule tuple and canonical name
   ],{});
   assert.equal(calls,1,'only the exact canonical source tuple is allowed through');
 });
+
+test('compact DB29 Skill1 mapping executes only source-authorized Manual rules in combat',()=>{
+  const run=(mapping={})=>{
+    const a=unit('compact-a',{instanceId:'compact-a',skill:'방어무시공격기술',ap:2,
+      specialSkillRuleId:'defense_bypass',specialSkillMappingStatus:'manual_verified',
+      specialSkillRuleAuthority:'manual',...mapping});
+    const d=unit('compact-d',{instanceId:'compact-d',dp:5,hp:10,maxHp:10});
+    const p=player('player',{units:[a]}),ai=player('ai',{units:[d]}),s=state(p,ai);
+    const rolls={
+      attacker:{ap:{value:2},dp:{value:0},hp:{value:10}},
+      defender:{ap:{value:0},dp:{value:5},hp:{value:10}}
+    };
+    FM._test.resolveUnitAttack(s,p,ai,a,d,rolls);
+    return d.hp;
+  };
+
+  assert.equal(run(),8,'DB29 compact manual mapping applies defense-bypass AP directly to HP');
+  assert.equal(run({specialSkillRuleAuthority:'community'}),10,
+    'same rule ID with non-manual authority must fail closed to ordinary attack');
+  assert.equal(run({specialSkillMappingStatus:'community_candidate',
+    specialSkillRuleAuthority:'community'}),10,
+    'community candidate metadata must not activate the Manual handler');
+});
