@@ -1488,3 +1488,57 @@ test('production defensive handlers ignore inferred Alliance Defense mappings',(
   assert.equal(result.damage,3);
   assert.equal(defender.hp,2);
 });
+
+
+test('production dispatcher applies Tactical Initiative through a verified pre-damage event',()=>{
+  for (const [attackerLevel,expected] of [[3,2],[4,2],[5,3]]) {
+    const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
+    const attacker=unit('attacker',{instanceId:'ti-atk-'+attackerLevel,level:attackerLevel});
+    const defender=sourceSkill2('defender','기선제압',{
+      instanceId:'ti-def-'+attackerLevel,level:4,dp:1,hp:6,maxHp:6
+    });
+    const p=s.players.player,ai=s.players.ai;
+    p.units.push(attacker);ai.units.push(defender);
+    const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+      attacker:combatStats(4,0,5),defender:combatStats(2,1,6)
+    });
+    assert.equal(result.damage,expected,'attacker level '+attackerLevel+' vs defender level 4');
+    assert.equal(defender.hp,6-expected);
+    assert.equal(s.combatEventQueue.size(),0);
+  }
+});
+
+test('production dispatcher applies Holy Aura using floor of rolled DP plus current HP',()=>{
+  for (const [attackAP,expectedDamage] of [[3,0],[4,2]]) {
+    const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
+    const attacker=unit('attacker',{instanceId:'holy-atk-'+attackAP});
+    const defender=sourceSkill2('defender','홀리오오라',{
+      instanceId:'holy-def-'+attackAP,hp:5,maxHp:5,dp:2
+    });
+    const p=s.players.player,ai=s.players.ai;
+    p.units.push(attacker);ai.units.push(defender);
+    const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+      attacker:combatStats(attackAP,0,5),defender:combatStats(2,2,5)
+    });
+    assert.equal(result.damage,expectedDamage,'attack AP '+attackAP+' against floor((2+5)/2)=3');
+    assert.equal(defender.hp,5-expectedDamage);
+    assert.equal(s.combatEventQueue.size(),0);
+  }
+});
+
+test('production Tactical Initiative and Holy Aura do not activate from inferred mappings',()=>{
+  for (const [skill,ruleId] of [['기선제압','skill2_tactical_initiative'],['홀리오오라','skill2_holy_aura']]) {
+    const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
+    const attacker=unit('attacker',{instanceId:'inferred-'+ruleId,level:4});
+    const defender=unit('defender',{instanceId:'inferred-def-'+ruleId,level:4,dp:2,hp:5,maxHp:5,
+      specialSkill2:skill,specialSkill2RuleId:ruleId,specialSkill2MappingStatus:'inferred',
+      specialSkill2RuleAuthority:'card_source',specialSkill2ExecutionStatus:'source-card-rule-implemented'});
+    const p=s.players.player,ai=s.players.ai;
+    p.units.push(attacker);ai.units.push(defender);
+    const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+      attacker:combatStats(3,0,5),defender:combatStats(2,2,5)
+    });
+    assert.equal(result.damage,1,'inferred '+skill+' must not reduce or prevent damage');
+    assert.equal(defender.hp,4);
+  }
+});

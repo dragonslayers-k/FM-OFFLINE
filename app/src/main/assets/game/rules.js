@@ -209,11 +209,25 @@
         const emptySlots = Math.max(0,5-owner.units.length);
         return {damageReduction:Math.floor(emptySlots/2)};
       }
+      if (ruleId === 'skill2_tactical_initiative') {
+        const attackerLevel=Number(event.payload.attackerLevel||0);
+        const defenderLevel=Number(event.payload.defenderLevel||0);
+        return {damageReduction:attackerLevel<=defenderLevel?1:0};
+      }
+      if (ruleId === 'skill2_holy_aura') {
+        const attackAP=Number(event.payload.attackAP||0);
+        const defenseDP=Number(event.payload.defenderDP||0);
+        const currentHP=Number(event.payload.defenderCurrentHP||0);
+        const threshold=Math.floor((defenseDP+currentHP)/2);
+        return {damagePrevented:attackAP<=threshold,threshold};
+      }
       return {damageReduction:0};
     });
     const alliance = preDamage('skill2_alliance_defense','affiliation');
     const racial = preDamage('skill2_racial_defense','race');
     const pressure = preDamage('skill2_pressure_defense','');
+    const tactical = preDamage('skill2_tactical_initiative','');
+    const holy = preDamage('skill2_holy_aura','');
     const frenzy = dispatcher.register({
       ...common,ruleId:'skill2_frenzy_defense',eventTypes:['unit_hp_damage_applied']
     },(event,context)=>{
@@ -224,7 +238,7 @@
       changeUnitStat(unit,'ap',actual);
       return {applied:true,apIncrease:actual};
     });
-    if (!devoted.ok || !strong.ok || !alliance.ok || !racial.ok || !pressure.ok || !frenzy.ok) {
+    if (!devoted.ok || !strong.ok || !alliance.ok || !racial.ok || !pressure.ok || !tactical.ok || !holy.ok || !frenzy.ok) {
       throw new Error('Core Skill2 handlers could not be registered.');
     }
     dispatcher.coreSkill2Handlers = true;
@@ -1197,28 +1211,30 @@ if (card.type === 'unit') {
     }
     if(canAffectDefender&&skill.includes('방어전환공격')&&Number(defenseRoll.value||0)>0)
       set(defender,defenderStats,'dp',-Math.abs(Number(defenseRoll.value||0)));
-    // Skill2 defensive rules remain separate from Skill1. The production
-    // dispatcher handles source-verified affiliation/race/empty-slot modifiers;
-    // tactical initiative and holy aura retain their explicit boundary logic.
-    if(defenderSkill2==='기선제압'&&attackerLevel<=defenderLevel)
-      damage=Math.max(0,Number(damage||0)-1);
-    if(defenderSkill2==='홀리오오라'&&Number(attackRoll.value||0)<=
-        Math.floor((Number(defenseRoll.value||0)+Number(defender.hp||0))/2))
-      damage=0;
+    // All source-verified Skill2 defensive rules use the production
+    // pre-damage event. Non-production/custom test states retain the guarded
+    // compatibility implementation below.
     if (state.combatEventDispatcher && state.combatEventDispatcher.coreSkill2Handlers) {
       const modifierEvent = createCombatEvent('unit_damage_prevention_requested',{
         ownerId:defendingOwner.id,cause:'combat',source:attacker,target:defender,
         snapshot:{unit:snapshotCombatUnit(defender),attacker:snapshotCombatUnit(attacker)},
         payload:{requestedDamage:Number(damage||0),attackAP:Number(attackRoll.value||0),
+          defenderDP:Number(defenseRoll.value||0),defenderCurrentHP:Number(defender.hp||0),
           attackerLevel,defenderLevel,defenderOwnerId:defendingOwner.id}
       });
       const modifiers = state.combatEventDispatcher.dispatch(modifierEvent,{state,players:state.players});
       for (const item of modifiers) {
         const result = item.result || {};
-        if (Number(result.damageReduction||0)>0)
+        if (result.damagePrevented === true) damage=0;
+        else if (Number(result.damageReduction||0)>0)
           damage=Math.max(0,Number(damage||0)-Number(result.damageReduction||0));
       }
     } else {
+      if(defenderSkill2==='기선제압'&&attackerLevel<=defenderLevel)
+        damage=Math.max(0,Number(damage||0)-1);
+      if(defenderSkill2==='홀리오오라'&&Number(attackRoll.value||0)<=
+          Math.floor((Number(defenseRoll.value||0)+Number(defender.hp||0))/2))
+        damage=0;
       if(defenderSkill2==='얼라이디펜스'&&String(defender.affiliation||'')) {
         const allies=defendingOwner.units.filter(unit=>unit.instanceId!==defender.instanceId&&
           String(unit.affiliation||'')===String(defender.affiliation)).length;
