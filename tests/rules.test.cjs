@@ -2119,6 +2119,28 @@ test('production dispatcher applies Pressure Defense from empty friendly slots',
   assert.equal(defender.hp,4);
 });
 
+test('production Pressure Defense respects the five-slot floor boundary',()=>{
+  // Defender plus fillers make 0, 1, 2, or 3 empty slots. Pressure reduces
+  // by floor(empty slots / 2), and must never invent a reduction at 0 or 1.
+  for (const [fieldUnits,expected] of [[5,3],[4,3],[3,2],[2,2]]) {
+    const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
+    const attacker=unit('attacker',{instanceId:'pressure-boundary-atk-'+fieldUnits});
+    const defender=sourceSkill2('defender','프레셔',{
+      instanceId:'pressure-boundary-def-'+fieldUnits,hp:6,maxHp:6,dp:1
+    });
+    const fillers=Array.from({length:fieldUnits-1},(_,i)=>unit('filler'+i,{
+      instanceId:'pressure-boundary-fill-'+fieldUnits+'-'+i
+    }));
+    const p=s.players.player,ai=s.players.ai;
+    p.units.push(attacker);ai.units.push(defender,...fillers);
+    const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+      attacker:combatStats(4,0,5),defender:combatStats(2,1,6)
+    });
+    assert.equal(result.damage,expected,'field unit count '+fieldUnits);
+    assert.equal(defender.hp,6-expected);
+  }
+});
+
 test('production dispatcher applies Wrath from actual HP lost before retaliation',()=>{
   const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
   const attacker=unit('attacker',{instanceId:'wrath-atk'});
