@@ -8,7 +8,7 @@ on:
   pull_request:
     branches:
       - main
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
       build_card_pack:
@@ -29,7 +29,7 @@ on:
 
 concurrency:
   group: fm-offline-android-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read

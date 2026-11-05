@@ -88,7 +88,7 @@ test('combat event dispatcher drains each queued event once and preserves sequen
 test('zone transfer rejects invalid zone references without mutation', () => {
   const source = [{instanceId:'a'}];
   const destination = [{instanceId:'b'}];
-  assert.equal(FM._test.transferCardBetweenZones(source, destination, 'a').reason, 'invalid_zones');
+  assert.equal(FM._test.transferCardBetweenZones(null, destination, 'a').reason, 'invalid_zones');
   assert.equal(FM._test.transferCardBetweenZones(source, source, 'a').reason, 'invalid_zones');
   assert.deepEqual(source.map(card => card.instanceId), ['a']);
   assert.deepEqual(destination.map(card => card.instanceId), ['b']);
