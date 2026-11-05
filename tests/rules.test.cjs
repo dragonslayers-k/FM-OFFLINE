@@ -1175,6 +1175,49 @@ test('actual Skill1 aliases for source enum names execute the mapped Manual base
   assert.equal(FM.totalPower(x.d,'dp'),-3);
 });
 
+test('DB29 Manual Consecutive Attack applies AP-minus-one doubling with DP and boundary clamps',()=>{
+  // Exact DB29 Skill1 label match: 트윈스컬소드 / 10050441142 / 연속공격.
+  // The mechanic is defined by Manual.zip: reduce AP by one, then double
+  // the remaining attack value before subtracting the defender's DP.
+  const run=(attackAP,defenderDP,targetHP=10)=>{
+    const attacker=unit('10050441142',{
+      instanceId:'consecutive-attacker-'+attackAP+'-'+defenderDP,
+      name:'트윈스컬소드',
+      skill:'연속공격기술',
+      ap:attackAP,
+      specialSkillRuleId:'consecutive_attack',
+      specialSkillMappingStatus:'manual_verified',
+      specialSkillRuleAuthority:'manual'
+    });
+    const defender=unit('consecutive-defender',{
+      instanceId:'consecutive-defender-'+attackAP+'-'+defenderDP,
+      dp:defenderDP,hp:targetHP,maxHp:targetHP
+    });
+    const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+    const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+      attacker:{ap:{value:attackAP},dp:{value:0},hp:{value:10}},
+      defender:{ap:{value:1},dp:{value:defenderDP},hp:{value:targetHP}}
+    });
+    return {attacker,defender,result};
+  };
+
+  let x=run(3,1);
+  assert.equal(x.result.damage,3,'(3 AP - 1) * 2 - 1 DP = 3 HP damage');
+  assert.equal(x.defender.hp,7);
+
+  x=run(1,0);
+  assert.equal(x.result.damage,0,'AP 1 becomes zero before doubling');
+  assert.equal(x.defender.hp,10,'the boundary case must not create damage');
+
+  x=run(3,-2);
+  assert.equal(x.result.damage,6,'negative DP retains its signed contribution');
+  assert.equal(x.defender.hp,4);
+
+  x=run(0,0);
+  assert.equal(x.result.damage,0,'zero rolled AP cannot produce negative or fabricated damage');
+  assert.equal(x.defender.hp,10);
+});
+
 test('neutral upkeep is charged only for units with a neutral soul cost and limits deployment after upkeep',()=>{
   const noNeutral=unit('no-neutral',{cost:{forest:1},costKnown:true});
   const withNeutral=unit('with-neutral',{cost:{forest:1,neutral:1},costKnown:true});
