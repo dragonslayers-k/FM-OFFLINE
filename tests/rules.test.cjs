@@ -1528,7 +1528,7 @@ test('source Skill2 Wrath does not gain AP from zero damage or lethal HP loss',(
   p.units.push(defender);
   let s=state(ai,p);
   let result=FM._test.resolveUnitAttack(s,ai,p,attacker,defender,{
-    attacker:combatStats(2,0,5),defender:combatStats(4,0,2)
+    attacker:combatStats(2,0,5),defender:combatStats(4,4,2)
   });
   assert.equal(result.damage,0);
   assert.equal(defender.hp,2);
