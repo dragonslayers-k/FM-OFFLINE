@@ -1424,3 +1424,67 @@ test('production Skill2 dispatcher remains fail-closed for inferred card mapping
   assert.equal(next.tempHP||0,0);
   assert.equal(s.combatEventQueue.size(),0);
 });
+
+
+test('production dispatcher applies Alliance and Racial Defense through pre-damage events',()=>{
+  for (const [name,field,value] of [['얼라이디펜스','affiliation','guild-x'],['레이셜디펜스','race','elf']]) {
+    const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
+    const attacker=unit('attacker',{instanceId:'mod-atk'});
+    const defender=sourceSkill2('defender',name,{instanceId:'mod-def',hp:5,maxHp:5,dp:1,[field]:value});
+    const allies=[0,1].map(i=>unit('ally'+i,{instanceId:'mod-ally'+i,[field]:value}));
+    const p=s.players.player,ai=s.players.ai;
+    p.units.push(attacker);ai.units.push(defender,...allies);
+    const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+      attacker:combatStats(4,0,5),defender:combatStats(2,1,5)
+    });
+    assert.equal(result.damage,1,name+' subtracts two matching allies from raw damage 3');
+    assert.equal(defender.hp,4);
+    assert.equal(s.combatEventQueue.size(),0);
+  }
+});
+
+test('production dispatcher applies Pressure Defense from empty friendly slots',()=>{
+  const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
+  const attacker=unit('attacker',{instanceId:'pressure-atk'});
+  const defender=sourceSkill2('defender','프레셔',{instanceId:'pressure-def',hp:6,maxHp:6,dp:1});
+  const ally=unit('ally',{instanceId:'pressure-ally'});
+  const p=s.players.player,ai=s.players.ai;
+  p.units.push(attacker);ai.units.push(defender,ally);
+  const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:combatStats(4,0,5),defender:combatStats(2,1,6)
+  });
+  assert.equal(result.damage,2,'three empty slots produce floor(3/2)=1 reduction');
+  assert.equal(defender.hp,4);
+});
+
+test('production dispatcher applies Wrath from actual HP lost before retaliation',()=>{
+  const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
+  const attacker=unit('attacker',{instanceId:'wrath-atk'});
+  const defender=sourceSkill2('defender','격노',{instanceId:'wrath-def',hp:5,maxHp:5,dp:1});
+  const p=s.players.player,ai=s.players.ai;
+  p.units.push(attacker);ai.units.push(defender);
+  const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:combatStats(4,0,5),defender:combatStats(2,1,5)
+  });
+  assert.equal(result.damage,3);
+  assert.equal(defender.hp,2);
+  assert.equal(FM.totalPower(defender,'ap'),5);
+  assert.equal(defender.tempAP,3);
+});
+
+test('production defensive handlers ignore inferred Alliance Defense mappings',()=>{
+  const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
+  const attacker=unit('attacker',{instanceId:'inferred-alliance-atk'});
+  const defender=unit('defender',{instanceId:'inferred-alliance-def',hp:5,maxHp:5,dp:1,
+    affiliation:'guild-x',specialSkill2:'얼라이디펜스',specialSkill2RuleId:'skill2_alliance_defense',
+    specialSkill2MappingStatus:'inferred',specialSkill2RuleAuthority:'card_source',
+    specialSkill2ExecutionStatus:'source-card-rule-implemented'});
+  const allies=[0,1].map(i=>unit('ally'+i,{instanceId:'inferred-alliance-ally'+i,affiliation:'guild-x'}));
+  const p=s.players.player,ai=s.players.ai;
+  p.units.push(attacker);ai.units.push(defender,...allies);
+  const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:combatStats(4,0,5),defender:combatStats(2,1,5)
+  });
+  assert.equal(result.damage,3);
+  assert.equal(defender.hp,2);
+});

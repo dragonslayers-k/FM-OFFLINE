@@ -192,7 +192,41 @@
       addLog(context.state,event.snapshot.unit.name+'의 강한헌신방어! 남은 아군 유닛 전체의 공·방·체가 각각 1 증가했습니다.');
       return {applied:true,targetCount:owner.units.length};
     });
-    if (!devoted.ok || !strong.ok) throw new Error('Core Skill2 destruction handlers could not be registered.');
+    const preDamage = (ruleId,field)=>dispatcher.register({
+      ...common,ruleId,eventTypes:['unit_damage_prevention_requested']
+    },(event,context)=>{
+      const owner = context.players && context.players[event.ownerId];
+      const unit = event.snapshot && event.snapshot.unit;
+      if (!owner || !unit) return {damageReduction:0};
+      if (ruleId === 'skill2_alliance_defense' || ruleId === 'skill2_racial_defense') {
+        const value = String(unit[field] || '');
+        if (!value) return {damageReduction:0};
+        const allies = owner.units.filter(ally=>ally.instanceId!==unit.instanceId &&
+          String(ally[field] || '')===value).length;
+        return {damageReduction:allies};
+      }
+      if (ruleId === 'skill2_pressure_defense') {
+        const emptySlots = Math.max(0,5-owner.units.length);
+        return {damageReduction:Math.floor(emptySlots/2)};
+      }
+      return {damageReduction:0};
+    });
+    const alliance = preDamage('skill2_alliance_defense','affiliation');
+    const racial = preDamage('skill2_racial_defense','race');
+    const pressure = preDamage('skill2_pressure_defense','');
+    const frenzy = dispatcher.register({
+      ...common,ruleId:'skill2_frenzy_defense',eventTypes:['unit_hp_damage_applied']
+    },(event,context)=>{
+      const owner = context.players && context.players[event.ownerId];
+      const unit = owner && owner.units.find(card=>card.instanceId===event.snapshot.unit.instanceId);
+      const actual = Math.max(0,Number(event.payload.actualDamage||0));
+      if (!unit || unit.hp<=0 || actual<=0) return {applied:false,reason:'no_surviving_hp_damage'};
+      changeUnitStat(unit,'ap',actual);
+      return {applied:true,apIncrease:actual};
+    });
+    if (!devoted.ok || !strong.ok || !alliance.ok || !racial.ok || !pressure.ok || !frenzy.ok) {
+      throw new Error('Core Skill2 handlers could not be registered.');
+    }
     dispatcher.coreSkill2Handlers = true;
     return dispatcher;
   }
@@ -1163,33 +1197,57 @@ if (card.type === 'unit') {
     }
     if(canAffectDefender&&skill.includes('방어전환공격')&&Number(defenseRoll.value||0)>0)
       set(defender,defenderStats,'dp',-Math.abs(Number(defenseRoll.value||0)));
-    // Skill2 is a defensive, separate rule channel. These exact card-source
-    // effects modify incoming damage before HP is reduced.
+    // Skill2 defensive rules remain separate from Skill1. The production
+    // dispatcher handles source-verified affiliation/race/empty-slot modifiers;
+    // tactical initiative and holy aura retain their explicit boundary logic.
     if(defenderSkill2==='기선제압'&&attackerLevel<=defenderLevel)
       damage=Math.max(0,Number(damage||0)-1);
     if(defenderSkill2==='홀리오오라'&&Number(attackRoll.value||0)<=
         Math.floor((Number(defenseRoll.value||0)+Number(defender.hp||0))/2))
       damage=0;
-    if(defenderSkill2==='얼라이디펜스'&&String(defender.affiliation||'')) {
-      const allies=defendingOwner.units.filter(unit=>unit.instanceId!==defender.instanceId&&
-        String(unit.affiliation||'')===String(defender.affiliation)).length;
-      damage=Math.max(0,Number(damage||0)-allies);
-    }
-    if(defenderSkill2==='레이셜디펜스'&&String(defender.race||'')) {
-      const allies=defendingOwner.units.filter(unit=>unit.instanceId!==defender.instanceId&&
-        String(unit.race||'')===String(defender.race)).length;
-      damage=Math.max(0,Number(damage||0)-allies);
-    }
-    if(defenderSkill2==='프레셔') {
-      const emptySlots=Math.max(0,5-defendingOwner.units.length);
-      damage=Math.max(0,Number(damage||0)-Math.floor(emptySlots/2));
+    if (state.combatEventDispatcher && state.combatEventDispatcher.coreSkill2Handlers) {
+      const modifierEvent = createCombatEvent('unit_damage_prevention_requested',{
+        ownerId:defendingOwner.id,cause:'combat',source:attacker,target:defender,
+        snapshot:{unit:snapshotCombatUnit(defender),attacker:snapshotCombatUnit(attacker)},
+        payload:{requestedDamage:Number(damage||0),attackAP:Number(attackRoll.value||0),
+          attackerLevel,defenderLevel,defenderOwnerId:defendingOwner.id}
+      });
+      const modifiers = state.combatEventDispatcher.dispatch(modifierEvent,{state,players:state.players});
+      for (const item of modifiers) {
+        const result = item.result || {};
+        if (Number(result.damageReduction||0)>0)
+          damage=Math.max(0,Number(damage||0)-Number(result.damageReduction||0));
+      }
+    } else {
+      if(defenderSkill2==='얼라이디펜스'&&String(defender.affiliation||'')) {
+        const allies=defendingOwner.units.filter(unit=>unit.instanceId!==defender.instanceId&&
+          String(unit.affiliation||'')===String(defender.affiliation)).length;
+        damage=Math.max(0,Number(damage||0)-allies);
+      }
+      if(defenderSkill2==='레이셜디펜스'&&String(defender.race||'')) {
+        const allies=defendingOwner.units.filter(unit=>unit.instanceId!==defender.instanceId&&
+          String(unit.race||'')===String(defender.race)).length;
+        damage=Math.max(0,Number(damage||0)-allies);
+      }
+      if(defenderSkill2==='프레셔') {
+        const emptySlots=Math.max(0,5-defendingOwner.units.length);
+        damage=Math.max(0,Number(damage||0)-Math.floor(emptySlots/2));
+      }
     }
     const amount=Math.min(Math.max(0,Number(defender.hp||0)),Math.max(0,Number(damage||0)));
     const actual=amount>0&&change(defender,defenderStats,'hp',-amount)?amount:0;
     // Wrath converts actual HP lost while defending into AP immediately, so
     // it is available to the defender's retaliation in this same battle slot.
-    if(defenderSkill2==='격노'&&actual>0&&Number(defender.hp||0)>0)
+    if (state.combatEventDispatcher && state.combatEventDispatcher.coreSkill2Handlers) {
+      const damageEvent=createCombatEvent('unit_hp_damage_applied',{
+        ownerId:defendingOwner.id,cause:'combat',source:attacker,target:defender,
+        snapshot:{unit:snapshotCombatUnit(defender),attacker:snapshotCombatUnit(attacker)},
+        payload:{actualDamage:actual}
+      });
+      state.combatEventDispatcher.dispatch(damageEvent,{state,players:state.players});
+    } else if(defenderSkill2==='격노'&&actual>0&&Number(defender.hp||0)>0) {
       change(defender,defenderStats,'ap',actual);
+    }
     if(skill.includes('흡혈공격')&&actual>0)change(attacker,attackerStats,'hp',Math.ceil(actual/2));
     if(skill.includes('은폐공격'))change(attacker,attackerStats,'dp',1);
     if(canAffectDefender&&skill.includes('조롱')&&defender.hp>1){
