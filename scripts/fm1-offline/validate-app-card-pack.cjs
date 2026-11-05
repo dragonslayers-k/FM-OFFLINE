@@ -32,7 +32,7 @@ const SKILL2_SOURCE_VERIFIED_RULES = Object.freeze({
   '기선제압': {ruleId:'skill2_tactical_initiative',evidenceNeedle:'데미지를 1 덜 받는다'},
   '헌신방어': {ruleId:'skill2_devoted_defense',evidenceNeedle:'아군 필드 다음 유닛 공방체 +1'},
   '격노': {ruleId:'skill2_frenzy_defense',evidenceNeedle:'자신의 HP가 깎인 수치만큼 AP 상승'},
-  '홀리오오라': {ruleId:'skill2_holy_aura',evidenceNeedle:'방/체 합 1/2 이하'},
+  '홀리오오라': {ruleId:'skill2_holy_aura',evidenceNeedle:'방/체 합 1/2 이하',cardVerificationNeedle:'내림'},
   '얼라이디펜스': {ruleId:'skill2_alliance_defense',evidenceNeedle:'자신과 동일한 소속의 필드 유닛 수 만큼 받는 데미지 감소'},
   '레이셜디펜스': {ruleId:'skill2_racial_defense',evidenceNeedle:'자신과 동일한 종족의 필드 유닛 수 만큼 받는 데미지 감소'},
   '강한헌신방어': {ruleId:'skill2_strong_devoted_defense',evidenceNeedle:'아군 필드 유닛 전체의 공방체가 1증가한다'},
@@ -40,8 +40,9 @@ const SKILL2_SOURCE_VERIFIED_RULES = Object.freeze({
 });
 if (skill2Data.schemaVersion !== 1 || skill2Data.sourceField !== 'Skill2' ||
     !Array.isArray(skill2Data.records) || skill2Data.entryCount !== skill2Data.records.length ||
-    skill2Data.executableRuleCount !== Object.keys(SKILL2_SOURCE_VERIFIED_RULES).length) {
-  throw new Error('skill2-catalogue.json has an invalid schema or source-verified rule count');
+    !Array.isArray(skill2Data.executableRuleIds) ||
+    skill2Data.executableRuleCount !== skill2Data.executableRuleIds.length) {
+  throw new Error('skill2-catalogue.json has an invalid schema or executable rule ID count');
 }
 const skillMappingsByCard = new Map();
 for (const mapping of mappingData.records) {
