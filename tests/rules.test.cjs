@@ -856,6 +856,8 @@ test('pre-attack attacker roll destruction dispatches Devoted Defense before the
   const p=player('player',{units:[doomed,ally]});
   const ai=player('ai',{units:[target]});
   const s=state(p,ai,{activeId:'ai',prepared:{player:true,ai:true},rng:()=>0.9});
+  s.combatEventQueue=FM._test.createCombatEventQueue();
+  s.combatEventDispatcher=FM._test.createCoreCombatEventDispatcher();
   FM.resolveBattle(s);
   const chronologicalLog=s.log.slice().reverse().map(entry=>entry.text);
   const buffIndex=chronologicalLog.findIndex(line=>line.includes('헌신방어!'));

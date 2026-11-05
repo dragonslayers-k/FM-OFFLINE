@@ -1459,7 +1459,7 @@ if (card.type === 'unit') {
     COLORS, COLOR_NAMES, TYPE_NAMES, clone, uid, sumCost, costText, colorName,
     newGame, buildStarterDeck, drawToSix, canPay, spendSoul, totalPower, validateCardForPlay,
     playCard, discardCard, reshuffleHand, endPhase, resolveBattle, runAIPhase, checkWinner, cardArtClass,
-    _test: { makePlayer, beginPhase, rollStat, coinProfile, chooseBlocker, createUnit, applyEffect, resolveUnitAttack, destroyUnit, productionOf, readCost, validateCardForPlay, itemMatchesUnit, resolveSpellSlot, statMarker, canChangeStat, changeUnitStat, setUnitStat, normalizeSpecialSkillForEngine, normalizeSpecialSkill2ForEngine, transferCardBetweenZones, createCombatEvent, createCombatEventQueue, createCombatEventDispatcher, attachCombatEventDispatcher, dispatchPendingCombatEvents, SPECIAL_SKILL_RULE_KEYWORDS, SKILL2_SOURCE_RULE_NAMES }
+    _test: { makePlayer, beginPhase, rollStat, coinProfile, chooseBlocker, createUnit, applyEffect, resolveUnitAttack, destroyUnit, productionOf, readCost, validateCardForPlay, itemMatchesUnit, resolveSpellSlot, statMarker, canChangeStat, changeUnitStat, setUnitStat, normalizeSpecialSkillForEngine, normalizeSpecialSkill2ForEngine, transferCardBetweenZones, createCombatEvent, createCombatEventQueue, createCombatEventDispatcher, createCoreCombatEventDispatcher, attachCombatEventDispatcher, dispatchPendingCombatEvents, SPECIAL_SKILL_RULE_KEYWORDS, SKILL2_SOURCE_RULE_NAMES }
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.FM = api;
