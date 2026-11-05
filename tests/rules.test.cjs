@@ -767,6 +767,50 @@ test('Manual bravery/fear use the defender level relation and add AP before DP e
   assert.equal(run('공포공격기술',3,4),10,'fear does not trigger against a higher-level defender');
 });
 
+test('DB29 Manual Vampiric Attack heals from actual HP damage only and respects HP markers/cap',()=>{
+  // Representative exact Manual Skill1 match from DB29 Actions #571:
+  // 다크카운티스 / 10010624542 / Skill1=흡혈공격.
+  const run=({attackerHp=2,attackerMaxHp=5,defenderDP=2,attackerHpMarker='' }={})=>{
+    const attacker=unit('10010624542',{
+      instanceId:'vampiric-attacker',
+      name:'다크카운티스',
+      skill:'흡혈공격',
+      ap:3,hp:attackerHp,maxHp:attackerMaxHp,
+      specialSkillRuleId:'vampiric_attack',
+      specialSkillMappingStatus:'manual_verified',
+      specialSkillRuleAuthority:'manual',
+      statMarkers:attackerHpMarker?{hp:attackerHpMarker}:{}
+    });
+    const defender=unit('defender',{
+      instanceId:'vampiric-defender',
+      dp:defenderDP,hp:10,maxHp:10
+    });
+    const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+    const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+      attacker:{ap:{value:3},dp:{value:0},hp:{value:attackerMaxHp}},
+      defender:{ap:{value:1},dp:{value:defenderDP},hp:{value:10}}
+    });
+    return {attacker,defender,result};
+  };
+
+  let x=run({attackerHp:2,defenderDP:2});
+  assert.equal(x.result.damage,1,'only one HP actually passes the defender DP');
+  assert.equal(x.attacker.hp,3,'ceil(1/2) heals one HP');
+
+  x=run({attackerHp:2,defenderDP:3});
+  assert.equal(x.result.damage,0,'DP blocks all HP damage');
+  assert.equal(x.attacker.hp,2,'blocked damage must not trigger vampiric healing');
+
+  x=run({attackerHp:4,attackerMaxHp:5,defenderDP:0});
+  assert.equal(x.result.damage,3);
+  assert.equal(x.attacker.hp,5,'healing is capped at max HP');
+
+  x=run({attackerHp:2,defenderDP:0,attackerHpMarker:'▲'});
+  assert.equal(x.result.damage,3);
+  assert.equal(x.attacker.hp,2,'HP-increase marker prevents vampiric healing');
+  assert.equal(x.attacker.tempHP||0,0);
+});
+
 test('DB29 Manual catalogue exposes all 27 rule IDs with their actual source Skill1 labels',()=>{
   const normalize=FM._test.normalizeSpecialSkillForEngine;
   const cases={
