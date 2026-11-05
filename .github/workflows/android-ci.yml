@@ -88,20 +88,44 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/fm1-source" release-package
-          curl --fail --location --retry 3 --retry-delay 2 --retry-all-errors \
-            "$CARD_DB_RELEASE/fm1_cards.sqlite.gz" -o "$RUNNER_TEMP/fm1-source/fm1_cards.sqlite.gz"
-          curl --fail --location --retry 3 --retry-delay 2 --retry-all-errors \
-            "$CARD_DB_RELEASE/sqlite-build-summary.json" -o "$RUNNER_TEMP/fm1-source/sqlite-build-summary.json"
-          curl --fail --location --retry 3 --retry-delay 2 --retry-all-errors \
-            "$CARD_DB_RELEASE/enumtable.json" -o "$RUNNER_TEMP/fm1-source/enumtable.json"
-          curl --fail --location --retry 3 --retry-delay 2 --retry-all-errors \
-            "$CARD_DB_RELEASE/images.tar.gz.part-aa" -o "$RUNNER_TEMP/fm1-source/images.tar.gz.part-aa"
-          curl --fail --location --retry 3 --retry-delay 2 --retry-all-errors \
-            "$CARD_DB_RELEASE/fm1-skill-catalog-v1.json" -o "$RUNNER_TEMP/fm1-source/fm1-skill-catalog-v1.json"
-          curl --fail --location --retry 3 --retry-delay 2 --retry-all-errors \
+          # Fetch release metadata first so assets can be downloaded through GitHub's
+          # API endpoint if the browser-download CDN returns transient HTTP 5xx.
+          curl --fail --location --retry 4 --retry-delay 3 --retry-all-errors --connect-timeout 30 \
             -H "Authorization: Bearer $GH_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" \
             "https://api.github.com/repos/dragonslayers-k/T/releases/tags/$CARD_DB_RELEASE_TAG" \
             -o "$RUNNER_TEMP/fm1-source/release-metadata.json"
+
+          download_release_asset() {
+            local asset_name="$1"
+            local destination="$RUNNER_TEMP/fm1-source/$asset_name"
+            local asset_id
+            asset_id="$(python - "$RUNNER_TEMP/fm1-source/release-metadata.json" "$asset_name" <<'PY'
+          import json,sys
+          release=json.load(open(sys.argv[1],encoding="utf-8"))
+          asset=next((a for a in release.get("assets",[]) if a.get("name")==sys.argv[2]),None)
+          if not asset: raise SystemExit(f"Required DB29 release asset not found: {sys.argv[2]}")
+          print(asset["id"])
+          PY
+          )"
+            echo "Downloading DB29 release asset: $asset_name (asset id $asset_id)"
+            if curl --fail --location --retry 2 --retry-delay 3 --retry-all-errors --connect-timeout 30 \
+                "$CARD_DB_RELEASE/$asset_name" -o "$destination"; then
+              return 0
+            fi
+            echo "::warning::Browser release download failed for $asset_name; retrying through GitHub release-asset API."
+            rm -f "$destination"
+            curl --fail --location --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 \
+              -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/octet-stream" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/dragonslayers-k/T/releases/assets/$asset_id" -o "$destination"
+            test -s "$destination"
+          }
+
+          download_release_asset "fm1_cards.sqlite.gz"
+          download_release_asset "sqlite-build-summary.json"
+          download_release_asset "enumtable.json"
+          download_release_asset "images.tar.gz.part-aa"
+          download_release_asset "fm1-skill-catalog-v1.json"
 
           python - <<'PY'
           import hashlib, json, os
