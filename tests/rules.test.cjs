@@ -969,6 +969,81 @@ test('DB29 Manual shield-break and curse attacks apply their source-defined stat
   assert.equal(FM.totalPower(x.defender,'dp'),1);
 });
 
+test('DB29 Manual piercing and weakening attacks follow their exact AP and DP effects',()=>{
+  const run=({id,name,skill,ruleId,attackerAP,defenderDP,defenderAP=4}={})=>{
+    const attacker=unit(id,{
+      instanceId:'manual-pierce-attacker',name,skill,ap:attackerAP,dp:0,hp:5,maxHp:5,
+      specialSkillRuleId:ruleId,specialSkillMappingStatus:'manual_verified',
+      specialSkillRuleAuthority:'manual'
+    });
+    const defender=unit('manual-pierce-defender',{
+      instanceId:'manual-pierce-defender',ap:defenderAP,dp:defenderDP,hp:10,maxHp:10
+    });
+    const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+    const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+      attacker:{ap:{value:attackerAP},dp:{value:0},hp:{value:5}},
+      defender:{ap:{value:defenderAP},dp:{value:defenderDP},hp:{value:10}}
+    });
+    return {attacker,defender,result};
+  };
+
+  // DB29 exact Manual Skill1: 블랙유니콘 / 10091525214 / 관통공격.
+  let x=run({id:'10091525214',name:'블랙유니콘',skill:'관통공격',ruleId:'piercing_attack',
+    attackerAP:4,defenderDP:2});
+  assert.equal(x.result.damage,2,'AP 4 destroys DP 2 and carries the remaining 2 damage to HP');
+  assert.equal(FM.totalPower(x.defender,'dp'),0);
+  assert.equal(x.defender.hp,8);
+
+  x=run({id:'10091525190',name:'이블크로우',skill:'약화공격',ruleId:'weaken_attack',
+    attackerAP:1,defenderDP:3});
+  assert.equal(x.result.damage,0,'the defender DP blocks the initial attack');
+  assert.equal(FM.totalPower(x.defender,'ap'),3,'weakening applies AP -1 after an attack even when HP damage is zero');
+  assert.equal(FM.totalPower(x.defender,'dp'),2,'weakening applies DP -1 after an attack even when HP damage is zero');
+});
+
+test('DB29 Manual charm attack disables AP only when DP prevents all HP damage',()=>{
+  const run=({defenderDP}={})=>{
+    const attacker=unit('10020324637',{
+      instanceId:'manual-charm-attacker',name:'데몬',skill:'매료공격',ap:1,dp:0,hp:5,maxHp:5,
+      specialSkillRuleId:'charm_attack',specialSkillMappingStatus:'manual_verified',
+      specialSkillRuleAuthority:'manual'
+    });
+    const defender=unit('manual-charm-defender',{
+      instanceId:'manual-charm-defender',ap:4,dp:defenderDP,hp:10,maxHp:10
+    });
+    const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+    const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+      attacker:{ap:{value:1},dp:{value:0},hp:{value:5}},
+      defender:{ap:{value:4},dp:{value:defenderDP},hp:{value:10}}
+    });
+    return {defender,result};
+  };
+  let x=run({defenderDP:2});
+  assert.equal(x.result.damage,0);
+  assert.equal(FM.totalPower(x.defender,'ap'),0,'blocked attack sets target AP to zero');
+  x=run({defenderDP:0});
+  assert.equal(x.result.damage,1);
+  assert.equal(FM.totalPower(x.defender,'ap'),4,'successful HP damage does not trigger charm AP suppression');
+});
+
+test('DB29 Manual defense-convert attack makes positive target DP negative',()=>{
+  const attacker=unit('10010624563',{
+    instanceId:'manual-defense-convert-attacker',name:'리듬포이',skill:'방어전환공격',
+    ap:1,dp:0,hp:5,maxHp:5,specialSkillRuleId:'defense_convert',
+    specialSkillMappingStatus:'manual_verified',specialSkillRuleAuthority:'manual'
+  });
+  const defender=unit('manual-defense-convert-defender',{
+    instanceId:'manual-defense-convert-defender',ap:3,dp:4,hp:10,maxHp:10
+  });
+  const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+  const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:{ap:{value:1},dp:{value:0},hp:{value:5}},
+    defender:{ap:{value:3},dp:{value:4},hp:{value:10}}
+  });
+  assert.equal(result.damage,0,'positive DP blocks the one-point attack before DP sign conversion');
+  assert.equal(FM.totalPower(defender,'dp'),-4,'Manual rule changes DP to a negative value');
+});
+
 test('DB29 Manual catalogue exposes all 27 rule IDs with their actual source Skill1 labels',()=>{
   const normalize=FM._test.normalizeSpecialSkillForEngine;
   const cases={
