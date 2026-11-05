@@ -894,6 +894,81 @@ test('DB29 Manual source-backed Skill1 cards preserve petrify, aging and charge 
   assert.equal(x.defender.hp,6);
 });
 
+test('DB29 Manual bravery and fear attacks apply level-gated bonus damage at zero AP',()=>{
+  const run=({id,name,skill,ruleId,attackerLevel,defenderLevel}={})=>{
+    const attacker=unit(id,{
+      instanceId:'level-skill-attacker',name,skill,level:attackerLevel,
+      ap:0,dp:0,hp:5,maxHp:5,
+      specialSkillRuleId:ruleId,specialSkillMappingStatus:'manual_verified',
+      specialSkillRuleAuthority:'manual'
+    });
+    const defender=unit('level-skill-defender',{
+      instanceId:'level-skill-defender',level:defenderLevel,ap:1,dp:0,hp:10,maxHp:10
+    });
+    const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+    const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+      attacker:{ap:{value:0},dp:{value:0},hp:{value:5}},
+      defender:{ap:{value:1},dp:{value:0},hp:{value:10}}
+    });
+    return {attacker,defender,result};
+  };
+
+  // DB29 exact Manual Skill1: 타투파이터 / 10010624545 / 용맹공격.
+  let x=run({id:'10010624545',name:'타투파이터',skill:'용맹공격',ruleId:'bravery_attack',
+    attackerLevel:4,defenderLevel:4});
+  assert.equal(x.result.damage,1,'bravery adds one damage when target level is equal, even at AP 0');
+  assert.equal(x.defender.hp,9);
+
+  x=run({id:'10010624545',name:'타투파이터',skill:'용맹공격',ruleId:'bravery_attack',
+    attackerLevel:4,defenderLevel:3});
+  assert.equal(x.result.damage,0,'bravery has no bonus against a lower-level target');
+
+  // DB29 exact Manual Skill1: 다크프리스트 / 10050424835 / 공포공격.
+  x=run({id:'10050424835',name:'다크프리스트',skill:'공포공격',ruleId:'fear_attack',
+    attackerLevel:4,defenderLevel:3});
+  assert.equal(x.result.damage,1,'fear adds one damage against an equal- or lower-level target at AP 0');
+  assert.equal(x.defender.hp,9);
+
+  x=run({id:'10050424835',name:'다크프리스트',skill:'공포공격',ruleId:'fear_attack',
+    attackerLevel:4,defenderLevel:5});
+  assert.equal(x.result.damage,0,'fear has no bonus against a higher-level target');
+});
+
+test('DB29 Manual shield-break and curse attacks apply their source-defined stat changes',()=>{
+  const run=({id,name,skill,ruleId,defenderAP=4,defenderDP=3}={})=>{
+    const attacker=unit(id,{
+      instanceId:'debuff-skill-attacker',name,skill,ap:1,dp:0,hp:5,maxHp:5,
+      specialSkillRuleId:ruleId,specialSkillMappingStatus:'manual_verified',
+      specialSkillRuleAuthority:'manual'
+    });
+    const defender=unit('debuff-skill-defender',{
+      instanceId:'debuff-skill-defender',ap:defenderAP,dp:defenderDP,hp:10,maxHp:10
+    });
+    const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+    const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+      attacker:{ap:{value:1},dp:{value:0},hp:{value:5}},
+      defender:{ap:{value:defenderAP},dp:{value:defenderDP},hp:{value:10}}
+    });
+    return {attacker,defender,result};
+  };
+
+  // DB29 exact Manual Skill1: 해적전투원 / 10010624551 / 방패파괴.
+  let x=run({id:'10010624551',name:'해적전투원',skill:'방패파괴',ruleId:'shield_break',
+    defenderDP:3});
+  assert.equal(x.result.damage,0,'initial DP prevents the one-point attack');
+  assert.equal(FM.totalPower(x.defender,'dp'),0,'shield break sets non-negative DP to zero after attack');
+
+  x=run({id:'10010624551',name:'해적전투원',skill:'방패파괴',ruleId:'shield_break',
+    defenderDP:-2});
+  assert.equal(FM.totalPower(x.defender,'dp'),-2,'shield break does not affect negative DP');
+
+  // DB29 exact Manual Skill1: 다크조커 / 10030324708 / 저주공격.
+  x=run({id:'10030324708',name:'다크조커',skill:'저주공격',ruleId:'curse_attack',
+    defenderAP:4,defenderDP:3});
+  assert.equal(FM.totalPower(x.defender,'ap'),2);
+  assert.equal(FM.totalPower(x.defender,'dp'),1);
+});
+
 test('DB29 Manual catalogue exposes all 27 rule IDs with their actual source Skill1 labels',()=>{
   const normalize=FM._test.normalizeSpecialSkillForEngine;
   const cases={
