@@ -142,3 +142,14 @@ The card JSON stays below the existing Android 128MiB import limit. To retain fu
 - `card-effect-candidates.json`: all 17,407 candidate records, their analysis and 48,281 exact source clause spans. They remain non-executable candidates.
 
 The Android importer accepts these as additional safe ZIP files. The build verifies their SHA-256 and row counts independently of the compact card array. The app only executes a Manual-verified Skill1 mapping; separate provenance files do not implicitly activate any effect.
+
+
+## External reference vocabulary and identity rules (2026-11-05)
+
+- Five categories are `land`, `unit`, `item`, `spell`, and `enchant`. The original UI label for `spell` is 마법; do not add a sixth category for Magic.
+- `faction` in the current compact app schema is the color/attribute compatibility key, not the race or group affiliation. Preserve `race` and `affiliation` as separate source values. Documentation and future normalized models should use `attribute` for the eight color attributes (dark/fire/water/forest/earth/metal/light/neutral), `race` for 종족, and `affiliation` for 소속.
+- The NamuWiki 3.4 attribute page contains seven detailed sections; the main article explains the later neutral/무속성 as the eighth. Historical 7-attribute references must not overwrite the current DB29 attribute value.
+- NamuWiki 3.6 individual page index, current attribute category pages, and the 15,350 DB29 card IDs are separate inventories. Name equality, spacing differences, redirects, or homonyms never authorize an automatic ID merge.
+- Race and affiliation may overlap card names or ordinary dictionary words. Validate with the original card ID, source fields, detail URL, type, attribute, image, and original text before normalizing.
+- Community wiki examples are `SourceClaim` evidence, not verified export fields. Preserve the original `sourceFields` and `TextBase`/`TextExtra`, attach URL and retrieval status, and keep unsupported calculations, duration, target filters, rounding, and failure branches null/pending.
+- Enchant classification and `EnchantSlot` semantics are different fields. A fifth card category does not mean every enchant interaction is implemented. Apply slot dependency only when supported by the source card and Manual.
