@@ -2331,3 +2331,29 @@ test('DB29 Manual Skill1 stat effects respect per-stat marker directions',()=>{
     defenderAP:4,defenderDP:4,markers:{dp:'▲'}});
   assert.equal(FM.totalPower(x.defender,'dp'),4,'DP ▲ blocks defense-conversion reduction');
 });
+
+test('DB29 Manual Fatal Attack does not revive an already-zero-HP defender',()=>{
+  // Manual specialability.htm #3: HP 0 means the unit is destroyed.
+  // DB29 exact Skill1 representative: 선더골렘 / 10012024612 / 치명공격.
+  const attacker=unit('10012024612',{
+    instanceId:'fatal-manual-attacker',name:'선더골렘',skill:'치명공격',
+    ap:3,dp:0,hp:5,maxHp:5,
+    specialSkillRuleId:'fatal_attack',
+    specialSkillMappingStatus:'manual_verified',
+    specialSkillRuleAuthority:'manual'
+  });
+  const defender=unit('fatal-zero-target',{
+    instanceId:'fatal-zero-target',ap:1,dp:0,hp:0,maxHp:5
+  });
+  const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]});
+  const s=state(p,ai);
+  const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:{ap:{value:3},dp:{value:0},hp:{value:5}},
+    defender:{ap:{value:1},dp:{value:0},hp:{value:0}}
+  });
+  assert.equal(result.damage,0,'an already-zero-HP target receives no fabricated damage');
+  assert.equal(result.defenderAlive,false,'zero-HP target must not be revived by fatal attack');
+  assert.equal(ai.units.includes(defender),false,'destroyed target leaves the field');
+  assert.equal(ai.graveyard.includes(defender),true,'destroyed target remains in the graveyard');
+  assert.equal(defender.hp,0,'fatal attack must not restore HP to a destroyed target');
+});
