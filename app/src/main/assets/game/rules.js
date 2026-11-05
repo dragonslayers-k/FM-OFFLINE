@@ -74,7 +74,11 @@
       hp: Number(unit.hp || 0),
       maxHp: Number(unit.maxHp || 0),
       skill: unit.tempSkill || unit.skill || null,
-      skill2: unit.skill2 || null,
+      skill2: unit.specialSkill2 || unit.skill2 || null,
+      specialSkill2RuleId: unit.specialSkill2RuleId || null,
+      specialSkill2MappingStatus: unit.specialSkill2MappingStatus || null,
+      specialSkill2RuleAuthority: unit.specialSkill2RuleAuthority || null,
+      specialSkill2ExecutionStatus: unit.specialSkill2ExecutionStatus || null,
       affiliation: unit.affiliation || null,
       race: unit.race || null
     };
@@ -113,7 +117,10 @@
         }
         for (const type of normalizedTypes) {
           const list = subscribers.get(type) || [];
-          list.push({ruleId,handler});
+          list.push({
+            ruleId,handler,mappingStatus,authority,executionStatus,
+            sourceMatch:rule.sourceMatch === 'skill2' ? 'skill2' : null
+          });
           subscribers.set(type,list);
         }
         return {ok:true,ruleId,eventTypes:normalizedTypes};
@@ -124,6 +131,15 @@
         for (const event of input) {
           if (!event || typeof event.type !== 'string') continue;
           for (const subscriber of subscribers.get(event.type) || []) {
+            if (subscriber.sourceMatch === 'skill2') {
+              const subject = event.snapshot && event.snapshot.unit;
+              const expectedName = SKILL2_SOURCE_RULE_NAMES[subscriber.ruleId];
+              if (!subject || subject.specialSkill2RuleId !== subscriber.ruleId ||
+                  subject.specialSkill2MappingStatus !== subscriber.mappingStatus ||
+                  subject.specialSkill2RuleAuthority !== subscriber.authority ||
+                  subject.specialSkill2ExecutionStatus !== subscriber.executionStatus ||
+                  String(subject.skill2 || '').replace(/\\s+/g,'') !== expectedName) continue;
+            }
             const result = subscriber.handler(clone(event),context || {});
             results.push({ruleId:subscriber.ruleId,eventType:event.type,sequence:event.sequence ?? null,result});
           }
@@ -140,6 +156,45 @@
         return count;
       }
     };
+  }
+
+  function createCoreCombatEventDispatcher() {
+    const dispatcher = createCombatEventDispatcher();
+    const common = {
+      mappingStatus:'source_card_verified',
+      authority:'card_source',
+      executionStatus:'source-card-rule-implemented',
+      eventTypes:['unit_destroyed'],
+      sourceMatch:'skill2'
+    };
+    const devoted = dispatcher.register({
+      ...common,ruleId:'skill2_devoted_defense'
+    },(event,context)=>{
+      const owner = context.players && context.players[event.ownerId];
+      const nextUnit = owner && owner.units[Number(event.fieldIndex)] || null;
+      if (!nextUnit) return {applied:false,reason:'next_friendly_unit_missing'};
+      changeUnitStat(nextUnit,'ap',1);
+      changeUnitStat(nextUnit,'dp',1);
+      changeUnitStat(nextUnit,'hp',1);
+      addLog(context.state,event.snapshot.unit.name+'의 헌신방어! 다음 아군 유닛의 공·방·체가 각각 1 증가했습니다.');
+      return {applied:true,targetInstanceId:nextUnit.instanceId || null};
+    });
+    const strong = dispatcher.register({
+      ...common,ruleId:'skill2_strong_devoted_defense'
+    },(event,context)=>{
+      const owner = context.players && context.players[event.ownerId];
+      if (!owner || !owner.units.length) return {applied:false,reason:'no_remaining_friendly_units'};
+      owner.units.forEach(ally=>{
+        changeUnitStat(ally,'ap',1);
+        changeUnitStat(ally,'dp',1);
+        changeUnitStat(ally,'hp',1);
+      });
+      addLog(context.state,event.snapshot.unit.name+'의 강한헌신방어! 남은 아군 유닛 전체의 공·방·체가 각각 1 증가했습니다.');
+      return {applied:true,targetCount:owner.units.length};
+    });
+    if (!devoted.ok || !strong.ok) throw new Error('Core Skill2 destruction handlers could not be registered.');
+    dispatcher.coreSkill2Handlers = true;
+    return dispatcher;
   }
 
   function attachCombatEventDispatcher(state, dispatcher) {
@@ -434,7 +489,7 @@
       },
       log: [],
       combatEventQueue: createCombatEventQueue(),
-      combatEventDispatcher: createCombatEventDispatcher(),
+      combatEventDispatcher: createCoreCombatEventDispatcher(),
       settings: { difficulty: opts.difficulty || 'normal', deckSize: playerDeck.length },
       rng
     };
@@ -887,24 +942,25 @@ if (card.type === 'unit') {
       });
       (gone.equipmentCards || []).forEach(item => owner.graveyard.push(item));
       addLog(state,owner.name + '의 ' + gone.name + '이(가) 파괴되었습니다. 장착 아이템도 함께 소멸했습니다.');
-      const destructionSkill2=normalizeSpecialSkill2ForEngine(gone);
-      if (destructionSkill2 === '헌신방어') {
-        // The unit now occupying the destroyed unit's field position is the
-        // "next" friendly unit. The benefit is temporary for this battle.
-        const nextUnit=owner.units[idx]||null;
-        if (nextUnit) {
-          changeUnitStat(nextUnit,'ap',1);
-          changeUnitStat(nextUnit,'dp',1);
-          changeUnitStat(nextUnit,'hp',1);
-          addLog(state,gone.name+'의 헌신방어! 다음 아군 유닛의 공·방·체가 각각 1 증가했습니다.');
+      if (!state.combatEventDispatcher || state.combatEventDispatcher.coreSkill2Handlers !== true) {
+        const destructionSkill2=normalizeSpecialSkill2ForEngine(gone);
+        if (destructionSkill2 === '헌신방어') {
+          // Compatibility path for isolated test/custom states without the core dispatcher.
+          const nextUnit=owner.units[idx]||null;
+          if (nextUnit) {
+            changeUnitStat(nextUnit,'ap',1);
+            changeUnitStat(nextUnit,'dp',1);
+            changeUnitStat(nextUnit,'hp',1);
+            addLog(state,gone.name+'의 헌신방어! 다음 아군 유닛의 공·방·체가 각각 1 증가했습니다.');
+          }
+        } else if (destructionSkill2 === '강한헌신방어') {
+          owner.units.forEach(ally=>{
+            changeUnitStat(ally,'ap',1);
+            changeUnitStat(ally,'dp',1);
+            changeUnitStat(ally,'hp',1);
+          });
+          if (owner.units.length) addLog(state,gone.name+'의 강한헌신방어! 남은 아군 유닛 전체의 공·방·체가 각각 1 증가했습니다.');
         }
-      } else if (destructionSkill2 === '강한헌신방어') {
-        owner.units.forEach(ally=>{
-          changeUnitStat(ally,'ap',1);
-          changeUnitStat(ally,'dp',1);
-          changeUnitStat(ally,'hp',1);
-        });
-        if (owner.units.length) addLog(state,gone.name+'의 강한헌신방어! 남은 아군 유닛 전체의 공·방·체가 각각 1 증가했습니다.');
       }
     }
   }

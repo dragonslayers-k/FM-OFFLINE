@@ -1366,3 +1366,61 @@ test('newGame initializes a per-match dispatcher and routes completed attack eve
   assert.deepEqual(seen,[{type:'unit_attack_resolved',damage:2}]);
   assert.equal(s.combatEventQueue.size(),0);
 });
+
+
+test('production dispatcher applies verified Devoted Defense from the destroyed-unit event',()=>{
+  const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
+  const attacker=unit('attacker',{instanceId:'core-atk'});
+  const defender=sourceSkill2('defender','헌신방어',{instanceId:'core-def',hp:1,maxHp:1,dp:0});
+  const next=unit('next',{instanceId:'core-next',hp:4,maxHp:4,ap:3,dp:2});
+  const p=s.players.player,ai=s.players.ai;
+  p.units.push(attacker);ai.units.push(defender,next);
+  const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:combatStats(3,0,5),defender:combatStats(2,0,1)
+  });
+  assert.equal(result.defenderAlive,false);
+  assert.equal(FM.totalPower(next,'ap'),4);
+  assert.equal(FM.totalPower(next,'dp'),3);
+  assert.equal(next.hp,5);
+  assert.equal(next.tempHP,1);
+  assert.equal(s.combatEventQueue.size(),0);
+});
+
+test('production dispatcher applies Strong Devoted Defense to all survivors',()=>{
+  const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
+  const attacker=unit('attacker',{instanceId:'strong-atk'});
+  const defender=sourceSkill2('defender','강한헌신방어',{instanceId:'strong-def',hp:1,maxHp:1,dp:0});
+  const first=unit('first',{instanceId:'strong-first',hp:4,maxHp:4});
+  const second=unit('second',{instanceId:'strong-second',hp:5,maxHp:5});
+  const p=s.players.player,ai=s.players.ai;
+  p.units.push(attacker);ai.units.push(defender,first,second);
+  FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:combatStats(3,0,5),defender:combatStats(2,0,1)
+  });
+  for(const ally of [first,second]){
+    assert.equal(FM.totalPower(ally,'ap'),4);
+    assert.equal(FM.totalPower(ally,'dp'),3);
+    assert.equal(ally.tempHP,1);
+  }
+  assert.equal(s.combatEventQueue.size(),0);
+});
+
+test('production Skill2 dispatcher remains fail-closed for inferred card mappings',()=>{
+  const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
+  const attacker=unit('attacker',{instanceId:'inferred-atk'});
+  const defender=unit('defender',{
+    instanceId:'inferred-def',hp:1,maxHp:1,dp:0,specialSkill2:'헌신방어',
+    specialSkill2RuleId:'skill2_devoted_defense',specialSkill2MappingStatus:'inferred',
+    specialSkill2RuleAuthority:'card_source',specialSkill2ExecutionStatus:'source-card-rule-implemented'
+  });
+  const next=unit('next',{instanceId:'inferred-next',hp:4,maxHp:4,ap:3,dp:2});
+  const p=s.players.player,ai=s.players.ai;
+  p.units.push(attacker);ai.units.push(defender,next);
+  FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:combatStats(3,0,5),defender:combatStats(2,0,1)
+  });
+  assert.equal(FM.totalPower(next,'ap'),3);
+  assert.equal(FM.totalPower(next,'dp'),2);
+  assert.equal(next.tempHP||0,0);
+  assert.equal(s.combatEventQueue.size(),0);
+});
