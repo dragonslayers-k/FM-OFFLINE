@@ -1736,6 +1736,7 @@ test('combat event records preserve source, cause, target slot and an isolated s
   assert.equal(event.sourceInstanceId,'src-1');
   assert.equal(event.sourceCardId,'card-1');
   assert.equal(event.targetInstanceId,'target-1');
+  assert.equal(event.targetCardId,null);
   assert.equal(event.fieldIndex,2);
   assert.equal(event.snapshot.hp,4,'event snapshot is isolated from later board mutation');
   assert.deepEqual(event.payload,{destroyed:true});
@@ -2221,7 +2222,9 @@ test('Skill2 dispatcher requires exact card-source rule tuple and canonical name
     authority:'card_source',executionStatus:'source-card-rule-implemented',
     eventTypes:['unit_destroyed'],sourceMatch:'skill2'};
   assert.equal(dispatcher.register(rule,()=>{calls++;return {applied:true};}).ok,true);
-  const eventFor=(unit)=>FM._test.createCombatEvent('unit_destroyed',{sourceCardId:unit.id,snapshot:{unit}});
+  const eventFor=(unit)=>FM._test.createCombatEvent('unit_destroyed',{
+    source:{cardId:'unrelated-destroyer'},target:unit,snapshot:{unit}
+  });
   const base={id:'devoted-defense-source-card',cardId:'devoted-defense-source-card',specialSkill2:'헌신방어',specialSkill2RuleId:'skill2_devoted_defense',
     specialSkill2MappingStatus:'source_card_verified',specialSkill2RuleAuthority:'card_source',
     specialSkill2ExecutionStatus:'source-card-rule-implemented'};
