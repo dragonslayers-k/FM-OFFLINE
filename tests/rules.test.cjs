@@ -2559,3 +2559,98 @@ test('DB29 source card 블라인드랩터 gains one DP from Manual stealth attac
   assert.equal(defender.hp,10);
   assert.equal(FM.totalPower(attacker,'dp'),3,'stealth adds one DP after the attack');
 });
+
+
+// Follow-up Manual Skill1 positive/negative/boundary cases. These keep the
+// exact DB29 representative card tuple and test the missing edge, not a new
+// inferred rule or a card-specific semantic promotion.
+test('DB29 은룡의검 ordinary attack has zero-damage and zero-AP boundaries',()=>{
+  const run=(attackAP,defenderDP)=>{
+    const attacker=db29ManualSkill1('10020341112','은룡의검','일반공격','normal_attack',{ap:attackAP,dp:0,hp:5,maxHp:5});
+    const defender=unit('normal-boundary-target',{instanceId:'normal-boundary-target-'+attackAP+'-'+defenderDP,dp:defenderDP,hp:8,maxHp:8});
+    const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+    const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+      attacker:{ap:{value:attackAP},dp:{value:0},hp:{value:5}},
+      defender:{ap:{value:1},dp:{value:defenderDP},hp:{value:8}}
+    });
+    return {defender,result};
+  };
+  let x=run(1,1);
+  assert.equal(x.result.damage,0,'AP equal to DP produces no HP damage');
+  assert.equal(x.defender.hp,8);
+  assert.equal(x.defender.dp,1,'ordinary attack never consumes DP');
+  x=run(0,0);
+  assert.equal(x.result.damage,0,'zero rolled AP does not create a normal attack');
+  assert.equal(x.defender.hp,8);
+});
+
+test('DB29 타락자 aging attack clamps AP reduction at zero',()=>{
+  const attacker=db29ManualSkill1('13020626691','타락자','노화공격','aging_attack',{ap:1,dp:0,hp:5,maxHp:5});
+  const defender=unit('aging-floor-target',{instanceId:'aging-floor-target',ap:1,dp:0,hp:10,maxHp:10});
+  const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+  const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:{ap:{value:1},dp:{value:0},hp:{value:5}},
+    defender:{ap:{value:1},dp:{value:0},hp:{value:10}}
+  });
+  assert.equal(FM.totalPower(defender,'ap'),0,'AP 1 minus 2 is clamped at zero');
+  assert.equal(result.damage,1);
+  assert.equal(defender.hp,9);
+});
+
+test('DB29 울프라이더 regeneration cannot exceed maximum HP',()=>{
+  const attacker=db29ManualSkill1('10010624560','울프라이더','재생능력','regeneration',{ap:1,dp:0,hp:5,maxHp:5});
+  const defender=unit('regeneration-cap-target',{instanceId:'regeneration-cap-target',dp:5,hp:10,maxHp:10});
+  const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+  const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:{ap:{value:1},dp:{value:0},hp:{value:5}},
+    defender:{ap:{value:1},dp:{value:5},hp:{value:10}}
+  });
+  assert.equal(result.damage,0,'defender DP blocks the attack');
+  assert.equal(attacker.hp,5,'regeneration at maximum HP does not over-heal');
+  assert.equal(defender.hp,10);
+});
+
+test('DB29 다크조커 taunt does not transfer AP when the defender is already at the one-HP floor',()=>{
+  const attacker=db29ManualSkill1('10030324709','다크조커','조롱공격','taunt_attack',{ap:1,dp:0,hp:5,maxHp:5});
+  const defender=unit('taunt-floor-target',{instanceId:'taunt-floor-target',ap:2,dp:0,hp:1,maxHp:8});
+  const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+  const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:{ap:{value:1},dp:{value:0},hp:{value:5}},
+    defender:{ap:{value:2},dp:{value:0},hp:{value:1}}
+  });
+  assert.equal(result.damage,1);
+  assert.equal(result.defenderAlive,false,'the one-HP defender is destroyed by the ordinary attack');
+  assert.equal(FM.totalPower(defender,'ap'),2,'no HP remains to transfer into AP');
+});
+
+test('DB29 블라인드랩터 stealth DP gain respects an HP-independent DP-increase prohibition marker',()=>{
+  const attacker=db29ManualSkill1('10040724812','블라인드랩터','은폐공격','stealth_attack',{
+    ap:1,dp:2,hp:5,maxHp:5,statMarkers:{dp:'▼'}
+  });
+  const defender=unit('stealth-marker-target',{instanceId:'stealth-marker-target',dp:5,hp:10,maxHp:10});
+  const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+  const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:{ap:{value:1},dp:{value:2},hp:{value:5}},
+    defender:{ap:{value:1},dp:{value:5},hp:{value:10}}
+  });
+  assert.equal(result.damage,0);
+  assert.equal(FM.totalPower(attacker,'dp'),2,'the DP-increase marker blocks the stealth bonus');
+});
+
+test('DB29 리듬포이 defense conversion leaves zero and negative DP unchanged',()=>{
+  const run=(defenderDP)=>{
+    const attacker=db29ManualSkill1('10010624563','리듬포이','방어변환','defense_convert',{ap:1,dp:0,hp:5,maxHp:5});
+    const defender=unit('defense-convert-boundary-target',{instanceId:'defense-convert-boundary-'+defenderDP,dp:defenderDP,hp:10,maxHp:10});
+    const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+    const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+      attacker:{ap:{value:1},dp:{value:0},hp:{value:5}},
+      defender:{ap:{value:1},dp:{value:defenderDP},hp:{value:10}}
+    });
+    return {defender,result};
+  };
+  let x=run(0);
+  assert.equal(FM.totalPower(x.defender,'dp'),0,'zero DP is not converted');
+  x=run(-2);
+  assert.equal(FM.totalPower(x.defender,'dp'),-2,'negative DP is not inverted a second time');
+  assert.equal(x.result.damage,3,'signed negative DP still contributes to ordinary attack damage');
+});
