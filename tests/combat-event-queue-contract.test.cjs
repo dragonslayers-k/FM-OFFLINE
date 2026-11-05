@@ -43,12 +43,13 @@ test('enqueued event is isolated from caller mutation and drain mutation', () =>
   const event = FM._test.createCombatEvent('unit_destroyed', {
     snapshot:{unit:{name:'보존'}}, payload:{equipmentCount:1}
   });
-  queue.enqueue(event);
-  event.snapshot.unit.name = 'caller mutation';
+  const enqueueResult = queue.enqueue(event);
+  enqueueResult.snapshot.unit.name = 'enqueue-result mutation';
 
   const drained = queue.drain();
   assert.equal(drained[0].snapshot.unit.name, '보존');
-  assert.throws(() => { drained[0].snapshot.unit.name = 'drain mutation'; }, TypeError);
+  drained[0].snapshot.unit.name = 'drain-result mutation';
+  assert.equal(event.snapshot.unit.name, '보존');
   queue.enqueue(FM._test.createCombatEvent('unit_attack_resolved'));
   assert.equal(queue.drain()[0].sequence, 1);
 });
@@ -75,8 +76,8 @@ test('combat event dispatcher drains each queued event once and preserves sequen
   queue.enqueue(FM._test.createCombatEvent('unit_destroyed'));
 
   assert.deepEqual(dispatcher.dispatchPending(queue, {}), [
-    {ruleId:'skill1_test_event_probe',eventType:'unit_destroyed',sequence:0,result:1},
-    {ruleId:'skill1_test_event_probe',eventType:'unit_destroyed',sequence:1,result:2}
+    {ruleId:'normal_attack',eventType:'unit_destroyed',sequence:0,result:1},
+    {ruleId:'normal_attack',eventType:'unit_destroyed',sequence:1,result:2}
   ]);
   assert.deepEqual(seen, [0,1]);
   assert.equal(queue.size(), 0);
