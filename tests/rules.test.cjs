@@ -2408,3 +2408,154 @@ test('DB29 Manual Fatal Attack does not revive an already-zero-HP defender',()=>
   assert.equal(ai.graveyard.includes(defender),true,'destroyed target remains in the graveyard');
   assert.equal(defender.hp,0,'fatal attack must not restore HP to a destroyed target');
 });
+
+
+// DB29 representative Skill1 cards selected from the Manual 27-rule test spec.
+// The card IDs below have exact Skill1-label matches in DB29. Their card-local
+// TextBase/TextExtra semantic packets remain a separate review gate; these tests
+// exercise the Manual baseline through the exact source-card mapping tuple.
+function db29ManualSkill1(id,name,skill,ruleId,extra={}){
+  return unit(id,{
+    instanceId:'db29-manual-skill1-'+ruleId,
+    name,skill,
+    specialSkillRuleId:ruleId,
+    specialSkillMappingStatus:'manual_verified',
+    specialSkillRuleAuthority:'manual',
+    ...extra
+  });
+}
+
+test('DB29 source card 카오틱비스트 uses Manual defense-bypass against positive and negative DP',()=>{
+  // 10091525193 / 카오틱비스트 / Skill1=방어무시.
+  const run=(defenderDP)=>{
+    const attacker=db29ManualSkill1('10091525193','카오틱비스트','방어무시','defense_bypass',{ap:3,dp:0,hp:5,maxHp:5});
+    const defender=unit('defense-bypass-target',{instanceId:'defense-bypass-target-'+defenderDP,dp:defenderDP,hp:8,maxHp:8});
+    const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+    const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+      attacker:{ap:{value:3},dp:{value:0},hp:{value:5}},
+      defender:{ap:{value:1},dp:{value:defenderDP},hp:{value:8}}
+    });
+    return {defender,result};
+  };
+  let x=run(5);
+  assert.equal(x.result.damage,3,'defense bypass deals AP directly to HP');
+  assert.equal(x.defender.hp,5);
+  assert.equal(x.defender.dp,5,'positive DP is not consumed');
+  x=run(-3);
+  assert.equal(x.result.damage,3,'negative DP is ignored rather than added to damage');
+  assert.equal(x.defender.hp,5);
+  assert.equal(x.defender.dp,-3);
+});
+
+test('DB29 source card 다크퍼밀리어 uses Manual frenzy attack and leaves the attacker at one HP',()=>{
+  // 10010624538 / 다크퍼밀리어 / Skill1=광분공격.
+  const attacker=db29ManualSkill1('10010624538','다크퍼밀리어','광분공격','frenzy_attack',{ap:0,dp:0,hp:4,maxHp:4});
+  const defender=unit('frenzy-target',{instanceId:'frenzy-target',dp:0,hp:10,maxHp:10});
+  const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+  const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:{ap:{value:0},dp:{value:0},hp:{value:4}},
+    defender:{ap:{value:1},dp:{value:0},hp:{value:10}}
+  });
+  assert.equal(attacker.hp,1,'frenzy sacrifices HP but never below one');
+  assert.equal(result.damage,3,'the three sacrificed HP are added to the attack');
+  assert.equal(defender.hp,7);
+  const boundary=db29ManualSkill1('10010624538','다크퍼밀리어','광분공격','frenzy_attack',{ap:1,dp:0,hp:1,maxHp:4});
+  const target=unit('frenzy-one-hp-target',{instanceId:'frenzy-one-hp-target',dp:0,hp:5,maxHp:5});
+  const bp=player('player',{units:[boundary]}),bai=player('ai',{units:[target]});
+  const br=FM._test.resolveUnitAttack(state(bp,bai),bp,bai,boundary,target,{
+    attacker:{ap:{value:1},dp:{value:0},hp:{value:1}},
+    defender:{ap:{value:1},dp:{value:0},hp:{value:5}}
+  });
+  assert.equal(boundary.hp,1,'frenzy has no HP to sacrifice at the one-HP floor');
+  assert.equal(br.damage,1);
+  assert.equal(target.hp,4);
+});
+
+test('DB29 source card 환상낚시꾼 uses Manual ability-seal mapping to suppress a target special skill',()=>{
+  // 10020324644 / 환상낚시꾼 / Skill1=기술봉쇄.
+  const attacker=db29ManualSkill1('10020324644','환상낚시꾼','기술봉쇄','ability_seal',{ap:1,dp:0,hp:5,maxHp:5});
+  const defender=unit('ability-seal-source-target',{
+    instanceId:'ability-seal-source-target',skill:'방어무시기술',ap:3,dp:0,hp:10,maxHp:10
+  });
+  const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+  FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:{ap:{value:1},dp:{value:0},hp:{value:5}},
+    defender:{ap:{value:3},dp:{value:0},hp:{value:10}}
+  });
+  assert.equal(defender.skill,'일반공격기술');
+  assert.equal(FM._test.normalizeSpecialSkillForEngine(defender,defender.skill),'일반공격');
+});
+
+test('DB29 source card 진실의거울 copies the defender effective AP for its attack',()=>{
+  // 10050441147 / 진실의거울 / Skill1=공격복제.
+  const attacker=db29ManualSkill1('10050441147','진실의거울','공격복제','copy_attack',{ap:1,dp:0,hp:5,maxHp:5});
+  const defender=unit('copy-attack-target',{instanceId:'copy-attack-target',ap:4,dp:1,hp:10,maxHp:10});
+  const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+  const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:{ap:{value:1},dp:{value:0},hp:{value:5}},
+    defender:{ap:{value:4},dp:{value:1},hp:{value:10}}
+  });
+  assert.equal(result.damage,3,'copied defender AP 4 minus defender DP 1');
+  assert.equal(defender.hp,7);
+});
+
+test('DB29 source card 포춘텔러 uses Manual defensive-use damage with signed defender DP',()=>{
+  // 10010624568 / 포춘텔러 / Skill1=방어이용.
+  const run=(defenderDP)=>{
+    const attacker=db29ManualSkill1('10010624568','포춘텔러','방어이용','defensive_use',{ap:2,dp:0,hp:5,maxHp:5});
+    const defender=unit('defensive-use-target',{instanceId:'defensive-use-target-'+defenderDP,dp:defenderDP,hp:10,maxHp:10});
+    const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+    const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+      attacker:{ap:{value:2},dp:{value:0},hp:{value:5}},
+      defender:{ap:{value:1},dp:{value:defenderDP},hp:{value:10}}
+    });
+    return {defender,result};
+  };
+  let x=run(3);
+  assert.equal(x.result.damage,5,'AP 2 plus positive DP 3');
+  assert.equal(x.defender.hp,5);
+  x=run(-3);
+  assert.equal(x.result.damage,0,'negative DP reduces the attack and damage is clamped at zero');
+  assert.equal(x.defender.hp,10);
+});
+
+test('DB29 source card 다크조커 uses Manual taunt attack to leave the defender at one HP and gain its lost HP as AP',()=>{
+  // 10030324709 / 다크조커 / Skill1=조롱공격.
+  const attacker=db29ManualSkill1('10030324709','다크조커','조롱공격','taunt_attack',{ap:1,dp:0,hp:5,maxHp:5});
+  const defender=unit('taunt-target',{instanceId:'taunt-target',ap:2,dp:0,hp:8,maxHp:8});
+  const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+  const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:{ap:{value:1},dp:{value:0},hp:{value:5}},
+    defender:{ap:{value:2},dp:{value:0},hp:{value:8}}
+  });
+  assert.equal(result.damage,1,'ordinary attack damage resolves before the taunt conversion');
+  assert.equal(defender.hp,1);
+  assert.equal(FM.totalPower(defender,'ap'),8,'six remaining HP are transferred to the original AP 2');
+});
+
+test('DB29 source card 견습수도사 uses Manual confusion attack to exchange target AP and remaining HP',()=>{
+  // 10040724804 / 견습수도사 / Skill1=혼란공격.
+  const attacker=db29ManualSkill1('10040724804','견습수도사','혼란공격','confusion_attack',{ap:1,dp:0,hp:5,maxHp:5});
+  const defender=unit('confusion-target',{instanceId:'confusion-target',ap:3,dp:0,hp:5,maxHp:5});
+  const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+  FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:{ap:{value:1},dp:{value:0},hp:{value:5}},
+    defender:{ap:{value:3},dp:{value:0},hp:{value:5}}
+  });
+  assert.equal(FM.totalPower(defender,'ap'),4,'target AP becomes its HP remaining after the attack');
+  assert.equal(defender.hp,3,'target HP becomes its AP before the exchange');
+});
+
+test('DB29 source card 블라인드랩터 gains one DP from Manual stealth attack even when DP blocks all HP damage',()=>{
+  // 10040724812 / 블라인드랩터 / Skill1=은폐공격.
+  const attacker=db29ManualSkill1('10040724812','블라인드랩터','은폐공격','stealth_attack',{ap:1,dp:2,hp:5,maxHp:5});
+  const defender=unit('stealth-target',{instanceId:'stealth-target',dp:5,hp:10,maxHp:10});
+  const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+  const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:{ap:{value:1},dp:{value:2},hp:{value:5}},
+    defender:{ap:{value:1},dp:{value:5},hp:{value:10}}
+  });
+  assert.equal(result.damage,0,'the defender DP blocks all HP damage');
+  assert.equal(defender.hp,10);
+  assert.equal(FM.totalPower(attacker,'dp'),3,'stealth adds one DP after the attack');
+});
