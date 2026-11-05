@@ -1278,7 +1278,7 @@ test('combat event dispatcher accepts only known verified mappings and dispatche
   const original=queue.drain();
   const results=dispatcher.dispatch(original,{turn:7});
   assert.deepEqual(seen,[['manual',0,7],['source',0,7],['manual',1,7],['source',1,7]]);
-  assert.deepEqual(results.map(x=>x.ruleId),['defense_bypass','skill2_tactical_initiative','defense_bypass','skill2_tactical_initiative']);
+  assert.deepEqual(results.map(x=>x.ruleId),['defense_bypass','skill2_tactical_initiative','ability_seal','defense_bypass','skill2_tactical_initiative','ability_seal']);
   assert.deepEqual(original.map(x=>x.payload.damage),[2,3],'subscriber mutations must not alter queued source events');
 });
 
