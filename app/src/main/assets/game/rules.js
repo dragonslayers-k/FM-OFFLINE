@@ -138,7 +138,7 @@
                   subject.specialSkill2MappingStatus !== subscriber.mappingStatus ||
                   subject.specialSkill2RuleAuthority !== subscriber.authority ||
                   subject.specialSkill2ExecutionStatus !== subscriber.executionStatus ||
-                  String(subject.skill2 || '').replace(/\\s+/g,'') !== expectedName) continue;
+                  String(subject.skill2 || '').replace(/\s+/g,'') !== expectedName) continue;
             }
             const result = subscriber.handler(clone(event),context || {});
             results.push({ruleId:subscriber.ruleId,eventType:event.type,sequence:event.sequence ?? null,result});
