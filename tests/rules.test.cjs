@@ -1526,7 +1526,7 @@ test('source Skill2 Wrath gains AP only for HP actually lost when the defender s
   const p=player('player',{units:[defender]});
   const ai=player('ai',{units:[attacker]});
   const result=FM._test.resolveUnitAttack(state(ai,p),ai,p,attacker,defender,{
-    attacker:combatStats(5,0,5),defender:combatStats(1,0,3)
+    attacker:combatStats(2,0,5),defender:combatStats(1,0,3)
   });
   assert.equal(result.damage,2);
   assert.equal(result.defenderAlive,true);
