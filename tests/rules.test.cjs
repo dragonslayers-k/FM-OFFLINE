@@ -767,15 +767,15 @@ test('Manual bravery/fear use the defender level relation and add AP before DP e
   assert.equal(run('공포공격기술',3,4),10,'fear does not trigger against a higher-level defender');
 });
 
-test('DB29 Manual Vampiric Attack heals from actual HP damage only and respects HP markers/cap',()=>{
+test('DB29 Manual Vampiric Attack uses actual HP damage, rounds half up, and respects HP markers',()=>{
   // Representative exact Manual Skill1 match from DB29 Actions #571:
   // 다크카운티스 / 10010624542 / Skill1=흡혈공격.
-  const run=({attackerHp=2,attackerMaxHp=5,defenderDP=2,attackerHpMarker='' }={})=>{
+  const run=({attackerHp=2,attackerMaxHp=5,defenderDP=2,attackerHpMarker='',attackAP=3 }={})=>{
     const attacker=unit('10010624542',{
       instanceId:'vampiric-attacker',
       name:'다크카운티스',
       skill:'흡혈공격',
-      ap:3,hp:attackerHp,maxHp:attackerMaxHp,
+      ap:attackAP,hp:attackerHp,maxHp:attackerMaxHp,
       specialSkillRuleId:'vampiric_attack',
       specialSkillMappingStatus:'manual_verified',
       specialSkillRuleAuthority:'manual',
@@ -787,25 +787,29 @@ test('DB29 Manual Vampiric Attack heals from actual HP damage only and respects 
     });
     const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
     const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
-      attacker:{ap:{value:3},dp:{value:0},hp:{value:attackerMaxHp}},
+      attacker:{ap:{value:attackAP},dp:{value:0},hp:{value:attackerMaxHp}},
       defender:{ap:{value:1},dp:{value:defenderDP},hp:{value:10}}
     });
     return {attacker,defender,result};
   };
 
-  let x=run({attackerHp:2,defenderDP:2});
+  let x=run({attackerHp:2,defenderDP:2,attackAP:3});
   assert.equal(x.result.damage,1,'only one HP actually passes the defender DP');
   assert.equal(x.attacker.hp,3,'ceil(1/2) heals one HP');
 
-  x=run({attackerHp:2,defenderDP:3});
+  x=run({attackerHp:2,defenderDP:1,attackAP:3});
+  assert.equal(x.result.damage,2);
+  assert.equal(x.attacker.hp,3,'ceil(2/2) heals one HP');
+
+  x=run({attackerHp:2,defenderDP:0,attackAP:5});
+  assert.equal(x.result.damage,5);
+  assert.equal(x.attacker.hp,5,'Manual example: HP-5 yields HP+3 (round half up)');
+
+  x=run({attackerHp:2,defenderDP:3,attackAP:3});
   assert.equal(x.result.damage,0,'DP blocks all HP damage');
   assert.equal(x.attacker.hp,2,'blocked damage must not trigger vampiric healing');
 
-  x=run({attackerHp:4,attackerMaxHp:5,defenderDP:0});
-  assert.equal(x.result.damage,3);
-  assert.equal(x.attacker.hp,5,'healing is capped at max HP');
-
-  x=run({attackerHp:2,defenderDP:0,attackerHpMarker:'▲'});
+  x=run({attackerHp:2,defenderDP:0,attackAP:3,attackerHpMarker:'▲'});
   assert.equal(x.result.damage,3);
   assert.equal(x.attacker.hp,2,'HP-increase marker prevents vampiric healing');
   assert.equal(x.attacker.tempHP||0,0);
