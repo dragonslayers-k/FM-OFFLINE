@@ -48,7 +48,7 @@ test('enqueued event is isolated from caller mutation and drain mutation', () =>
 
   const drained = queue.drain();
   assert.equal(drained[0].snapshot.unit.name, '보존');
-  drained[0].snapshot.unit.name = 'drain mutation';
+  assert.throws(() => { drained[0].snapshot.unit.name = 'drain mutation'; }, TypeError);
   queue.enqueue(FM._test.createCombatEvent('unit_attack_resolved'));
   assert.equal(queue.drain()[0].sequence, 1);
 });
