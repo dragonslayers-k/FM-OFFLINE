@@ -84,6 +84,18 @@
     };
   }
 
+  function snapshotCombatCard(card) {
+    if (!card || typeof card !== 'object') return null;
+    return {
+      instanceId: card.instanceId ?? null,
+      cardId: card.cardId ?? card.id ?? null,
+      name: card.name ?? null,
+      type: card.type ?? null,
+      triggerTiming: card.triggerTiming ?? null,
+      slotIndex: Number.isFinite(Number(card.slotIndex)) ? Number(card.slotIndex) : null
+    };
+  }
+
   function createCombatEventDispatcher() {
     const subscribers = new Map();
     return {
