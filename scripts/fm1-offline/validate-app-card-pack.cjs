@@ -193,6 +193,8 @@ skill2Audit.activeCards = activeSkill2CardIds.size;
 if (skill2Audit.sourceMappings !== skill2Data.mappingRecordCount ||
     skill2Audit.executableRules !== Number(skill2Data.executableRuleCount || 0) ||
     executableSkill2RuleIds.size !== Number(skill2Data.executableRuleCount || 0) ||
+    JSON.stringify([...(skill2Data.executableRuleIds || [])].sort()) !==
+      JSON.stringify([...executableSkill2RuleIds].sort()) ||
     skill2Data.activeSkillCount !== skill2Audit.activeSkills ||
     skill2Data.activeCardCount !== skill2Audit.activeCards ||
     skill2Data.noSkillCardCount !== noSkill2CardIds.size ||

@@ -831,6 +831,20 @@ SKILL2_SOURCE_VERIFIED_RULES = {
 }
 
 
+# DB29 card-local TextExtra evidence audit: Holy Aura's only explicit floor
+# wording is on an item, while the unit's wording leaves rounding unspecified.
+# The item must not activate the unit-only combat defense handler.
+DB29_SKILL2_UNIT_EVIDENCE_RULE_IDS = frozenset({
+    "skill2_tactical_initiative",
+    "skill2_devoted_defense",
+    "skill2_frenzy_defense",
+    "skill2_alliance_defense",
+    "skill2_racial_defense",
+    "skill2_strong_devoted_defense",
+    "skill2_pressure_defense",
+})
+
+
 def build_skill2_catalogue(mapping_records, cards, release_tag):
     """Build Skill2 inventory; only exact card-source-described rules with tests are executable."""
     card_by_id={str(card.get("id")):card for card in cards}
@@ -936,6 +950,7 @@ def build_skill2_catalogue(mapping_records, cards, release_tag):
         "noSkillCardCount":len(no_skill_card_ids),
         "mappingStatusCounts":dict(sorted(status_counts.items())),
         "executableRuleCount":len(executable_rules),
+        "executableRuleIds":sorted(executable_rules),
         "records":records
     }
 
@@ -1017,10 +1032,11 @@ def convert(a):
     skill2_catalogue=build_skill2_catalogue(skill_mapping_records,cards,a.db_release_tag)
     if len(cards)==TOTAL and (
         skill2_catalogue["entryCount"]!=189 or skill2_catalogue["activeSkillCount"]!=188
-        or skill2_catalogue["activeCardCount"]!=1366 or skill2_catalogue["executableRuleCount"]!=8
+        or skill2_catalogue["activeCardCount"]!=1366
+        or set(skill2_catalogue["executableRuleIds"])!=DB29_SKILL2_UNIT_EVIDENCE_RULE_IDS
     ):
-        raise RuntimeError("DB29 Skill2 inventory validation failed: "+json.dumps({
-            k:skill2_catalogue[k] for k in ("entryCount","activeSkillCount","activeCardCount","mappingStatusCounts")
+        raise RuntimeError("DB29 Skill2 inventory/evidence validation failed: "+json.dumps({
+            k:skill2_catalogue[k] for k in ("entryCount","activeSkillCount","activeCardCount","executableRuleCount","executableRuleIds","mappingStatusCounts")
         },ensure_ascii=False))
     skill2_catalogue_bytes=json.dumps(skill2_catalogue,ensure_ascii=False,separators=(",",":")).encode("utf-8")
     skill2_catalogue_sha256=hashlib.sha256(skill2_catalogue_bytes).hexdigest()

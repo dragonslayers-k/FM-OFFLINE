@@ -314,6 +314,8 @@ class SqliteCardPackTests(unittest.TestCase):
         refs = {x["cardId"]:x for x in entry["cardReferences"]}
         self.assertEqual(refs["holy-unit-no-rounding"]["cardType"],"unit")
         self.assertEqual(refs["holy-item-floor-only"]["cardType"],"item")
+        self.assertEqual(entry["evidenceCardIds"],[])
+        self.assertEqual(catalogue["executableRuleIds"],[])
 
     def test_skill2_card_mapping_requires_each_card_own_text_extra_evidence(self):
         cases = [
