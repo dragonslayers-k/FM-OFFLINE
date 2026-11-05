@@ -9,6 +9,7 @@ const SOURCE_RULE = {
   mappingStatus: 'source_card_verified',
   authority: 'card_source',
   executionStatus: 'source-card-rule-implemented',
+  sourceCardId: 'card-1',
   sourceMatch: 'skill2',
   eventTypes: ['unit_destroyed']
 };
@@ -69,6 +70,9 @@ test('source-verified Skill2 dispatch requires exact rule provenance and card na
     snapshot: sourceSnapshot(),
     payload: {actualDamage: 1}
   });
+  const wrongCardId = FM._test.createCombatEvent('unit_destroyed', {
+    snapshot: sourceSnapshot({cardId: 'card-2'})
+  });
   const wrongRuleId = FM._test.createCombatEvent('unit_destroyed', {
     snapshot: sourceSnapshot({specialSkill2RuleId: 'skill2_devoted_defense'})
   });
@@ -86,7 +90,7 @@ test('source-verified Skill2 dispatch requires exact rule provenance and card na
   });
 
   const results = dispatcher.dispatch([
-    matching, wrongRuleId, wrongMappingStatus, wrongAuthority, wrongExecution, wrongPrintedName
+    matching, wrongCardId, wrongRuleId, wrongMappingStatus, wrongAuthority, wrongExecution, wrongPrintedName
   ], {});
   assert.equal(results.length, 1);
   assert.equal(seen.length, 1);
