@@ -1854,3 +1854,20 @@ test('compact DB29 Manual defense-bypass Skill1 clamps zero attack power and pre
   assert.equal(d.hp,3,'defense bypass skips DP, not the zero-damage clamp');
   assert.equal(s.combatEventQueue.size(),0);
 });
+
+
+test('compact DB29 Manual fatal attack preserves the one-HP floor at lethal boundary',()=>{
+  for (const [targetHp,expectedDamage,expectedHp] of [[1,0,1],[2,1,1],[5,4,1]]) {
+    const a=unit('fatal-a-'+targetHp,{instanceId:'fatal-a-'+targetHp,skill:'치명공격기술',ap:3,
+      specialSkillRuleId:'fatal_attack',specialSkillMappingStatus:'manual_verified',
+      specialSkillRuleAuthority:'manual'});
+    const d=unit('fatal-d-'+targetHp,{instanceId:'fatal-d-'+targetHp,dp:9,hp:targetHp,maxHp:targetHp});
+    const p=player('player',{units:[a]}),ai=player('ai',{units:[d]}),s=state(p,ai);
+    const rolls={attacker:{ap:{value:3},dp:{value:0},hp:{value:5}},
+      defender:{ap:{value:0},dp:{value:9},hp:{value:targetHp}}};
+    const result=FM._test.resolveUnitAttack(s,p,ai,a,d,rolls);
+    assert.equal(result.damage,expectedDamage,'target starts at '+targetHp+' HP');
+    assert.equal(d.hp,expectedHp,'fatal attack leaves the target at one HP');
+    assert.equal(s.combatEventQueue.size(),0);
+  }
+});
