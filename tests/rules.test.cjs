@@ -2191,3 +2191,34 @@ test('compact DB29 Manual fatal attack preserves the one-HP floor at lethal boun
     assert.equal(d.hp,expectedHp,'fatal attack leaves the target at one HP');
   }
 });
+
+test('unit destruction transfers the unit before ordered equipment and preserves neighboring field slots',()=>{
+  const first=unit('field-first',{instanceId:'field-first'});
+  const target=unit('equipment-bearing-unit',{instanceId:'equipment-bearing-1',hp:0,maxHp:5,
+    equipmentCards:[
+      {instanceId:'equip-1',id:'item-1',name:'첫 번째 장비'},
+      {instanceId:'equip-2',id:'item-2',name:'두 번째 장비'}
+    ]});
+  const last=unit('field-last',{instanceId:'field-last'});
+  const p=player('player',{units:[first,target,last]});
+  const s=state(p,player('ai'));
+
+  FM._test.destroyUnit(s,p,target,{cause:'effect',source:{instanceId:'effect-source',id:'magic-1'}});
+
+  assert.deepEqual(p.units.map(card=>card.instanceId),['field-first','field-last'],
+    'removing the destroyed unit must preserve the relative order of survivors');
+  assert.deepEqual(p.graveyard.map(card=>card.instanceId),
+    ['equipment-bearing-1','equip-1','equip-2'],
+    'the destroyed unit enters graveyard before its attached equipment in original order');
+
+  const [event]=s.combatEventQueue.drain();
+  assert.equal(event.type,'unit_destroyed');
+  assert.equal(event.fieldIndex,1,'event records the original field slot');
+  assert.equal(event.sourceInstanceId,'effect-source');
+  assert.equal(event.targetInstanceId,'equipment-bearing-1');
+  assert.deepEqual(event.snapshot.equipment,[
+    {instanceId:'equip-1',cardId:'item-1',name:'첫 번째 장비'},
+    {instanceId:'equip-2',cardId:'item-2',name:'두 번째 장비'}
+  ]);
+  assert.equal(event.payload.equipmentCount,2);
+});
