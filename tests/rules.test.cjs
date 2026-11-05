@@ -2288,3 +2288,46 @@ test('production Skill2 Devoted Defense resolves when a verified unit is destroy
   assert.equal(next.tempHP,1);
   assert.equal(s.combatEventQueue.size(),0,'production event dispatch drains after the spell effect boundary');
 });
+
+test('DB29 Manual Skill1 stat effects respect per-stat marker directions',()=>{
+  const run=({id,name,skill,ruleId,attackerAP=1,defenderAP=4,defenderDP=2,markers={}}={})=>{
+    const attacker=unit(id,{
+      instanceId:'marker-skill-attacker',name,skill,ap:attackerAP,dp:0,hp:5,maxHp:5,
+      specialSkillRuleId:ruleId,specialSkillMappingStatus:'manual_verified',
+      specialSkillRuleAuthority:'manual'
+    });
+    const defender=unit('marker-skill-defender',{
+      instanceId:'marker-skill-defender',ap:defenderAP,dp:defenderDP,hp:10,maxHp:10,
+      statTech:{stats:Object.fromEntries(Object.entries(markers).map(([stat,marker])=>[stat,{marker}]))}
+    });
+    const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+    const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+      attacker:{ap:{value:attackerAP},dp:{value:0},hp:{value:5}},
+      defender:{ap:{value:defenderAP},dp:{value:defenderDP},hp:{value:10}}
+    });
+    return {defender,result};
+  };
+
+  // 이블크로우 / 10091525190 / 약화공격
+  let x=run({id:'10091525190',name:'이블크로우',skill:'약화공격',ruleId:'weaken_attack',
+    defenderAP:4,defenderDP:3,markers:{ap:'▲',dp:'▼'}});
+  assert.equal(x.result.damage,0);
+  assert.equal(FM.totalPower(x.defender,'ap'),4,'AP ▲ blocks the weakening decrement');
+  assert.equal(FM.totalPower(x.defender,'dp'),2,'DP ▼ permits the weakening decrement');
+
+  // 파프니르 / 10010624589 / 석화공격
+  x=run({id:'10010624589',name:'파프니르',skill:'석화공격',ruleId:'petrify_attack',
+    defenderAP:4,defenderDP:2,markers:{ap:'▲',dp:'▼'}});
+  assert.equal(FM.totalPower(x.defender,'ap'),4,'AP ▲ blocks petrification AP reduction');
+  assert.equal(FM.totalPower(x.defender,'dp'),2,'DP ▼ blocks petrification DP increase');
+
+  // 해적전투원 / 10010624551 / 방패파괴
+  x=run({id:'10010624551',name:'해적전투원',skill:'방패파괴',ruleId:'shield_break',
+    defenderAP:4,defenderDP:3,markers:{dp:'▲'}});
+  assert.equal(FM.totalPower(x.defender,'dp'),3,'DP ▲ blocks shield-break reduction');
+
+  // 리듬포이 / 10010624563 / 방어전환
+  x=run({id:'10010624563',name:'리듬포이',skill:'방어전환공격',ruleId:'defense_convert',
+    defenderAP:4,defenderDP:4,markers:{dp:'▲'}});
+  assert.equal(FM.totalPower(x.defender,'dp'),4,'DP ▲ blocks defense-conversion reduction');
+});
