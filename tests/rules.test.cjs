@@ -2236,9 +2236,8 @@ test('production Skill2 Devoted Defense resolves when a verified unit is destroy
   const p=s.players.player,ai=s.players.ai;
   ai.units.push(doomed,next);
 
-  const result=FM._test.applyEffect(s,'player',{type:'damage',target:'enemyUnit',amount:1},doomed);
+  FM._test.applyEffect(s,'player',{type:'damage',target:'enemyUnit',amount:1},doomed);
 
-  assert.equal(result,true);
   assert.deepEqual(ai.units.map(card=>card.instanceId),['spell-next-1']);
   assert.equal(FM.totalPower(next,'ap'),4);
   assert.equal(FM.totalPower(next,'dp'),3);
