@@ -328,6 +328,133 @@ test('failed unit summon emits no unit_summoned event and leaves the hand unchan
   assert.equal(s.combatEventQueue.size(),0);
 });
 
+
+test('successful terrain installation emits a source-linked event only after LP, cost and production commit',()=>{
+  const card={...land('event-land','light',2,2),instanceId:'event-land-1'};
+  const p=player('player',{hand:[card],lp:2,soulPool:{colored:{forest:1},neutral:0}});
+  const s=state(p,player('ai'));
+  s.combatEventQueue=FM._test.createCombatEventQueue();
+  const dispatcher=FM._test.createCombatEventDispatcher();
+  FM._test.attachCombatEventDispatcher(s,dispatcher);
+  const seen=[];
+  dispatcher.register({ruleId:'defense_bypass',mappingStatus:'manual_verified',authority:'manual',
+    eventTypes:['land_installed']},event=>seen.push(event));
+  const result=FM.playCard(s,'player','event-land-1');
+  assert.equal(result.ok,true);
+  assert.equal(p.lands.length,1);
+  assert.equal(p.lp,0);
+  assert.equal(p.soulPool.colored.light,1);
+  assert.equal(p.soulPool.neutral,2);
+  assert.equal(seen.length,1);
+  assert.equal(seen[0].type,'land_installed');
+  assert.equal(seen[0].sourceCardId,'event-land');
+  assert.equal(seen[0].targetInstanceId,'event-land-1');
+  assert.equal(seen[0].fieldIndex,0);
+  assert.equal(seen[0].payload.requiredLP,2);
+  assert.deepEqual(seen[0].payload.production,{colored:{light:1},neutral:2});
+  assert.equal(s.combatEventQueue.size(),0);
+});
+
+test('failed terrain installation emits no event and preserves the original hand and resources',()=>{
+  const card={...land('event-land-blocked','light',2,0),instanceId:'event-land-blocked-1'};
+  const p=player('player',{hand:[card],lp:1,soulPool:{colored:{},neutral:0}});
+  const s=state(p,player('ai'));
+  s.combatEventQueue=FM._test.createCombatEventQueue();
+  const dispatcher=FM._test.createCombatEventDispatcher();
+  FM._test.attachCombatEventDispatcher(s,dispatcher);
+  const seen=[];
+  dispatcher.register({ruleId:'defense_bypass',mappingStatus:'manual_verified',authority:'manual',
+    eventTypes:['land_installed']},event=>seen.push(event));
+  assert.equal(FM.playCard(s,'player','event-land-blocked-1').ok,false);
+  assert.equal(p.hand.length,1);
+  assert.equal(p.lp,1);
+  assert.equal(p.lands.length,0);
+  assert.equal(seen.length,0);
+  assert.equal(s.combatEventQueue.size(),0);
+});
+
+test('successful item equip emits target and stat payload after the equipment commit',()=>{
+  const target=unit('event-target',{instanceId:'event-target-1'});
+  const item={id:'event-item',instanceId:'event-item-1',name:'강화검',type:'item',
+    cost:{forest:0},costKnown:true,costMapped:true,apBonus:2,dpBonus:1,hpBonus:0};
+  const p=player('player',{hand:[item],units:[target],soulPool:{colored:{},neutral:0}});
+  const s=state(p,player('ai'));
+  s.combatEventQueue=FM._test.createCombatEventQueue();
+  const dispatcher=FM._test.createCombatEventDispatcher();
+  FM._test.attachCombatEventDispatcher(s,dispatcher);
+  const seen=[];
+  dispatcher.register({ruleId:'defense_bypass',mappingStatus:'manual_verified',authority:'manual',
+    eventTypes:['item_equipped']},event=>seen.push(event));
+  assert.equal(FM.playCard(s,'player','event-item-1','event-target-1').ok,true);
+  assert.equal(FM.totalPower(target,'ap'),5);
+  assert.equal(FM.totalPower(target,'dp'),3);
+  assert.equal(seen.length,1);
+  assert.equal(seen[0].type,'item_equipped');
+  assert.equal(seen[0].sourceCardId,'event-item');
+  assert.equal(seen[0].targetInstanceId,'event-target-1');
+  assert.deepEqual(seen[0].payload,{targetOwnerId:'player',apBonus:2,dpBonus:1,hpBonus:0,grantsSpecialSkill:null});
+  assert.equal(s.combatEventQueue.size(),0);
+});
+
+test('failed item targeting emits no equipment event and leaves item in hand',()=>{
+  const item={id:'event-item',instanceId:'event-item-1',name:'강화검',type:'item',
+    cost:{forest:0},costKnown:true,costMapped:true,apBonus:2};
+  const p=player('player',{hand:[item],soulPool:{colored:{},neutral:0}});
+  const s=state(p,player('ai'));
+  s.combatEventQueue=FM._test.createCombatEventQueue();
+  const dispatcher=FM._test.createCombatEventDispatcher();
+  FM._test.attachCombatEventDispatcher(s,dispatcher);
+  const seen=[];
+  dispatcher.register({ruleId:'defense_bypass',mappingStatus:'manual_verified',authority:'manual',
+    eventTypes:['item_equipped']},event=>seen.push(event));
+  assert.equal(FM.playCard(s,'player','event-item-1','missing-target').ok,false);
+  assert.equal(p.hand.length,1);
+  assert.equal(seen.length,0);
+  assert.equal(s.combatEventQueue.size(),0);
+});
+
+test('successful spell queue emits a source-linked event after slot assignment',()=>{
+  const spell={id:'event-spell',instanceId:'event-spell-1',name:'화살',type:'spell',
+    cost:{forest:0},costKnown:true,costMapped:true,triggerTiming:'공격턴',effect:{type:'damage',target:'none'}};
+  const p=player('player',{hand:[spell],soulPool:{colored:{},neutral:0}});
+  const s=state(p,player('ai'));
+  s.combatEventQueue=FM._test.createCombatEventQueue();
+  const dispatcher=FM._test.createCombatEventDispatcher();
+  FM._test.attachCombatEventDispatcher(s,dispatcher);
+  const seen=[];
+  dispatcher.register({ruleId:'defense_bypass',mappingStatus:'manual_verified',authority:'manual',
+    eventTypes:['spell_queued']},event=>seen.push(event));
+  assert.equal(FM.playCard(s,'player','event-spell-1').ok,true);
+  assert.equal(p.spells.length,1);
+  assert.equal(seen.length,1);
+  assert.equal(seen[0].type,'spell_queued');
+  assert.equal(seen[0].sourceCardId,'event-spell');
+  assert.equal(seen[0].targetInstanceId,null);
+  assert.equal(seen[0].fieldIndex,0);
+  assert.equal(seen[0].payload.slotIndex,1);
+  assert.equal(seen[0].payload.triggerTiming,'공격턴');
+  assert.equal(s.combatEventQueue.size(),0);
+});
+
+test('failed spell target validation emits no queue event and preserves the hand',()=>{
+  const spell={id:'event-spell',instanceId:'event-spell-1',name:'화살',type:'spell',
+    cost:{forest:0},costKnown:true,costMapped:true,triggerTiming:'공격턴',
+    effect:{type:'damage',target:'enemyUnit',amount:1}};
+  const p=player('player',{hand:[spell],soulPool:{colored:{},neutral:0}});
+  const s=state(p,player('ai'));
+  s.combatEventQueue=FM._test.createCombatEventQueue();
+  const dispatcher=FM._test.createCombatEventDispatcher();
+  FM._test.attachCombatEventDispatcher(s,dispatcher);
+  const seen=[];
+  dispatcher.register({ruleId:'defense_bypass',mappingStatus:'manual_verified',authority:'manual',
+    eventTypes:['spell_queued']},event=>seen.push(event));
+  assert.equal(FM.playCard(s,'player','event-spell-1').ok,false);
+  assert.equal(p.hand.length,1);
+  assert.equal(p.spells.length,0);
+  assert.equal(seen.length,0);
+  assert.equal(s.combatEventQueue.size(),0);
+});
+
 test('a spell is queued in its magic slot and resolves only in battle',()=>{
   const spell={id:'spell',instanceId:'s1',name:'화살',type:'spell',cost:{forest:0},costKnown:true,costMapped:true,
     triggerTiming:'공격/방어',durationTurns:1,effect:{type:'damage',target:'enemyUnit',amount:3}};

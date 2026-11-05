@@ -815,6 +815,12 @@
         ', 설치 소울 지불 '+costText(card.landInstallCost)+
         ', 유색 소울 +'+Object.values(output.colored).reduce((a,b)=>a+Number(b||0),0)+
         ', 무속성 소울 +'+Number(output.neutral||0)+')');
+      emitCombatEvent(state,'land_installed',{
+        ownerId,cause:'play_card',source:card,target:land,fieldIndex:p.lands.length-1,
+        snapshot:{land:snapshotCombatCard(land)},
+        payload:{requiredLP,installCost:clone(card.landInstallCost),production:clone(output)}
+      });
+      dispatchPendingCombatEvents(state);
       return {ok:true};
     }
 if (card.type === 'unit') {
@@ -881,6 +887,13 @@ if (card.type === 'unit') {
       if (card.effect && card.effect.type === 'aura') target.aura = clone(card.effect);
       p.playedAnyCardThisPhase = true;
       addLog(state,p.name + '이(가) ' + target.name + '에게 ' + card.name + '을(를) 장착했습니다.');
+      emitCombatEvent(state,'item_equipped',{
+        ownerId,cause:'play_card',source:card,target,fieldIndex:Math.max(0,targetOwner.units.indexOf(target)),
+        snapshot:{unit:snapshotCombatUnit(target),item:snapshotCombatCard(item)},
+        payload:{targetOwnerId:targetOwner.id,apBonus,dpBonus,hpBonus,
+          grantsSpecialSkill:card.grantsSpecialSkill||null}
+      });
+      dispatchPendingCombatEvents(state);
       return {ok:true};
     }
     if (card.type === 'spell') {
@@ -902,6 +915,13 @@ if (card.type === 'unit') {
       spell.selectedTargetId = target ? target.instanceId : null;
       p.spells.push(spell);
       addLog(state, p.name + '이(가) 마법 ' + card.name + '을(를) ' + spell.slotIndex + '번 마법 슬롯에 배치했습니다.');
+      emitCombatEvent(state,'spell_queued',{
+        ownerId,cause:'play_card',source:spell,target,fieldIndex:spell.slotIndex-1,
+        snapshot:{spell:snapshotCombatCard(spell),target:target?snapshotCombatUnit(target):null},
+        payload:{slotIndex:spell.slotIndex,triggerTiming:spell.triggerTiming||'',
+          targetOwnerId:target?targetOwner.id:null,targetInstanceId:target?target.instanceId:null}
+      });
+      dispatchPendingCombatEvents(state);
       return { ok: true };
     }
     return { ok: false, reason: '지원하지 않는 카드 종류입니다.' };
