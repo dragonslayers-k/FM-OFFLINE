@@ -1,0 +1,71 @@
+# FM-OFFLINE runtime playability gate audit — 2026-11-06
+
+- Repository: dragonslayers-k/FM-OFFLINE
+- Inspected branch: feat/combat-event-foundation
+- PR: #28 (Open / Draft; do not merge without user approval)
+- Inspected HEAD: 1bf65ab2dc80035a6329b10dd8c3b80dffd78114
+- Purpose: translate the v4.9 game-play-first policy into an exact implementation backlog. This is a source-code audit, not a claim that the fixes are already implemented.
+
+## 1. Confirmed runtime blockers
+
+The current branch has multiple hard gates that treat missing source verification or unsupported effect parsing as card-use failure. These are not just review labels.
+
+| Area | Current code location | Current behavior | Required v4.9 behavior |
+|---|---|---|---|
+| Non-land cost | app/src/main/assets/game/rules.js:553-558 | costKnown/costMapped false or missing cost rejects play | Resolve source cost first, otherwise use card-specific inferred/fallback runtime cost; never silently free |
+| Unit stats | rules.js:559-560 | Missing/non-positive HP or missing AP/DP rejects unit | Provide card-specific stat overlay from same-family/DB analysis; fallback only if no defensible estimate |
+| Land LP/install/production | rules.js:561-580 | Missing LP, install cost, EarnSoul decode, or zero production rejects land | Populate inferred runtime LP/install/production; special MagicLand gets deterministic playable fallback, not ordinary fake production |
+| Item equip conditions | rules.js:581-584 and itemMatchesUnit() | Missing or unmapped condition rejects item or every target | Infer the narrowest safe legal target profile; if still unresolved, allow a deterministic conservative fallback target rule and log it |
+| Enchant | rules.js:585-590, playCard() around 972-977, app.js:479-482 | Candidate-only enchant is rejected; UI unconditionally alerts and exits; engine returns false | Use inferred handler when defensible; otherwise consume cost, resolve only that effect as no-op, and complete the action |
+| Spell | rules.js:591-600, applyEffect() | Missing timing/effect/target rejects play | Infer timing/target/effect where supported; otherwise queue/resolve deterministic no-op without blocking card use or turn |
+| Skill2 | card-schema.js:301-302, rules.js:533-542 | Non-source-verified mapping is disabled and never dispatched | Keep provenance separate; apply tested inferred mapping or a non-blocking deterministic fallback |
+| Unknown upkeep cost | rules.js:836-858 | unitNeutralUpkeep() returns Infinity; payNeutralUpkeep() can end the match because a prior unit has unknown cost | Runtime overlay must always provide finite upkeep cost. A missing provenance flag must never manufacture Infinity or auto-lose a match |
+
+## 2. Current tests encode part of the old blocking policy
+
+The existing tests explicitly expect:
+- missing/empty source cost makes FM.playCard() fail (tests/rules.test.cjs, test near line 1284);
+- candidate-only enchant fails validation (tests/rules.test.cjs, test near line 1374);
+- unknown Skill2 does not fall through to Skill1 handler (this safety property must remain).
+
+Do not delete these tests without replacement. Rewrite them around the new contract:
+- missing source cost plus valid inferred runtime cost is playable and pays that cost;
+- missing source cost plus deterministic fallback cost is playable and never free;
+- candidate-only enchant with a fallback disposition completes as no-op and leaves no pending action;
+- unknown Skill2 never executes as a different Skill1 rule, but does not disable the unit/card;
+- missing upkeep provenance cannot cause Infinity or automatic defeat.
+
+## 3. Required architecture change
+
+Separate two decisions currently conflated:
+1. Source/review state: whether the original game meaning is verified, pending, disputed, or unknown.
+2. Runtime playability: whether the card has a valid runtime profile and every action resolves to a terminal state.
+
+Recommended per-card runtime profile fields:
+- runtimeProfileVersion
+- runtimeCost and runtimeCostStatus
+- runtimeStats for AP/DP/HP/LP and other required numeric fields
+- runtimeSkill1 / runtimeSkill2 plus mapping provenance and fallback policy
+- runtimeItemCondition
+- runtimeEffectDisposition: implemented_verified, implemented_inferred, fallback_noop, not_applicable
+- runtimeEffect / runtimeFallback
+- inferenceMethod, referenceCardIds, evidenceRefs, confidence, diagnosticTag, testIds
+
+Resolver order: source-verified -> accepted/tested inferred overlay -> deterministic conservative fallback. The original source payload remains immutable.
+
+## 4. Implementation order
+
+1. CardDB runtime overlay first: produce one runtime profile for each of 15,350 DB29 cards; use existing image/manual/web/skill/effect adjudications before calculating new values. Analyze same-rule and same-family cohorts; do not fill all missing costs with zero or all effects with an arbitrary powerful behavior.
+2. T-side coverage report: enumerate missing runtime fields and effect dispositions by card ID; distinguish source-confirmed, inferred, and fallback counts.
+3. APK adapter: import runtime profile and provenance as a separate layer; preserve DB29 source payload.
+4. Engine: update validation, cost payment, unit upkeep, item target selection, spell/enchant resolution, and Skill2 dispatch to consume runtime profiles. No unsupported effect may leave an action unresolved.
+5. Tests: replace old block-on-review expectations with payment/terminal-resolution assertions, plus deterministic fixed-seed match tests.
+6. Verification: focused Node tests and pack-contract tests first; APK emulator/fixed-seed match only after a new data pack exists. No full audit/release or PR merge without the existing approval gates.
+
+## 5. Scope and current limitations
+
+- This audit confirms code-level gates on PR #28 HEAD, not the number of cards affected in DB29. A card-level count requires the current DB29 SQLite/data-pack inventory.
+- No code was changed by this audit note.
+- No Actions workflow was manually dispatched or rerun.
+- DB29 and Release 29 remain immutable; DB30 remains unpublished.
+- PR #28 remains Open/Draft and unmerged.
