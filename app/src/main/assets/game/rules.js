@@ -1665,6 +1665,30 @@ if (card.type === 'unit') {
     return units.slice().sort((a, b) => Number(a.hp || 0) - Number(b.hp || 0) ||
       totalPower(b, 'ap') - totalPower(a, 'ap'))[0];
   }
+  
+  function aiSpellPriority(state, ownerId, card, target) {
+    const effect = card.effect || {};
+    const amount = Math.max(0, Number(effect.amount || 0));
+    if (effect.type === 'draw') return Math.min(3, amount || 1) * 3;
+    if (effect.type === 'mill') return Math.min(amount, player(state, opponentId(ownerId)).deck.length) * 0.35;
+    if (effect.type === 'damage' && target) {
+      return amount + (amount >= Number(target.hp || 0) ? 8 : 0) + totalPower(target, 'ap') * 0.2;
+    }
+    if (effect.type === 'drain' && target) {
+      const wounded = player(state, ownerId).units.some(unit => Number(unit.hp || 0) < Number(unit.maxHp || 0));
+      return amount + (amount >= Number(target.hp || 0) ? 8 : 0) + (wounded ? amount * 0.6 : 0);
+    }
+    if (effect.type === 'heal' && target) {
+      const missing = Math.max(0, Number(target.maxHp || 0) + Number(target.itemHP || 0) + Number(target.tempHP || 0) - Number(target.hp || 0));
+      return Math.min(amount, missing) * 1.8 + totalPower(target, 'ap') * 0.1;
+    }
+    if (effect.type === 'buff' && target) {
+      return (Number(effect.ap || 0) > 0 ? Number(effect.ap) * 1.8 : 0) +
+        (Number(effect.dp || 0) > 0 ? Number(effect.dp) * 1.2 : 0) +
+        (Number(effect.hp || 0) > 0 ? Number(effect.hp) * 0.8 : 0);
+    }
+    return 0.5;
+  }
 
   function runAIPhase(state, ownerId) {
     const ai = player(state, ownerId);
@@ -1693,14 +1717,24 @@ if (card.type === 'unit') {
         }
         return (sumCost(runtimeCostFor(a)) - sumCost(runtimeCostFor(b))) || (b.ap + b.hp - a.ap - a.hp);
       })[0];
+      const spellCard = candidates.filter(c => c.type === 'spell').map(c => ({
+        card: c, target: bestSpellTarget(state, ownerId, c)
+      })).filter(x => x.card.runtimeEffectDisposition === 'fallback_noop' ||
+        !['enemyUnit', 'ownUnit'].includes(x.card.effect?.target) || x.target)
+        .map(x => ({...x, priority:aiSpellPriority(state,ownerId,x.card,x.target)}))
+        .sort((a,b) => b.priority-a.priority ||
+          sumCost(runtimeCostFor(a.card))-sumCost(runtimeCostFor(b.card)))[0];
+
+      // A high-value spell (notably a legal lethal) should not be starved by
+      // deploying a unit first when both compete for the same preparation souls.
+      if (spellCard && spellCard.priority >= 8) {
+        const result = playCard(state, ownerId, spellCard.card.instanceId, spellCard.target?.instanceId);
+        if (result.ok) { progressed = true; continue; }
+      }
       if (unitCard) {
         const result = playCard(state, ownerId, unitCard.instanceId);
         if (result.ok) { progressed = true; continue; }
       }
-      const spellCard = candidates.filter(c => c.type === 'spell').map(c => ({ card: c, target: bestSpellTarget(state, ownerId, c) }))
-        .filter(x => x.card.runtimeEffectDisposition === 'fallback_noop' ||
-          !['enemyUnit', 'ownUnit'].includes(x.card.effect?.target) || x.target)
-        .sort((a, b) => Number(b.card.effect?.amount || 0) - Number(a.card.effect?.amount || 0))[0];
       if (spellCard) {
         const result = playCard(state, ownerId, spellCard.card.instanceId, spellCard.target?.instanceId);
         if (result.ok) { progressed = true; continue; }
