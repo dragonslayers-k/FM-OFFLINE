@@ -304,7 +304,8 @@
     if (!abilityOk) return false;
     const condition = card.itemConditions;
     if (!condition) return true;
-    if (!condition.mapped || (condition.unsupported && condition.unsupported.length)) return false;
+    if ((!condition.mapped || (condition.unsupported && condition.unsupported.length)) &&
+        card.runtimeItemConditionStatus !== 'fallback_any_unit') return false;
     if (condition.owner === 'enemy' && targetOwnerId !== 'ai') return false;
     if (condition.owner === 'own' && targetOwnerId !== 'player') return false;
     if (condition.race && String(unit.race || '') !== condition.race) return false;
@@ -474,12 +475,16 @@
     if (card.type === 'item') {
       const targetOwnerId = card.itemConditions && card.itemConditions.owner === 'enemy' ? 'ai' : 'player';
       candidates = state.players[targetOwnerId].units.filter(unit => canEquipOn(card,unit,targetOwnerId));
-      if (card.runtimeItemConditionStatus === 'fallback_any_unit' && !candidates.length) {
+      const condition=card.itemConditions||{};
+      const allowed=Array.isArray(card.allowedUnitAbilities)?card.allowedUnitAbilities:[];
+      const hasKnownTargetRestriction=!!(condition.owner||condition.race||condition.affiliation||(allowed.length&&!allowed.includes('만능')));
+      const canUseNoTargetFallback=card.runtimeItemConditionStatus==='fallback_any_unit'&&!hasKnownTargetRestriction;
+      if (card.runtimeItemConditionStatus === 'fallback_any_unit' && !candidates.length && !hasKnownTargetRestriction) {
         candidates = state.players[targetOwnerId].units.slice();
       }
       title = targetOwnerId === 'ai' ? '장착 대상 유닛' : '장착 대상 유닛';
-      if (!candidates.length && card.runtimeItemConditionStatus !== 'fallback_any_unit') {
-        alert('현재 장착 가능한 유닛이 없습니다.'); return;
+      if (!candidates.length && !canUseNoTargetFallback) {
+        alert('현재 원본에서 확인된 장착 조건을 충족하는 유닛이 없습니다.'); return;
       }
     } else if (card.type === 'enchant') {
       if (card.runtimeEffectDisposition === 'fallback_noop') {
