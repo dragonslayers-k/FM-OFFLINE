@@ -205,28 +205,32 @@ def db_cost_to_app(cost_row):
     soul=json.loads(cost_row["soul_json"] or "{}")
     colors=soul.get("colors") or {}
     candidate={}
-    flexible_special=0
     for key,value in colors.items():
         amount=integer(value)
         if amount is None or not amount:
             continue
-        if key in ("ncs","bonus"):
-            flexible_special+=amount
+        if key=="ncs":
+            # Manual.zip confirms NCS/무속성 can be paid with any attribute.
+            candidate["neutral"]=candidate.get("neutral",0)+amount
+            continue
+        if key=="bonus":
+            # BONUS remains a distinct, unverified special token.
+            candidate["bonus"]=candidate.get("bonus",0)+amount
             continue
         candidate["metal" if key=="iron" else key]=amount
-    if flexible_special:
-        candidate["neutral"]=candidate.get("neutral",0)+flexible_special
     mapping_review=bool(cost_row["mapping_review"])
     semantic_review=bool(cost_row["semantic_review"])
     soul_known=bool(cost_row["soul_known"])
-    known=soul_known
+    # Recognized tokens are not automatically playable: unresolved hybrid or
+    # special-token semantics must fail closed until independently verified.
+    known=soul_known and not mapping_review and not semantic_review
     review=[]
     if not soul_known:
         review.append("unresolved-source-token")
     if mapping_review:
-        review.append("hybrid-playable-inferred-both-colors")
+        review.append("hybrid-cost-mapping-unverified")
     if semantic_review:
-        review.append("special-soul-playable-inferred-flexible-neutral")
+        review.append("special-soul-semantics-unverified")
     # Preserve an explicit NONE/00 source as a known zero-cost object.
     app_cost=dict(candidate) if known else {}
     if known and not app_cost:

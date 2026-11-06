@@ -291,8 +291,9 @@
       return 'LP '+(card.requiredLP??'미상')+' · 설치 소울 '+install;
     }
     if(card.costKnown===true&&card.costMapped===true)return FM.costText(card.cost);
+    if(card.costMappingReview&&card.costSemanticReview)return '혼합/특수 소울 검토';
     if(card.costMappingReview)return '혼합 소울 비용 검토';
-    if(card.costSemanticReview)return 'NCS/BONUS 의미 검토';
+    if(card.costSemanticReview)return '특수 소울 의미 검토';
     return '소울 구슬 비용 검증 대기';
   }
   function canEquipOn(card, unit, targetOwnerId = 'player') {

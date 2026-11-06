@@ -151,7 +151,7 @@ class SqliteCardPackTests(unittest.TestCase):
         self.assertEqual(parsed["cost"], {"metal": 2})
         self.assertEqual(parsed["sourceStatus"], "enum_decoded")
 
-    def test_hybrid_mapping_review_is_playable_with_inferred_both_colors(self):
+    def test_hybrid_mapping_review_fails_closed_until_verified(self):
         row = self.db.execute("SELECT * FROM card_costs").fetchone()
         names = [x[1] for x in self.db.execute("PRAGMA table_info(card_costs)")]
         values = dict(zip(names, row))
@@ -162,25 +162,30 @@ class SqliteCardPackTests(unittest.TestCase):
         values["mapping_review"] = 1
         values["verification_status"] = "mapping_review"
         parsed = CONVERTER.db_cost_to_app(values)
-        self.assertTrue(parsed["known"])
-        self.assertEqual(parsed["cost"], {"forest": 1, "metal": 1})
+        self.assertFalse(parsed["known"])
+        self.assertEqual(parsed["cost"], {})
         self.assertEqual(parsed["candidateCost"], {"forest": 1, "metal": 1})
         self.assertTrue(parsed["mappingReview"])
+        self.assertIn("hybrid-cost-mapping-unverified", parsed["review"])
 
-    def test_ncs_semantics_review_is_playable_as_flexible_neutral(self):
+    def test_ncs_and_bonus_remain_separate_and_unverified_cost_fails_closed(self):
         row = self.db.execute("SELECT * FROM card_costs").fetchone()
         names = [x[1] for x in self.db.execute("PRAGMA table_info(card_costs)")]
         values = dict(zip(names, row))
         soul = json.loads(values["soul_json"])
         soul["colors"]["ncs"] = 1
-        soul["colors"]["neutral"] = 1
+        soul["colors"]["bonus"] = 2
         values["soul_json"] = json.dumps(soul)
         values["semantic_review"] = 1
         values["verification_status"] = "semantic_review"
         parsed = CONVERTER.db_cost_to_app(values)
-        self.assertTrue(parsed["known"])
-        self.assertEqual(parsed["cost"], {"metal": 2, "neutral": 2})
+        self.assertFalse(parsed["known"])
+        self.assertEqual(parsed["cost"], {})
+        self.assertEqual(parsed["candidateCost"], {"metal": 2, "neutral": 1, "bonus": 2})
         self.assertEqual(parsed["specialSouls"]["ncs"], 1)
+        self.assertEqual(parsed["specialSouls"]["bonus"], 2)
+        self.assertTrue(parsed["semanticReview"])
+        self.assertIn("special-soul-semantics-unverified", parsed["review"])
 
     def test_load_reads_exact_url_image_hash_and_effect_candidates_from_sqlite(self):
         rows = CONVERTER.load_normalized_database(self.db_path, expected_count=1)
