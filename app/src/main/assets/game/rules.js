@@ -562,6 +562,8 @@
 
   function validateCardForPlay(card) {
     if(!card||!['land','unit','item','spell','enchant'].includes(card.type))return {ok:false,reason:'카드 종류 또는 데이터가 올바르지 않습니다.'};
+    if ((card.type === 'spell' || card.type === 'enchant') && card.runtimeEffectDisposition === 'fallback_noop')
+      return {ok:false,reason:'이 카드의 원본 효과는 아직 구현·검증되지 않아 현재 대전에서 사용할 수 없습니다. 효과가 검증된 뒤 활성화됩니다.'};
     if(card.type!=='land'){
       const parsed=readCost(runtimeCostFor(card));if(!parsed.ok)return parsed;
     }
@@ -759,8 +761,8 @@
     // A zero-soul first preparation can install only a free land at LP <= 1.
     // If one exists in the deck, do not stop at a merely-present but unusable land.
     const requirePlayableLand = p.deck.some(isInitialPlayableLand);
-    const hasRequiredLand = hand => hand.some(card =>
-      requirePlayableLand ? isInitialPlayableLand(card) : card.type === 'land');
+    const landRequirement = requirePlayableLand ? isInitialPlayableLand : card => card && card.type === 'land';
+    const hasRequiredLand = hand => hand.some(landRequirement);
     let attempts = 0;
     do {
       p.hand = [];
@@ -771,9 +773,10 @@
       attempts++;
     } while (attempts < 20 && p.deck.some(card =>
       requirePlayableLand ? isInitialPlayableLand(card) : card.type === 'land'));
-    // Preserve the guarantee even with a deterministic/degenerate RNG.
-    if (requirePlayableLand && !hasRequiredLand(p.hand)) {
-      const index = p.deck.findIndex(isInitialPlayableLand);
+    // Preserve the first-hand land guarantee even with a deterministic/degenerate RNG.
+    // Prefer a free LP-1 land when one exists; otherwise any legal land is better than none.
+    if (p.deck.some(landRequirement) && !hasRequiredLand(p.hand)) {
+      const index = p.deck.findIndex(landRequirement);
       if (index >= 0) {
         const playableLand = p.deck.splice(index,1)[0];
         const displaced = p.hand.pop();
@@ -797,6 +800,12 @@
     p.lp = Math.max(0, Number(p.lp || 0)) + 1;
     p.soulSpent = 0;
     p.soulPool = generateSoulPool(p.lands);
+    const defendingTurn = id !== state.attackerId;
+    if (defendingTurn) {
+      // Defensive preparations receive one generic soul to offset the first-player tempo advantage.
+      p.soulPool.neutral += 1;
+      addLog(state, p.name + '이(가) 방어 턴 보상으로 무속성 소울 1개를 받았습니다.');
+    }
     p._state = state;
     p.units.forEach(unit => {
       unit.canAttack = true;

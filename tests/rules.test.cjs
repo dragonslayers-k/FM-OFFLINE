@@ -91,6 +91,44 @@ test('inferred hybrid soul cost still requires each printed color',()=>{
   assert.equal(FM.canPay(p,{forest:1,metal:1}),true);
 });
 
+
+test('first hand guarantees a land for both sides even when every land costs souls',()=>{
+  const deck=Array.from({length:50},(_,i)=>unit('paid-land-deck-unit-'+i));
+  deck[20]={...land('paid-only-land','forest',1,0),landInstallCost:{forest:1}};
+  const game=FM.newGame({cards:deck,playerDeck:deck,aiDeck:deck,rng:()=>0.999});
+  assert.ok(game.players.player.hand.some(card=>card.type==='land'));
+  assert.ok(game.players.ai.hand.some(card=>card.type==='land'));
+});
+
+test('opening hand mulligan burns one card and does not guarantee a land again',()=>{
+  const deck=Array.from({length:49},(_,i)=>unit('mulligan-unit-'+i));
+  deck.splice(10,0,land('single-opening-land','forest',1,0));
+  const game=FM.newGame({cards:deck,playerDeck:deck,aiDeck:deck,rng:()=>0.999});
+  const p=game.players.player;
+  assert.ok(p.hand.some(card=>card.type==='land'),'the initial deal must include a land');
+  const burnedBefore=p.graveyard.length;
+  const result=FM.reshuffleHand(game,'player');
+  assert.equal(result.ok,true);
+  assert.equal(p.graveyard.length,burnedBefore+1,'one card is permanently burned');
+  assert.equal(p.hand.length,6);
+  assert.equal(p.hand.some(card=>card.type==='land'),false,'a voluntary mulligan carries no land guarantee');
+});
+
+test('defending preparation receives one generic bonus soul; attacking preparation does not',()=>{
+  const p=player('player',{lands:[land('player-defender-land','forest')]});
+  const ai=player('ai',{lands:[land('ai-defender-land','fire')]});
+  const s=state(p,ai,{attackerId:'player',activeId:'player'});
+  FM._test.beginPhase(s,'ai');
+  assert.equal(ai.soulPool.neutral,1);
+  assert.equal(ai.unitDeployLimit,2,'one generated colored soul plus one defender bonus soul');
+  const s2=state(player('player',{lands:[land('player-attacker-land','forest')]}),player('ai'),{
+    attackerId:'player',activeId:'player'
+  });
+  FM._test.beginPhase(s2,'player');
+  assert.equal(s2.players.player.soulPool.neutral,0);
+  assert.equal(s2.players.player.unitDeployLimit,1);
+});
+
 test('opening hand is six cards and contains at least one land for both sides',()=>{
   const lands=Array.from({length:10},(_,i)=>land('land'+i,'forest'));
   const units=Array.from({length:40},(_,i)=>unit('unit'+i));
@@ -1813,14 +1851,14 @@ test('enchant simple text remains a terminal fallback until event-duration slot 
   const card=CardSchema.normalize(base);
   assert.equal(card.runtimeEffectDisposition,'fallback_noop');
   assert.equal(card.effect,null);
-  assert.equal(FM.validateCardForPlay(card).ok,true);
+  assert.equal(FM.validateCardForPlay(card).ok,false);
   card.instanceId='simple-enchant-1';
   const p=player('player',{hand:[card],soulPool:{colored:{},neutral:1}});
   const played=FM.playCard(state(p,player('ai')),'player','simple-enchant-1');
-  assert.equal(played.ok,true);
-  assert.equal(p.hand.length,0);
-  assert.equal(p.graveyard.length,1);
-  assert.equal(p.soulPool.neutral,0);
+  assert.equal(played.ok,false);
+  assert.equal(p.hand.length,1);
+  assert.equal(p.graveyard.length,0);
+  assert.equal(p.soulPool.neutral,1);
 });
 
 test('candidate-only enchant resolves as a paid deterministic no-op instead of blocking the card',()=>{
@@ -1832,11 +1870,10 @@ test('candidate-only enchant resolves as a paid deterministic no-op instead of b
   const p=player('player',{hand:[card],soulPool:{colored:{fire:1},neutral:0}});
   const s=state(p,player('ai'));
   const result=FM.playCard(s,'player','candidate-enchant-1');
-  assert.equal(result.ok,true);
-  assert.equal(result.effectDisposition,'fallback_noop');
-  assert.equal(p.hand.length,0);
-  assert.equal(p.graveyard.length,1);
-  assert.equal(p.soulPool.colored.fire,0);
+  assert.equal(result.ok,false);
+  assert.equal(p.hand.length,1);
+  assert.equal(p.graveyard.length,0);
+  assert.equal(p.soulPool.colored.fire,1);
   assert.equal(s.status,'playing');
 });
 
@@ -1892,11 +1929,10 @@ test('unmapped spell effect is paid, consumed and closed as a deterministic no-o
   const p=player('player',{hand:[card],soulPool:{colored:{},neutral:1}});
   const s=state(p,player('ai'));
   const result=FM.playCard(s,'player','unknown-spell-1');
-  assert.equal(result.ok,true);
-  assert.equal(result.effectDisposition,'fallback_noop');
-  assert.equal(p.hand.length,0);
-  assert.equal(p.graveyard.length,1);
-  assert.equal(p.soulPool.neutral,0);
+  assert.equal(result.ok,false);
+  assert.equal(p.hand.length,1);
+  assert.equal(p.graveyard.length,0);
+  assert.equal(p.soulPool.neutral,1);
   assert.equal(s.status,'playing');
 });
 
@@ -3748,7 +3784,7 @@ test('starter deck prioritizes affordable terrain and runtime-cost cards over so
   assert.ok(deck.slice(34).every(c=>c.id.startsWith('other-')));
 });
 
-test('AI uses paid terminal fallback enchants rather than leaving them stranded in hand',()=>{
+test('AI refuses unsupported fallback enchants and preserves its resources',()=>{
   const enchant={id:'ai-enchant-fallback',name:'AI fallback enchant',type:'enchant',
     instanceId:'ai-enchant-fallback-1',faction:'forest',cost:{forest:1},costKnown:true,costMapped:true,
     runtimeCost:{forest:1},runtimeCostKnown:true,runtimeCostStatus:'source_verified',
@@ -3757,11 +3793,10 @@ test('AI uses paid terminal fallback enchants rather than leaving them stranded 
   const ai=player('ai',{hand:[enchant],soulPool:{colored:{forest:1},neutral:0},unitDeployLimit:0});
   const s=state(p,ai,{activeId:'ai',settings:{difficulty:'normal'}});
   FM.runAIPhase(s,'ai');
-  assert.equal(ai.hand.length,0);
-  assert.equal(ai.graveyard.length,1);
-  assert.equal(ai.graveyard[0].id,'ai-enchant-fallback');
-  assert.equal(ai.soulPool.colored.forest,0);
-  assert.equal(ai.playedAnyCardThisPhase,true);
+  assert.equal(ai.hand.length,1);
+  assert.equal(ai.graveyard.length,0);
+  assert.equal(ai.soulPool.colored.forest,1);
+  assert.equal(ai.playedAnyCardThisPhase,false);
   assert.equal(s.prepared.ai,true);
 });
 
@@ -3800,7 +3835,7 @@ test('AI prefers the lower soul-cost land when LP requirements are equal',()=>{
   assert.equal(ai.hand[0].id,'ai-land-high-cost');
 });
 
-test('AI pays and uses a no-op fallback spell even when its source target is unavailable',()=>{
+test('AI refuses unsupported fallback spells and preserves its resources',()=>{
   const spell={id:'ai-fallback-spell',name:'AI fallback spell',type:'spell',
     instanceId:'ai-fallback-spell-1',faction:'forest',cost:{forest:1},costKnown:true,costMapped:true,
     runtimeCost:{forest:1},runtimeCostKnown:true,runtimeCostStatus:'source_verified',
@@ -3809,11 +3844,10 @@ test('AI pays and uses a no-op fallback spell even when its source target is una
   const ai=player('ai',{hand:[spell],soulPool:{colored:{forest:1},neutral:0},unitDeployLimit:0});
   const s=state(p,ai,{activeId:'ai',settings:{difficulty:'normal'}});
   FM.runAIPhase(s,'ai');
-  assert.equal(ai.hand.length,0);
-  assert.equal(ai.graveyard.length,1);
-  assert.equal(ai.graveyard[0].id,'ai-fallback-spell');
-  assert.equal(ai.soulPool.colored.forest,0);
-  assert.equal(ai.playedAnyCardThisPhase,true);
+  assert.equal(ai.hand.length,1);
+  assert.equal(ai.graveyard.length,0);
+  assert.equal(ai.soulPool.colored.forest,1);
+  assert.equal(ai.playedAnyCardThisPhase,false);
   assert.equal(s.prepared.ai,true);
 });
 

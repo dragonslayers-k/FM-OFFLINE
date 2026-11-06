@@ -424,7 +424,10 @@
     renderUnits('ai-units', ai, false); renderUnits('player-units', you, true);
     el('hand-cards').innerHTML = you.hand.map(c => cardMarkup(c, selectedHandId === c.instanceId, false)).join('') || '<div class="empty-state">패가 비어 있습니다.</div>';
     renderSelectedCard();
-    el('play-card').disabled = !playerPhase || !selectedHandId || state.status !== 'playing';
+    const selectedCard = you.hand.find(card => card.instanceId === selectedHandId);
+    const selectedValidation = selectedCard ? FM.validateCardForPlay(selectedCard) : null;
+    el('play-card').disabled = !playerPhase || !selectedHandId || state.status !== 'playing' || !selectedValidation?.ok;
+    el('play-card').title = selectedValidation && !selectedValidation.ok ? selectedValidation.reason : '';
     el('discard-card').disabled = !playerPhase || !selectedHandId || state.status !== 'playing';
     const reshuffle = el('reshuffle-hand');
     if (reshuffle) {
@@ -432,7 +435,7 @@
         you.reshuffleUsedRound === state.round || you.playedAnyCardThisPhase || you.playedLand ||
         Number(you.unitDeployedThisPhase || 0) > 0 || !you.hand.length;
       reshuffle.textContent = state.round > 4 ? '리셔플 종료 (4턴까지)' :
-        you.reshuffleUsedRound === state.round ? '이번 턴 리셔플 사용 완료' : '핸드 다시 받기 · 1장 소각';
+        you.reshuffleUsedRound === state.round ? '이번 턴 리셔플 사용 완료' : '핸드 셔플 · 1장 소각 (지형 보장 없음)';
     }
     el('end-phase').disabled = !playerPhase || state.status !== 'playing';
     el('end-phase').textContent = playerPhase ? (state.attackerId === 'player' ? '공격 준비 완료' : '방어 준비 완료') : 'AI 진행 중';
@@ -457,8 +460,10 @@
     }
     box.classList.remove('empty');
     const unitButton=unit?'<button type="button" class="selected-card-detail" data-open-card-detail="'+escapeAttr(unit.id)+'">선택 유닛 상세</button>':'';
+    const validation=FM.validateCardForPlay(card);
+    const validationNote=validation.ok?'':'<small class="selected-card-warning">사용 불가: '+escapeHtml(validation.reason)+'</small>';
     box.innerHTML='<div class="selected-card-main"><strong>'+escapeHtml(card.name)+'</strong> · '+escapeHtml(cardMeta(card))+
-      '<small class="selected-card-condition">비용: '+escapeHtml(costLabel(card))+'</small></div>'+
+      '<small class="selected-card-condition">비용: '+escapeHtml(costLabel(card))+'</small>'+validationNote+'</div>'+
       '<button type="button" class="selected-card-detail" data-open-card-detail="'+escapeAttr(card.id)+'">카드 상세 보기</button>'+unitButton;
   }
   function chooseHand(instanceId) {
@@ -480,6 +485,8 @@
     if (!state || state.activeId !== 'player' || !selectedHandId) return;
     const card = state.players.player.hand.find(c => c.instanceId === selectedHandId);
     if (!card) return;
+    const validation = FM.validateCardForPlay(card);
+    if (!validation.ok) { alert(validation.reason); return; }
     let candidates = [], title = '';
     if (card.type === 'item') {
       const targetOwnerId = card.itemConditions && card.itemConditions.owner === 'enemy' ? 'ai' : 'player';
@@ -634,8 +641,13 @@
   function renderDeckCatalogue(reset = true) {
     if (reset) catalogueVisibleCount = 100;
     const query = (el('deck-search').value || '').trim().toLocaleLowerCase();
+    const type = el('deck-filter-type').value, faction = el('deck-filter-faction').value;
     const counts = currentDeckCounts();
-    const visible = cards.filter(c => !query || matchesCardSearch(c, query));
+    const visible = cards.filter(c =>
+      (type === 'all' || c.type === type) &&
+      (faction === 'all' || c.faction === faction) &&
+      (!query || matchesCardSearch(c, query))
+    );
     const page = visible.slice(0, catalogueVisibleCount);
     el('deck-catalogue').innerHTML = page.map(c => {
       const art = cardArtUrl(c.artImage);
@@ -751,7 +763,9 @@
       const counts = {}; sample.forEach(c => counts[c.id] = (counts[c.id] || 0) + 1);
       data.deckCounts = counts; data.deckFaction = faction; safeWrite(); renderDeck();
     });
-    el('deck-search').addEventListener('input', () => renderDeckCatalogue(true));
+    ['deck-search','deck-filter-type','deck-filter-faction'].forEach(id => {
+      el(id).addEventListener(id === 'deck-search' ? 'input' : 'change', () => renderDeckCatalogue(true));
+    });
     ['library-search','filter-type','filter-faction'].forEach(id => el(id).addEventListener('input', () => renderLibrary(true)));
     el('import-data-pack').addEventListener('click', importDataPack);
     el('download-data-pack').addEventListener('click', downloadDataPack);
