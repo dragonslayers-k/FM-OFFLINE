@@ -337,3 +337,10 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - JS tests: 256 passed / 0 failed. Python converter self-test passed; SQLite pack tests: 13 passed; enchant audit self-test passed.
 - The earlier #405–#407 failures were caused by the new test treating the reverse-chronological log array as chronological. The runtime order was already correct: lethal spell first, unit second. The corrected assertion passed; no production-code rollback was needed.
 - This is still lightweight CI: DB29 pack, APK build and emulator are skipped. DB29/DB30/main/release remain unchanged; PR #28 stays Draft/Open/unmerged.
+
+## AI buff target marker regression — 2026-11-07
+
+- Runtime change commit `d9e33064b53a45136b0034ad78d2d78bdcc211cf`: AI buff-spell target selection now excludes units where every requested stat change is blocked by Manual stat markers. This prevents spending a spell on a target that cannot receive the requested change.
+- Test commit `6b601cc719f420db165eeee4867c44e4759a3889`: added AI preparation-path regressions for choosing a legal buff target and retaining the spell when all targets are marker-blocked.
+- Actions #413 / run `42307205056` succeeded on exact HEAD `6b601cc719f420db165eeee4867c44e4759a3889`: 259 JS tests passed / 0 failed; Python converter self-test passed; SQLite pack tests 13 passed; enchant audit self-test passed.
+- This is a focused AI target-selection correction. It does not verify all card effects or full APK/emulator gameplay. DB29 unchanged; DB30 not published; main/release untouched; PR #28 remains Draft/Open/unmerged.
