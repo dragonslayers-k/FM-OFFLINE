@@ -22,7 +22,7 @@ if (mappingData.schemaVersion !== 1 || !Array.isArray(mappingData.records) ||
   throw new Error('card-skill-mappings.json has an invalid schema or record count');
 }
 const effectData = JSON.parse(fs.readFileSync(effectFile, 'utf8'));
-if (effectData.schemaVersion !== 1 || !Array.isArray(effectData.records) ||
+if (effectData.schemaVersion !== 2 || !Array.isArray(effectData.records) ||
     effectData.candidateCount !== effectData.records.length ||
     effectData.clauseCount !== effectData.records.reduce((n,x)=>n+(Array.isArray(x.clauses)?x.clauses.length:0),0)) {
   throw new Error('card-effect-candidates.json has an invalid schema or record count');
@@ -220,7 +220,7 @@ const landInstallCost = { known:0, review:0, mappingReview:0, semanticReview:0, 
 const runtimeCostStatus = Object.create(null);
 const runtimeEffectDisposition = Object.create(null);
 const runtimePlayable = { ready:0, blocked:0 };
-const effectAudit = { candidates:0, clauses:0, candidateOnlyCards:0, unexpectedExecutableEffects:0, spanErrors:0 };
+const effectAudit = { candidates:0, clauses:0, candidateOnlyCards:0, unexpectedExecutableEffects:0, spanErrors:0, runtimeDispositions:Object.create(null) };
 const skillAudit = { mappingRows:0, manualVerifiedMappings:0, communityCandidates:0, unmapped:0,
   noSkill:0, communityRuleExecution:0, manualRuleCards:0 };
 const errors = [];
@@ -334,6 +334,14 @@ for (const card of cards) {
     }
     const clauses = Array.isArray(candidate.clauses) ? candidate.clauses : [];
     effectAudit.clauses += clauses.length;
+    for (const clause of clauses) {
+      const disposition=String(clause.runtimeDisposition||'');
+      if (!['implemented_verified','implemented_inferred','fallback_noop','not_applicable'].includes(disposition)) {
+        errors.push(card.id + ': effect clause has no terminal runtime disposition');
+      } else {
+        effectAudit.runtimeDispositions[disposition]=(effectAudit.runtimeDispositions[disposition]||0)+1;
+      }
+    }
     if (candidate.spanIntegrityStatus === 'exact') {
       const expectedText = Array.isArray(candidate.analysis?.clause_candidates)
         ? candidate.analysis.clause_candidates.map(x => String(x.text || '')).join('')
@@ -433,6 +441,8 @@ if (nonLandKnown !== 14244 || nonLandReview !== 817 ||
   errors.push('Non-land cost status accounting mismatch: ' + JSON.stringify(costKnown));
 }
 if (effectAudit.candidates !== 17407 || effectAudit.clauses !== 48281 ||
+    Object.values(effectAudit.runtimeDispositions).reduce((n,v)=>n+Number(v||0),0)!==48281 ||
+    JSON.stringify(effectData.runtimeClauseDispositionCounts||{})!==JSON.stringify(effectAudit.runtimeDispositions) ||
     effectAudit.spanErrors !== 0 || effectAudit.unexpectedExecutableEffects !== 0) {
   errors.push('Effect candidate audit mismatch: ' + JSON.stringify(effectAudit));
 }
