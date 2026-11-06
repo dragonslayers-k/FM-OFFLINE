@@ -255,6 +255,13 @@ function probeRuntimeAction(sourceCard) {
   const affiliation=condition.affiliation||'일반';
   const ownTarget=makeProbeUnit('runtime-own-target','player',race,affiliation);
   const enemyTarget=makeProbeUnit('runtime-enemy-target','ai',race,affiliation);
+  const allowedAbilities=Array.isArray(card.allowedUnitAbilities)?card.allowedUnitAbilities:[];
+  for(const target of [ownTarget,enemyTarget]){
+    target.unitAbilityTags=allowedAbilities.slice();
+    target.unitAbility=allowedAbilities[0]||'';
+    target.unitType=allowedAbilities[0]||'';
+    target.subtype=allowedAbilities[0]||'';
+  }
   owner.units.push(ownTarget);
   opponent.units.push(enemyTarget);
   const state={
