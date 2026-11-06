@@ -194,23 +194,44 @@ def add(tabs, group, label_text, value):
     if value is None or value=="": return
     tabs.setdefault(group,[]).append({"label":label_text,"text":f"{label_text} : {value}"})
 
+def db_flag(value):
+    """Parse SQLite/JSON boolean flags without treating the string '0' as true."""
+    if isinstance(value,str):
+        return value.strip().lower() in {"1","true","yes","y","on"}
+    return bool(value)
+
+
 def db_cost_to_app(cost_row):
-    """Read the canonical T SQLite status; never infer cost validity from token syntax alone."""
+    """Read and reconcile every persisted cost-review signal; conflicting status fails closed."""
     if cost_row is None:
         return {
             "cost": {}, "candidateCost": {}, "known": False, "mappingReview": False,
             "semanticReview": False, "soulKnown": False, "review": ["database-cost-row-missing"],
             "tokens": [], "sourceStatus": "missing"
         }
-    soul=json.loads(cost_row["soul_json"] or "{}")
+    review=[]
+    source_status=str(cost_row.get("verification_status") or "unknown").strip().lower()
+    invalid_soul_json=False
+    try:
+        soul=json.loads(cost_row.get("soul_json") or "{}")
+    except (TypeError,ValueError):
+        soul={}
+        invalid_soul_json=True
+    if not isinstance(soul,dict):
+        soul={}
+        invalid_soul_json=True
     colors=soul.get("colors") or {}
+    if not isinstance(colors,dict):
+        colors={}
+        invalid_soul_json=True
     candidate={}
     for key,value in colors.items():
         amount=integer(value)
         if amount is None or not amount:
             continue
         if key=="ncs":
-            # Manual.zip confirms NCS/무속성 can be paid with any attribute.
+            # Candidate only: do not expose NCS as playable until its payment
+            # semantics are independently approved for this DB baseline.
             candidate["neutral"]=candidate.get("neutral",0)+amount
             continue
         if key=="bonus":
@@ -218,20 +239,43 @@ def db_cost_to_app(cost_row):
             candidate["bonus"]=candidate.get("bonus",0)+amount
             continue
         candidate["metal" if key=="iron" else key]=amount
-    mapping_review=bool(cost_row["mapping_review"])
-    semantic_review=bool(cost_row["semantic_review"])
-    soul_known=bool(cost_row["soul_known"])
-    # Recognized tokens are not automatically playable: unresolved hybrid or
-    # special-token semantics must fail closed until independently verified.
-    known=soul_known and not mapping_review and not semantic_review
-    review=[]
+
+    # SQLite columns, the embedded soul_json flags, and the verification
+    # status are three persisted views of the same review decision. Any one
+    # may block play; none may silently override a pending signal in another.
+    mapping_review=(
+        db_flag(cost_row.get("mapping_review")) or
+        db_flag(soul.get("mapping_review")) or
+        source_status=="mapping_review"
+    )
+    semantic_review=(
+        db_flag(cost_row.get("semantic_review")) or
+        db_flag(soul.get("semantic_review")) or
+        source_status=="semantic_review"
+    )
+    column_soul_known=db_flag(cost_row.get("soul_known"))
+    json_soul_known=db_flag(soul.get("known"))
+    soul_known=column_soul_known and json_soul_known
+    status_unverified=source_status in {
+        "unknown","unresolved","missing","invalid","error","pending","not_verified"
+    }
+    if invalid_soul_json:
+        review.append("invalid-soul-json")
     if not soul_known:
-        review.append("unresolved-source-token")
+        review.append("unresolved-source-token" if not column_soul_known and not json_soul_known
+                      else "sqlite-json-known-status-mismatch")
+    if status_unverified:
+        review.append("source-cost-status-unverified")
     if mapping_review:
         review.append("hybrid-cost-mapping-unverified")
     if semantic_review:
         review.append("special-soul-semantics-unverified")
-    # Preserve an explicit NONE/00 source as a known zero-cost object.
+
+    # A known cost requires agreement between both known flags and no review
+    # signal in either representation or the canonical verification status.
+    known=soul_known and not invalid_soul_json and not status_unverified and not mapping_review and not semantic_review
+    # Preserve an explicit NONE/00 source as a known zero-cost object only
+    # when all independent status signals agree that the row is verified.
     app_cost=dict(candidate) if known else {}
     if known and not app_cost:
         app_cost={"neutral":0}
@@ -245,8 +289,8 @@ def db_cost_to_app(cost_row):
         "review":review,
         "tokens":soul.get("tokens") or [],
         "specialSouls":{k:integer(colors.get(k)) or 0 for k in ("ncs","bonus")},
-        "sourceStatus":str(cost_row["verification_status"] or "unknown"),
-        "raw":cost_row["source_text"],
+        "sourceStatus":source_status,
+        "raw":cost_row.get("source_text"),
     }
 
 
@@ -725,6 +769,37 @@ def self_test():
     assert parse_cost("8201",require_soul_enum)["known"] is False
     assert parse_cost("0100",require_soul_enum)["cost"]=={"neutral":0}
     assert parse_cost("",require_soul_enum)["known"] is False
+
+    # Cost playability must fail closed if any persisted status representation
+    # says review is pending, even when another representation says verified.
+    base_cost_row={
+        "soul_json":json.dumps({"colors":{"iron":2,"ncs":0,"bonus":0},"known":True,
+            "mapping_review":False,"semantic_review":False,"tokens":[]}),
+        "soul_known":1,"mapping_review":0,"semantic_review":0,
+        "verification_status":"enum_decoded","source_text":"5102"
+    }
+    decoded=db_cost_to_app(base_cost_row)
+    assert decoded["known"] and decoded["cost"]=={"metal":2}
+    assert db_cost_to_app({**base_cost_row,"mapping_review":"0"})["known"]
+    json_hybrid=db_cost_to_app({**base_cost_row,"soul_json":json.dumps({
+        "colors":{"iron":2},"known":True,"mapping_review":True,"semantic_review":False})})
+    assert not json_hybrid["known"] and json_hybrid["cost"]=={} and json_hybrid["mappingReview"]
+    json_special=db_cost_to_app({**base_cost_row,"soul_json":json.dumps({
+        "colors":{"ncs":1,"bonus":2},"known":True,"mapping_review":False,"semantic_review":True})})
+    assert not json_special["known"] and json_special["cost"]=={} and json_special["semanticReview"]
+    status_hybrid=db_cost_to_app({**base_cost_row,"verification_status":"mapping_review"})
+    assert not status_hybrid["known"] and status_hybrid["mappingReview"]
+    status_special=db_cost_to_app({**base_cost_row,"verification_status":"semantic_review"})
+    assert not status_special["known"] and status_special["semanticReview"]
+    mismatched_known=db_cost_to_app({**base_cost_row,"soul_json":json.dumps({
+        "colors":{"iron":2},"known":False,"mapping_review":False,"semantic_review":False})})
+    assert not mismatched_known["known"] and mismatched_known["cost"]=={}
+    invalid_json=db_cost_to_app({**base_cost_row,"soul_json":"{invalid"})
+    assert not invalid_json["known"] and invalid_json["cost"]=={}
+    explicit_zero=db_cost_to_app({**base_cost_row,"soul_json":json.dumps({
+        "colors":{},"known":True,"mapping_review":False,"semantic_review":False})})
+    assert explicit_zero["known"] and explicit_zero["cost"]=={"neutral":0}
+
     assert CATEGORY[5]=="enchant" and sum(EXPECTED.values())==TOTAL
     assert expected_large_image_name({"id":"land-card","sourceFields":{"Category":1,"KIND":5}})=="L00005L.webp"
     assert expected_large_image_name({"id":"magic-card","sourceFields":{"Category":3,"KIND":3861}})=="M03861L.webp"
