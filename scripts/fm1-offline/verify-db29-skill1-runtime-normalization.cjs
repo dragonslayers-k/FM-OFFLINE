@@ -14,6 +14,7 @@ const EXPECTED = {
   '10091525190': { name: '이블크로우', ruleId: 'weaken_attack', sourceLabel: '약화공격' },
   '10010624589': { name: '파프니르', ruleId: 'petrify_attack', sourceLabel: '석화공격' },
   '10010624551': { name: '해적전투원', ruleId: 'shield_break', sourceLabel: '방패파괴' },
+  '10012024612': { name: '선더골렘', ruleId: 'fatal_attack', sourceLabel: '치명공격' },
   '10010624563': { name: '리듬포이', ruleId: 'defense_convert', sourceLabel: null },
 };
 
