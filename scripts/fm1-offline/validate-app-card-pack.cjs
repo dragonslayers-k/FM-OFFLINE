@@ -216,7 +216,10 @@ const costKnown = Object.create(null);
 const playable = Object.create(null);
 const blocked = Object.create(null);
 const landStatus = Object.create(null);
-const landInstallCost = { known:0, review:0, mappingReview:0, semanticReview:0 };
+const landInstallCost = { known:0, review:0, mappingReview:0, semanticReview:0, runtimeReady:0 };
+const runtimeCostStatus = Object.create(null);
+const runtimeEffectDisposition = Object.create(null);
+const runtimePlayable = { ready:0, blocked:0 };
 const effectAudit = { candidates:0, clauses:0, candidateOnlyCards:0, unexpectedExecutableEffects:0, spanErrors:0 };
 const skillAudit = { mappingRows:0, manualVerifiedMappings:0, communityCandidates:0, unmapped:0,
   noSkill:0, communityRuleExecution:0, manualRuleCards:0 };
@@ -351,38 +354,64 @@ for (const card of cards) {
     errors.push(card.id + ': compact effect verification status does not match candidate file');
   }
 
+  const runtimeCost = card.type === 'land' ? card.landInstallCost : card.runtimeCost;
+  const runtimeCostKnown = card.type === 'land' ? card.landInstallCostKnown === true : card.runtimeCostKnown === true;
+  const runtimeCostParsed = FM._test.readCost(runtimeCost);
+  if (runtimeCostKnown && runtimeCostParsed.ok) {
+    runtimePlayable.ready++;
+    const status = String(card.runtimeCostStatus || 'missing');
+    runtimeCostStatus[status] = (runtimeCostStatus[status] || 0) + 1;
+    if (Object.prototype.hasOwnProperty.call(runtimeCost || {}, 'bonus')) {
+      errors.push(card.id + ': unsupported BONUS key leaked into runtime payment cost');
+    }
+  } else {
+    runtimePlayable.blocked++;
+    errors.push(card.id + ': runtime payment cost is missing or invalid: ' + (runtimeCostParsed.reason || 'unknown'));
+  }
+  if (card.type === 'unit') {
+    const upkeep = FM._test.readCost(card.runtimeUpkeepCost);
+    if (!upkeep.ok) errors.push(card.id + ': runtime upkeep profile is missing or invalid');
+  }
+  if (card.runtimeEffectDisposition) {
+    const disposition = String(card.runtimeEffectDisposition);
+    runtimeEffectDisposition[disposition] = (runtimeEffectDisposition[disposition] || 0) + 1;
+    if (['spell','enchant'].includes(card.type) && !['implemented_verified','implemented_inferred','fallback_noop'].includes(disposition)) {
+      errors.push(card.id + ': spell/enchant has no terminal runtime effect disposition');
+    }
+  }
+
   if (card.type === 'land') {
     landStatus[card.soulProductionStatus || 'missing'] =
       (landStatus[card.soulProductionStatus || 'missing'] || 0) + 1;
-    if (card.landInstallCostKnown === true) landInstallCost.known++;
+    if (card.costTokenParsed === true && !card.costMappingReview && !card.costSemanticReview) landInstallCost.known++;
     else landInstallCost.review++;
     if (card.costMappingReview) landInstallCost.mappingReview++;
     if (card.costSemanticReview) landInstallCost.semanticReview++;
+    if (runtimeCostKnown && runtimeCostParsed.ok) landInstallCost.runtimeReady++;
     if (card.requiredLPKnown !== true) errors.push(card.id + ': LP source value not marked known');
-    if (card.soulProductionStatus === 'magicland-effect' && validation.ok) {
-      errors.push(card.id + ': MagicLand incorrectly accepted as ordinary terrain');
+    if (card.soulProductionStatus === 'magicland-effect') {
+      if (card.runtimeLandProductionStatus !== 'fallback_noop') errors.push(card.id + ': MagicLand effect has no deterministic runtime fallback');
+      const output=card.soulProduction||{};
+      if (Object.values(output.colored||{}).some(v=>Number(v)>0)||Number(output.neutral||0)>0) {
+        errors.push(card.id + ': MagicLand fallback must not invent ordinary soul production');
+      }
     }
-    if (card.soulProductionStatus === 'source-decoded' &&
-        card.landInstallCostKnown === true && !validation.ok) {
+    if (card.soulProductionStatus === 'source-decoded' && card.landInstallCostKnown === true && !validation.ok) {
       errors.push(card.id + ': decoded ordinary land blocked: ' + validation.reason);
     }
-    if (card.landInstallCostKnown !== true && validation.ok) {
-      errors.push(card.id + ': unknown land installation cost incorrectly accepted');
-    }
+    if (card.landInstallCostKnown !== true && validation.ok) errors.push(card.id + ': runtime land installation cost incorrectly missing');
   } else {
     costKnown[card.type] = costKnown[card.type] || { known:0, review:0, mappingReview:0, semanticReview:0 };
     if (card.costKnown === true && card.costMapped === true) {
       costKnown[card.type].known++;
-      if (card.costMappingReview || card.costSemanticReview) {
-        errors.push(card.id + ': reviewed cost is incorrectly marked playable');
-      }
+      if (card.costMappingReview || card.costSemanticReview) errors.push(card.id + ': reviewed source cost is incorrectly marked source-verified');
     } else {
       costKnown[card.type].review++;
       if (card.costMappingReview) costKnown[card.type].mappingReview++;
       if (card.costSemanticReview) costKnown[card.type].semanticReview++;
-      if (validation.ok) errors.push(card.id + ': unresolved or review-required soul cost incorrectly accepted');
     }
   }
+  if (!validation.ok) errors.push(card.id + ': card cannot enter a playable action: ' + String(validation.reason || 'unknown'));
 }
 
 for (const [type, count] of Object.entries(EXPECTED)) {
@@ -412,7 +441,7 @@ if (skillAudit.mappingRows < 15000 || skillAudit.manualVerifiedMappings < 1000 |
   errors.push('Special-skill mapping validation mismatch: ' + JSON.stringify(skillAudit));
 }
 if (errors.length) {
-  console.error(JSON.stringify({errors:errors.slice(0,50),errorCount:errors.length,types,landStatus,landInstallCost,costKnown,playable,effectAudit,skillAudit},null,2));
+  console.error(JSON.stringify({errors:errors.slice(0,50),errorCount:errors.length,types,landStatus,landInstallCost,runtimeCostStatus,runtimePlayable,runtimeEffectDisposition,costKnown,playable,effectAudit,skillAudit},null,2));
   process.exit(1);
 }
 console.log(JSON.stringify({
@@ -427,6 +456,9 @@ console.log(JSON.stringify({
   standardLands:landStatus['source-decoded'],
   magicLandEffectRecords:landStatus['magicland-effect'],
   landInstallCost,
+  runtimeCostStatus,
+  runtimeCostCoverage:runtimePlayable,
+  runtimeEffectDisposition,
   playableByType:playable,
   blockedReasons:blocked,
   effectAudit,
