@@ -168,6 +168,44 @@ test('fixed-seed full preparation and battle cycle installs land, summons units 
   assert.equal(p.playedAnyCardThisPhase,false,'the next player phase starts with a clean action flag');
 });
 
+test('fixed-seed slot battle ends the match on direct deck depletion without advancing the round',()=>{
+  const attacker=unit('final-direct-attacker',{
+    instanceId:'final-direct-attacker',
+    name:'최종 직접 공격 유닛',
+    cost:{forest:2},
+    costKnown:true,
+    costMapped:true,
+    ap:3,dp:1,hp:5,maxHp:5
+  });
+  const p=player('player',{
+    units:[attacker],
+    deck:Array.from({length:10},(_,i)=>({id:'winner-deck-'+i}))
+  });
+  const ai=player('ai',{
+    units:[],
+    deck:[{id:'last-ai-card-1'},{id:'last-ai-card-2'}]
+  });
+  const s=state(p,ai,{
+    round:4,
+    attackerId:'player',
+    activeId:'ai',
+    prepared:{player:true,ai:true},
+    rng:()=>0.23
+  });
+
+  FM.resolveBattle(s);
+
+  assert.equal(ai.deck.length,0,'the two-soul direct attack consumes the final two cards in the opposing deck');
+  assert.equal(s.status,'finished','deck depletion ends the match inside the real slot-battle path');
+  assert.equal(s.result,'player','the player whose unit made the direct attack wins');
+  assert.equal(s.round,4,'a finished match must not enter another round');
+  assert.equal(s.attackerId,'player','attacker rotation stops after the terminal result');
+  assert.equal(s.prepared.player,true);
+  assert.equal(s.prepared.ai,true);
+  assert.ok(s.log.some(entry=>entry.text.includes('상대 덱에서 2장을 파괴했습니다.')));
+  assert.ok(s.log.some(entry=>entry.text.includes('승리!')));
+});
+
 test('LP accumulates each turn and a land placement consumes LP only',()=>{
   const p=player('player',{hand:[{...land('high-lp','light',2,2),instanceId:'l1'}],
     lp:2,soulPool:{colored:{forest:1},neutral:0}});
