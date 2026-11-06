@@ -573,10 +573,20 @@
     const tabRows = Array.from(tabGroups.entries()).map(([group,items]) =>
       `<section class="native-rule-panel"><h4>${escapeHtml(group)}</h4>${items.map(text => `<div class="source-tab-row">${escapeHtml(text)}</div>`).join('')}</section>`
     ).join('');
-    const costWarning = card.type !== 'land' && card.rules?.costStatus !== 'mapped'
-      ? '<div class="rule-warning">소울 구슬 비용이 원본 카드 이미지 기준으로 아직 확인되지 않았습니다. 무료로 처리하지 않습니다.</div>' : '';
-    const effectWarning = card.type === 'enchant' || (card.type === 'spell' && !card.effect)
-      ? '<div class="rule-warning">원문 설명은 보존되어 있지만 실행 효과 매핑이 완료되지 않아 전투 발동을 차단합니다.</div>' : '';
+    const hasRuntimeCost = card.runtimeCostKnown === true &&
+      card.runtimeCost && typeof card.runtimeCost === 'object';
+    const sourceCostPending = card.type !== 'land' && card.rules?.costStatus !== 'mapped';
+    const costWarning = sourceCostPending
+      ? '<div class="rule-warning">원본 비용 의미는 검토 중입니다. ' +
+        (hasRuntimeCost
+          ? '실제 게임 결제에는 위에 표시된 runtime 비용을 사용합니다.'
+          : '누락 비용은 무료로 처리하지 않고 지불 가능한 runtime fallback 정책을 적용합니다.') +
+        ' 출처 검증 상태와 카드 플레이 가능 여부는 별개입니다.</div>'
+      : '';
+    const effectWarning = ['spell', 'enchant'].includes(card.type) &&
+      card.runtimeEffectDisposition === 'fallback_noop'
+      ? '<div class="rule-warning">이 카드의 미지원 효과만 no-op fallback으로 종료합니다. 비용 결제와 카드 사용, 턴 진행은 정상 완료됩니다.</div>'
+      : '';
     const ruleWarning = costWarning + effectWarning;
     // Keep the exact per-card source page visible in the detail view. Do not
     // derive it from image/archive paths: those are separate provenance fields.
