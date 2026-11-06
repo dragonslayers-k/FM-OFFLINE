@@ -671,12 +671,16 @@
     const lands = source.filter(c => c.type === 'land').sort((a,b) =>
       (Number(a.requiredLP || 0) - Number(b.requiredLP || 0)) ||
       (landInstallScore(a) - landInstallScore(b)));
+    const offFactionCost = card => Object.entries(runtimeCostFor(card) || {}).reduce((sum,[color,amount]) =>
+      sum + (color !== faction && color !== 'neutral' && color !== 'bonus' ? (Number(amount) || 0) : 0),0);
     const units = source.filter(c => c.type === 'unit').sort((a,b) =>
+      (offFactionCost(a) - offFactionCost(b)) ||
       (sumCost(runtimeCostFor(a)) - sumCost(runtimeCostFor(b))) ||
       ((Number(b.ap || 0) + Number(b.dp || 0) + Number(b.hp || 0)) -
        (Number(a.ap || 0) + Number(a.dp || 0) + Number(a.hp || 0))));
     const others = source.filter(c => c.type === 'item' || c.type === 'spell' || c.type === 'enchant')
-      .sort((a,b) => sumCost(runtimeCostFor(a)) - sumCost(runtimeCostFor(b)));
+      .sort((a,b) => (offFactionCost(a) - offFactionCost(b)) ||
+        (sumCost(runtimeCostFor(a)) - sumCost(runtimeCostFor(b))));
     const result = [];
     const used = new Map();
     function addRepeated(list, wanted) {
