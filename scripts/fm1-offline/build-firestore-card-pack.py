@@ -1403,7 +1403,7 @@ def convert(a):
           "runtimeInferredClauseCount":runtime_clause_dispositions.get("implemented_inferred",0),
           "runtimeFallbackClauseCount":runtime_clause_dispositions.get("fallback_noop",0),
           "runtimeCardEffectDispositionCounts":dict(Counter(c.get("runtimeEffectDisposition","missing") for c in cards)),
-          "policy":"Original candidate text remains non-verified. A single exact simple-text pattern with required timing/slot metadata may use a tested inferred handler; all other clauses receive deterministic fallback_noop so card use and turn progression complete."
+          "policy":"Original candidate text remains non-verified. A single exact simple-text spell pattern with supported attack/defend/battle-start timing may use a tested inferred handler. Enchants remain fallback_noop until an event/duration slot engine exists; all other clauses use deterministic fallback_noop so card use and turn progression complete."
         },
         "specialSkillReview":{
           **skill_db_counts,
