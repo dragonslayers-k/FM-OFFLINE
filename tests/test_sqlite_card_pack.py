@@ -167,6 +167,8 @@ class SqliteCardPackTests(unittest.TestCase):
         self.assertEqual(parsed["candidateCost"], {"forest": 1, "metal": 1})
         self.assertTrue(parsed["mappingReview"])
         self.assertIn("hybrid-cost-mapping-unverified", parsed["review"])
+        self.assertEqual(parsed["runtimeCost"], {"forest": 1, "metal": 1})
+        self.assertEqual(parsed["runtimeCostStatus"], "implemented_inferred")
 
     def test_ncs_and_bonus_remain_separate_and_unverified_cost_fails_closed(self):
         row = self.db.execute("SELECT * FROM card_costs").fetchone()
@@ -186,6 +188,22 @@ class SqliteCardPackTests(unittest.TestCase):
         self.assertEqual(parsed["specialSouls"]["bonus"], 2)
         self.assertTrue(parsed["semanticReview"])
         self.assertIn("special-soul-semantics-unverified", parsed["review"])
+        self.assertEqual(parsed["runtimeCost"], {"metal": 2, "neutral": 3})
+        self.assertEqual(parsed["runtimeUpkeepNeutral"], 1)
+        self.assertEqual(parsed["runtimeCostStatus"], "implemented_inferred")
+
+    def test_missing_and_unresolved_costs_get_nonzero_payable_runtime_fallbacks(self):
+        missing = CONVERTER.db_cost_to_app(None)
+        self.assertEqual(missing["runtimeCost"], {"neutral": 1})
+        self.assertEqual(missing["runtimeCostStatus"], "fallback_payable")
+        unknown = CONVERTER.db_cost_to_app({
+            "soul_json": json.dumps({"colors": {}, "known": False, "tokens": [
+                {"raw": "9902", "amount": 2, "status": "manual_review"}]}),
+            "soul_known": 0, "mapping_review": 0, "semantic_review": 1,
+            "verification_status": "semantic_review", "source_text": "9902"
+        })
+        self.assertEqual(unknown["runtimeCost"], {"neutral": 2})
+        self.assertEqual(unknown["runtimeCostStatus"], "fallback_payable")
 
     def test_load_reads_exact_url_image_hash_and_effect_candidates_from_sqlite(self):
         rows = CONVERTER.load_normalized_database(self.db_path, expected_count=1)
