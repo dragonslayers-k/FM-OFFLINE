@@ -1517,6 +1517,20 @@ test('unmapped spell effect is paid, consumed and closed as a deterministic no-o
   assert.equal(s.status,'playing');
 });
 
+test('partial item fallback preserves parsed owner and race restrictions',()=>{
+  const item={id:'partial-item',instanceId:'partial-item-1',name:'부분 해석 아이템',type:'item',
+    cost:{},runtimeCost:{neutral:0},runtimeCostKnown:true,runtimeItemConditionStatus:'fallback_any_unit',
+    itemConditions:{owner:'own',race:'버드',affiliation:null,unsupported:['unparsed-special-clause'],mapped:false}};
+  const wrong=unit('wrong-race',{instanceId:'wrong-race-1',race:'휴먼'});
+  const correct=unit('right-race',{instanceId:'right-race-1',race:'버드'});
+  const p=player('player',{hand:[item],units:[wrong,correct],soulPool:{colored:{},neutral:0}});
+  const s=state(p,player('ai'));
+  assert.equal(FM.playCard(s,'player','partial-item-1','wrong-race-1').ok,false);
+  assert.equal(p.hand.length,1);
+  assert.equal(FM.playCard(s,'player','partial-item-1','right-race-1').ok,true);
+  assert.equal(correct.equipment.includes('部分 해석 아이템'),true);
+});
+
 test('unmapped item condition gets a deterministic any-unit fallback and remains consumable without a target',()=>{
   const card={id:'unknown-item',instanceId:'unknown-item-1',name:'미확인 장비',type:'item',
     costKnown:false,costMapped:false,runtimeCost:{neutral:1},runtimeCostKnown:true,
