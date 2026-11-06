@@ -1240,9 +1240,20 @@ test('DB29 Manual piercing and weakening attacks follow their exact AP and DP ef
   assert.equal(FM.totalPower(x.defender,'dp'),0);
   assert.equal(x.defender.hp,7);
 
-  // Manual §4 does not explicitly define how a pre-existing negative DP
-  // changes leftover piercing damage. Keep that case review-only; do not
-  // silently infer the generic AP-minus-DP rule for this special attack.
+  x=run({id:'10091525214',name:'블랙유니콘',skill:'관통공격',ruleId:'piercing_attack',
+    attackerAP:3,defenderDP:3});
+  assert.equal(x.result.damage,0,'AP exactly equal to positive DP destroys the DP with no HP overflow');
+  assert.equal(FM.totalPower(x.defender,'dp'),0);
+  assert.equal(x.defender.hp,10);
+
+  // Manual §4 does not define bonus damage from a pre-existing negative DP.
+  // Keep the conservative rule explicit: treat the already-below-zero DP as
+  // exhausted, but never add the magnitude of negative DP to HP damage.
+  x=run({id:'10091525214',name:'블랙유니콘',skill:'관통공격',ruleId:'piercing_attack',
+    attackerAP:4,defenderDP:-2});
+  assert.equal(x.result.damage,4,'negative DP does not create damage beyond the printed AP');
+  assert.equal(FM.totalPower(x.defender,'dp'),-2,'piercing does not rewrite an already-negative DP value');
+  assert.equal(x.defender.hp,6,'the attack deals its four AP, not six damage from AP minus negative DP');
   x=run({id:'10091525190',name:'이블크로우',skill:'약화공격',ruleId:'weaken_attack',
     attackerAP:1,defenderDP:3});
   assert.equal(x.result.damage,0,'the defender DP blocks the initial attack');
