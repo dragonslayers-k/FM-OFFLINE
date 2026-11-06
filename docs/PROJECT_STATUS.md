@@ -31,10 +31,10 @@
 - Enchant는 정식 다섯 번째 분류이며, 효과 실행 여부와 분류 여부는 별도 문제다.
 - 명시적 LP 0과 LP 필드 누락/파싱 실패를 구분한다.
 - 빈 비용 객체, `mapping_review`, `semantic_review`, NCS, BONUS, 미상 비용을 무료로 해석하지 않는다.
-- 효과 후보 `pattern_candidate`는 표시·검색용 참고 자료이며 실행 가능한 규칙으로 취급하지 않는다.
-- Manual.zip에서 확인된 27개 기본 공격 기술은 카드의 `Skill1`이 `manual_verified`로 매핑되고 개별 엔진 핸들러 테스트가 통과한 경우에만 실행한다. 후대 커뮤니티 후보 41개와 `Skill2`는 기본적으로 실행하지 않는다.
+- 효과 후보 `pattern_candidate`는 원작 의미 검증 상태로 보존한다. Android 데이터팩은 각 effect clause에 별도 runtime disposition을 부여하며, 미지원 clause는 `fallback_noop`으로 종료한다.
+- Manual.zip에서 확인된 27개 기본 공격 기술은 `manual_verified` 매핑과 개별 엔진 테스트가 있을 때 실행한다. Skill2는 별도 allowlist에서 정확한 카드 원문과 전용 테스트가 확인된 rule만 실행하고, 나머지는 clause-level fallback으로 처리한다.
 - 카드 원문, 원본 Firestore 필드, 카드별 원본 URL 및 이미지 URL을 보존한다.
-- 효과가 매핑되지 않은 카드는 실행 가능한 것처럼 표현하지 않는다.
+- 원본 효과가 미매핑이어도 카드 전체를 사용 불가로 처리하지 않는다. 원본 후보/검토 상태를 보존하고, 구현 handler가 없는 clause는 runtime `fallback_noop`으로 action을 종료한다.
 - FM1 Manual.zip이 규칙의 우선 근거다. 다른 판본·팬 프로젝트는 UI 참고 외에 규칙 근거로 대체하지 않는다.
 
 ## 구현 완성도 한계
@@ -141,3 +141,11 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - Workflow correction committed to this branch: `7fa4b34a02333bfdfa1b81035b10c0fa7196b0f9`. The emulator SDK package installation now retries up to 3 times; between attempts it clears the SDK Manager download cache and the partial Android 34 Google APIs x86_64 system-image directory, with a short increasing delay. Package versions remain pinned to the same SDK components.
 - Next verification: let the single PR-triggered run from this workflow correction complete. If it fails again, inspect its first failing step and avoid unrelated code changes. #170 remains the last confirmed full emulator success (15,350/15,350 loaded).
 - PR #28 stays open/draft/unmerged; main unchanged; DB29 immutable and DB30 not issued.
+
+## 2026-11-06 — v4.9 runtime profile implementation update
+
+- Source review status and runtime playability are independent. A pending/non_executable label alone never blocks deck building, card selection, cost payment, or turn progression.
+- The DB29 SQLite converter now emits a valid runtime payment cost for each card while retaining source values/review flags. BONUS is one-time generic neutral payment; NCS is generic payment plus unit-only recurring upkeep. Missing/unresolved costs receive conservative payable neutral fallback, never free zero.
+- The engine uses runtime cost before source verification flags, keeps unit upkeep finite, allows MagicLand installation with zero invented ordinary production, provides deterministic item-target fallback, and closes unsupported spell/enchant effects as paid terminal no-ops.
+- The pack carries a terminal runtime disposition for every source effect clause. Candidate/source text remains non-verified; fallback no-op is not a claim of original effect implementation.
+- Current branch work remains unmerged. The full DB29 pack validator and emulator smoke must still pass on the same final combined SHA before claiming 15,350-card runtime readiness.
