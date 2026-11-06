@@ -299,7 +299,15 @@
         return {damageReduction:allies};
       }
       if (ruleId === 'skill2_pressure_defense') {
-        const emptySlots = Math.max(0,5-owner.units.length);
+        // Match the five visible unit slots rendered by app.js. Array length
+        // can over-count occupied slots when legacy/fallback slot indices collide.
+        const occupiedSlots = new Set();
+        owner.units.forEach((ally,index)=>{
+          const rawSlot = Number(ally && ally.slotIndex);
+          const slot = rawSlot || index + 1;
+          if (Number.isInteger(slot) && slot >= 1 && slot <= 5) occupiedSlots.add(slot);
+        });
+        const emptySlots = Math.max(0,5-occupiedSlots.size);
         return {damageReduction:Math.floor(emptySlots/2)};
       }
       if (ruleId === 'skill2_tactical_initiative') {

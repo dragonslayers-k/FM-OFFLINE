@@ -2278,6 +2278,41 @@ test('production Pressure Defense respects the five-slot floor boundary',()=>{
     assert.equal(defender.hp,6-expected);
   }
 });
+ 
+test('production Pressure Defense counts unique visible slots when fallback and explicit slot indices collide',()=>{
+  const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
+  const attacker=unit('attacker',{instanceId:'pressure-slot-collision-atk'});
+  const fallbackSlot=unit('fallback-slot',{instanceId:'pressure-slot-collision-fallback'});
+  const defender=sourceSkill2('defender','프레셔',{
+    instanceId:'pressure-slot-collision-def',slotIndex:1,hp:6,maxHp:6,dp:1
+  });
+  const p=s.players.player,ai=s.players.ai;
+  p.units.push(attacker);ai.units.push(fallbackSlot,defender);
+  const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:combatStats(4,0,5),defender:combatStats(2,1,6)
+  });
+  // app.js renders the fallback unit at slot 1, then the explicit slot-1
+  // defender overwrites it in the slot map: only one physical slot is occupied.
+  assert.equal(result.damage,1,'four visible empty slots reduce damage by floor(4/2)=2');
+  assert.equal(defender.hp,5);
+});
+
+test('production Pressure Defense ignores units outside the five rendered field slots',()=>{
+  const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
+  const attacker=unit('attacker',{instanceId:'pressure-outside-slot-atk'});
+  const defender=sourceSkill2('defender','프레셔',{
+    instanceId:'pressure-outside-slot-def',slotIndex:1,hp:6,maxHp:6,dp:1
+  });
+  const outside=unit('outside',{instanceId:'pressure-outside-slot-unit',slotIndex:6});
+  const p=s.players.player,ai=s.players.ai;
+  p.units.push(attacker);ai.units.push(defender,outside);
+  const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:combatStats(4,0,5),defender:combatStats(2,1,6)
+  });
+  assert.equal(result.damage,1,'slot 6 is outside the five-slot field and must not count as occupied');
+  assert.equal(defender.hp,5);
+});
+
 
 test('production Pressure Defense applies floor(4/2) at the four-empty-slot boundary',()=>{
   const s=FM.newGame({cards:[],playerDeck:[],aiDeck:[],rng:()=>0.25});
