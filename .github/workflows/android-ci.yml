@@ -64,6 +64,7 @@ jobs:
           node --check app/src/main/assets/game/app.js
           node --check app/src/main/assets/game/rules.js
           node --check scripts/fm1-offline/validate-app-card-pack.cjs
+          node --check scripts/fm1-offline/verify-db29-skill1-runtime-normalization.cjs
           node --test tests/*.test.cjs
 
       - name: Set up Python
@@ -207,6 +208,9 @@ jobs:
           python scripts/fm1-offline/verify-db29-skill1-pack-lineage.py \
             --db "$RUNNER_TEMP/fm1-source/fm1_cards.sqlite" \
             --cards-json "$RUNNER_TEMP/fm1-app-cards.json" \
+            --release-tag "$CARD_DB_RELEASE_TAG"
+          node scripts/fm1-offline/verify-db29-skill1-runtime-normalization.cjs \\
+            --cards-json "$RUNNER_TEMP/fm1-app-cards.json" \\
             --release-tag "$CARD_DB_RELEASE_TAG"
           rm -f "$RUNNER_TEMP/fm1-app-cards.json" "$RUNNER_TEMP/fm1-app-skill-mappings.json" "$RUNNER_TEMP/fm1-app-effect-candidates.json" "$RUNNER_TEMP/fm1-app-skill2-catalogue.json"
           # Keep the unpacked payload until upload-artifact creates a directly importable ZIP.
