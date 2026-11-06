@@ -88,7 +88,7 @@ DB 변환 결과는 다음을 포함합니다.
 
 ## 데이터 기준 및 효과 실행 경계
 
-- Android 데이터팩 1.2.0은 T SQLite Release `fm1-carddb-29`에서만 생성한다. APK 저장소에서 JSONL 비용을 다시 해석하지 않는다.
+- Android 데이터팩 1.3.0은 T SQLite Release `fm1-carddb-29`에서만 생성한다. APK 저장소에서 JSONL 비용을 다시 해석하지 않는다.
 - 카드 ID와 상세 URL이 다르거나 이미지 SHA-256이 SQLite와 다르면 변환을 중단한다.
 - 혼합 소울 비용과 NCS/BONUS는 T DB의 검토 상태를 그대로 전달하며, 무료 비용으로 바꾸지 않는다.
 - T DB의 효과 후보와 절 단위 원문 위치는 보존하지만 `pattern_candidate`는 실행하지 않는다. 매뉴얼·카드별 검증 및 게임 엔진 테스트를 통과한 핸들러만 실행 가능하다.
