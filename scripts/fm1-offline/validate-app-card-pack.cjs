@@ -286,7 +286,8 @@ function probeRuntimeAction(sourceCard) {
     terminalState=owner.graveyard.some(x=>x.instanceId===instanceId);
     terminalLabel='enchant_fallback_terminal';
   }
-  return {ok:!!(result&&result.ok)&&!remainsInHand&&terminalState,reason:result&&result.reason||'action did not reach a terminal state',
+  return {ok:!!(result&&result.ok)&&!remainsInHand&&terminalState&&owner.playedAnyCardThisPhase,
+    reason:result&&result.reason||(!owner.playedAnyCardThisPhase?'phase action flag was not completed':'action did not reach a terminal state'),
     terminalLabel,remainsInHand,playedAnyCardThisPhase:owner.playedAnyCardThisPhase};
 }
 
@@ -510,6 +511,10 @@ for (const card of cards) {
     }
   }
   if (!validation.ok) errors.push(card.id + ': card cannot enter a playable action: ' + String(validation.reason || 'unknown'));
+}
+
+if (runtimeActionAudit.attempted !== 15350 || runtimeActionAudit.completed !== 15350 || runtimeActionAudit.blocked !== 0) {
+  errors.push('Runtime action terminal-state coverage mismatch: ' + JSON.stringify(runtimeActionAudit));
 }
 
 for (const [type, count] of Object.entries(EXPECTED)) {
