@@ -141,7 +141,9 @@ test('fixed-seed full preparation and battle cycle installs land, summons units 
 
   const summonResult=FM.playCard(s,'player','player-attacker-card');
   assert.equal(summonResult.ok,true,'player summons the unit using newly generated light soul');
-  assert.equal(p.hand.length,0);
+  assert.equal(p.hand.length,4,'the preparation phase refills the starting hand to six before two cards are played');
+  assert.equal(p.hand.some(card=>['player-new-land','player-attacker-card'].includes(card.instanceId)),false,
+    'both selected cards leave the hand after successful play');
   assert.equal(p.units.length,1);
   assert.equal(p.unitDeployedThisPhase,1);
   assert.equal(p.playedAnyCardThisPhase,true);
