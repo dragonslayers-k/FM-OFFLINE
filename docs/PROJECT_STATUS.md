@@ -351,3 +351,12 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - User requested an installable APK for hands-on testing from the current PR baseline. The latest successful lightweight PR run (#414 / `42307280303`) uploaded only `build-status.txt`; the report confirms `Signed release APK: not-configured`, and inspection of the 565-byte artifact ZIP confirms no APK was included.
 - PR #28 title now includes `[build-apk]` to request the APK-only Gradle build on the next PR synchronization. This will produce the debug APK without requiring release-signing secrets; signed Release APK remains optional.
 - DB29 pack/emulator execution is not requested by this note. DB29 remains unchanged, DB30 is not published, and PR #28 remains Draft/Open/unmerged.
+
+
+## Malformed upkeep overlay correction — 2026-11-07
+
+- Runtime commit `9eef81ac4461f3c229fe5ba230c8d839b069c51e` changes malformed explicit `runtimeUpkeepCost` handling: invalid objects no longer silently mean zero upkeep; the engine falls through to the verified runtime/source cost profile and then the finite conservative fallback.
+- A valid explicit `{ neutral: 0 }` remains a deliberate zero-upkeep value.
+- Regression test exercises the actual preparation-phase path with both malformed and explicit-zero upkeep units, verifies only the conservative two-soul amount is consumed, and confirms the phase draw proceeds afterward.
+- Actions #422 / run `42313314863` passed: JavaScript game-rule suite and Python converter checks passed. DB29 pack, Gradle/APK, and emulator were intentionally skipped; only a 562-byte build-report artifact was retained.
+- DB29, DB30, main and release remain unchanged; PR #28 remains Draft/Open/unmerged.
