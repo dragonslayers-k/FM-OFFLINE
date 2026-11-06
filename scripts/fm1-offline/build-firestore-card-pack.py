@@ -655,7 +655,8 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
         "runtimeEffectDisposition":"fallback_noop" if typ in ("spell","enchant") else "not_applicable",
         "runtimeEffectFallbackReason":"source-effect-candidate-not-yet-mapped" if typ in ("spell","enchant") else None,
         "runtimeEffectClauseCount":sum(len(x.get("clauses") or []) for x in (row.get("effect_candidates") or [])),
-        "runtimeCostInference":c.get("runtimeCostInference",[]),
+        "runtimeSkill1Disposition":("implemented_verified" if source_skill1 and source_skill1.get("mappingStatus")=="manual_verified" and source_skill1.get("ruleAuthority")=="manual" else ("fallback_noop" if skill1_name and skill1_name!="없음" else "not_applicable")) if typ=="unit" else "not_applicable",
+        "runtimeSkill2Disposition":("implemented_verified" if verified_skill2_spec else ("fallback_noop" if skill2_named else "not_applicable")) if typ=="unit" else "not_applicable",
         "costKnown":cost_known,"costMapped":cost_known,
         "costSource":c.get("sourceStatus","legacy-enum-parse"),
         "soulCostRaw":f.get("RequireSoul"),"costReview":c["review"],
@@ -735,13 +736,14 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
         card["landInstallCostReviewStatus"]=c.get("sourceStatus","legacy-enum-parse")
         card["landInstallCostCandidate"]=c.get("candidateCost",{})
         if land_cost_known:
-            add(tabs,"분류별","설치 소울 비용",json.dumps(c["cost"],ensure_ascii=False,sort_keys=True))
+            add(tabs,"분류별","설치 소울 비용",json.dumps(c.get("runtimeCost") or c["cost"],ensure_ascii=False,sort_keys=True))
 
         earn=parse_earn_soul_list(f.get("EarnSoulList"),earn_soul_enum,f.get("MuSoul"))
         mode="needs-review" if not earn["known"] else ("magicland-effect" if earn["magicLand"] else "source-decoded")
         card["soulProduction"]={"colored":earn["colored"],"neutral":earn["neutral"]}
         card["soulProductionTokens"]=earn["tokens"]
         card["soulProductionStatus"]=mode
+        card["runtimeLandProductionStatus"]="fallback_noop" if mode!="source-decoded" else "source_verified"
         card["soulProductionSource"]="Firestore EarnSoulList + Enum+EarnSoul"
         card["soulProductionRaw"]=f.get("EarnSoulList")
         card["soulProductionReview"]=earn["review"]
@@ -756,9 +758,22 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
                 add(tabs,"분류별","생산 소울",f"{soul_color} {amount}")
             add(tabs,"분류별","생산무소울",earn["neutral"])
     elif typ=="unit":
+        source_stats={}
         for src,dst in [("ATK","ap"),("DEF","dp"),("HP","hp")]:
             n=integer(f.get(src))
+            source_stats[dst]=n
             if n is not None: card[dst]=n
+        # Preserve every source stat in sourceFields/sourceStats. A zero or
+        # absent HP cannot create an unplayable unit; use the smallest finite
+        # runtime HP only as a tagged fallback.
+        runtime_stats={"ap":source_stats["ap"] if source_stats["ap"] is not None else 0,
+                       "dp":source_stats["dp"] if source_stats["dp"] is not None else 0,
+                       "hp":source_stats["hp"] if source_stats["hp"] is not None and source_stats["hp"]>0 else 1}
+        card["sourceStats"]=source_stats
+        card["runtimeStats"]=runtime_stats
+        card["runtimeStatStatus"]="source_verified" if source_stats["hp"] is not None and source_stats["hp"]>0 else "fallback_hp_min_1"
+        card["runtimeStatInference"]=[] if card["runtimeStatStatus"]=="source_verified" else ["nonpositive-or-missing-hp-minimum-one"]
+        card["ap"],card["dp"],card["hp"]=runtime_stats["ap"],runtime_stats["dp"],runtime_stats["hp"]
         card["level"]=integer(f.get("LV"))
         card["sourceCoinTech"]={k:f.get(k) for k in ("ATKCoin","ATKCoinType","ATKCoinCount","DEFCoin","DEFCoinType","DEFCoinCount","HPCoin","HPCoinType","HPCoinCount")}
         ability=label(enums,"UnitType",f.get("UnitType"))
@@ -772,7 +787,9 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
             if f.get(src) is not None: tabs["분류별"].append({"label":ko,"text":f"{ko}\n{f[src]}"})
     elif typ=="item":
         ability=label(enums,"UnitType",f.get("UnitType"))
-        card["equipAbility"]=ability;card["allowedUnitAbilities"]=[ability] if ability else []
+        card["equipAbility"]=ability
+        card["runtimeItemConditionStatus"]="source_mapped" if ability else "fallback_any_unit"
+        card["allowedUnitAbilities"]=[ability] if ability else ["만능"]
         for src,dst in [("ATK","apBonus"),("DEF","dpBonus"),("HP","hpBonus")]:
             n=integer(f.get(src))
             if n is not None: card[dst]=n
