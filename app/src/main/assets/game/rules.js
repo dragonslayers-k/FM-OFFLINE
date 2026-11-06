@@ -1634,7 +1634,8 @@ if (card.type === 'unit') {
         if (result.ok) { progressed = true; continue; }
       }
       const spellCard = candidates.filter(c => c.type === 'spell').map(c => ({ card: c, target: bestSpellTarget(state, ownerId, c) }))
-        .filter(x => !['enemyUnit', 'ownUnit'].includes(x.card.effect?.target) || x.target)
+        .filter(x => x.card.runtimeEffectDisposition === 'fallback_noop' ||
+          !['enemyUnit', 'ownUnit'].includes(x.card.effect?.target) || x.target)
         .sort((a, b) => Number(b.card.effect?.amount || 0) - Number(a.card.effect?.amount || 0))[0];
       if (spellCard) {
         const result = playCard(state, ownerId, spellCard.card.instanceId, spellCard.target?.instanceId);

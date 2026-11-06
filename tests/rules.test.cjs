@@ -3782,3 +3782,20 @@ test('AI prefers the lower soul-cost land when LP requirements are equal',()=>{
   assert.equal(ai.soulPool.colored.forest,1);
   assert.equal(ai.hand[0].id,'ai-land-high-cost');
 });
+
+test('AI pays and uses a no-op fallback spell even when its source target is unavailable',()=>{
+  const spell={id:'ai-fallback-spell',name:'AI fallback spell',type:'spell',
+    instanceId:'ai-fallback-spell-1',faction:'forest',cost:{forest:1},costKnown:true,costMapped:true,
+    runtimeCost:{forest:1},runtimeCostKnown:true,runtimeCostStatus:'source_verified',
+    runtimeEffectDisposition:'fallback_noop',effect:{type:'damage',target:'enemyUnit',amount:4}};
+  const p=player('player');
+  const ai=player('ai',{hand:[spell],soulPool:{colored:{forest:1},neutral:0},unitDeployLimit:0});
+  const s=state(p,ai,{activeId:'ai',settings:{difficulty:'normal'}});
+  FM.runAIPhase(s,'ai');
+  assert.equal(ai.hand.length,0);
+  assert.equal(ai.graveyard.length,1);
+  assert.equal(ai.graveyard[0].id,'ai-fallback-spell');
+  assert.equal(ai.soulPool.colored.forest,0);
+  assert.equal(ai.playedAnyCardThisPhase,true);
+  assert.equal(s.prepared.ai,true);
+});
