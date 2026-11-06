@@ -774,7 +774,7 @@ test('both players running out of deck at once makes the attacker lose',()=>{
   assert.equal(s.result,'ai');
 });
 
-test('AI completes its preparation phase and yields to the player',()=>{
+test('AI completes its preparation phase, installs land, deploys a unit and yields to the player',()=>{
   const lands=Array.from({length:10},(_,i)=>land('ai-land'+i,'forest'));
   const units=Array.from({length:24},(_,i)=>unit('ai-unit'+i));
   const spells=Array.from({length:16},(_,i)=>({id:'ai-spell'+i,name:'AI 마법',type:'spell',
@@ -785,6 +785,9 @@ test('AI completes its preparation phase and yields to the player',()=>{
   FM._test.beginPhase(game,'ai');
   FM.runAIPhase(game,'ai');
   assert.equal(game.prepared.ai,true);
+  assert.ok(game.players.ai.lands.length>0,'AI should install an affordable land');
+  assert.ok(game.players.ai.units.length>0,'AI should deploy a unit after its land generates soul');
+  assert.equal(game.players.ai.playedAnyCardThisPhase,true);
 });
 
 
