@@ -702,7 +702,10 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
     verified_skill2_spec=verified_skill2_rule_for_card(typ,skill2_name,extra) if source_skill2 is not None else None
     skill2_named=bool(skill2_name and skill2_name!="없음")
     runtime_effect_mapping=runtime_effect_mapping_for_row(row,enums)
-    runtime_effect_disposition=("implemented_inferred" if runtime_effect_mapping else "fallback_noop") if typ in ("spell","enchant") else "not_applicable"
+    effect_candidates_for_card=row.get("effect_candidates") or []
+    single_clause_candidate=(not effect_candidates_for_card) or (len(effect_candidates_for_card)==1 and len((effect_candidates_for_card[0].get("clauses") or []))==1)
+    runtime_effect_disposition=("implemented_inferred" if runtime_effect_mapping and single_clause_candidate else "fallback_noop") if typ in ("spell","enchant") else "not_applicable"
+    if runtime_effect_disposition!="implemented_inferred": runtime_effect_mapping=None
     card={
         "id":cid,"name":name,"type":typ,"faction":color,
         "cost":c["cost"] if cost_known else {},
