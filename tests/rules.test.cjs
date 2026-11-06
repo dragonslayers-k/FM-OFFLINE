@@ -3730,3 +3730,20 @@ test('starter deck prioritizes affordable terrain and runtime-cost cards over so
   assert.ok(deck.slice(10,34).every(c=>c.id.startsWith('cheap-unit-')));
   assert.ok(deck.slice(34).every(c=>c.id.startsWith('other-')));
 });
+
+test('AI uses paid terminal fallback enchants rather than leaving them stranded in hand',()=>{
+  const enchant={id:'ai-enchant-fallback',name:'AI fallback enchant',type:'enchant',
+    instanceId:'ai-enchant-fallback-1',faction:'forest',cost:{forest:1},costKnown:true,costMapped:true,
+    runtimeCost:{forest:1},runtimeCostKnown:true,runtimeCostStatus:'source_verified',
+    runtimeEffectDisposition:'fallback_noop',slotIndex:1,slotOwner:'own'};
+  const p=player('player');
+  const ai=player('ai',{hand:[enchant],soulPool:{colored:{forest:1},neutral:0},unitDeployLimit:0});
+  const s=state(p,ai,{activeId:'ai',settings:{difficulty:'normal'}});
+  FM.runAIPhase(s,'ai');
+  assert.equal(ai.hand.length,0);
+  assert.equal(ai.graveyard.length,1);
+  assert.equal(ai.graveyard[0].id,'ai-enchant-fallback');
+  assert.equal(ai.soulPool.colored.forest,0);
+  assert.equal(ai.playedAnyCardThisPhase,true);
+  assert.equal(s.prepared.ai,true);
+});

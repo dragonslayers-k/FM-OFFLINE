@@ -1638,6 +1638,13 @@ if (card.type === 'unit') {
         const result = playCard(state, ownerId, spellCard.card.instanceId, spellCard.target?.instanceId);
         if (result.ok) { progressed = true; continue; }
       }
+      const enchantCard = candidates.filter(c => c.type === 'enchant' &&
+        c.runtimeEffectDisposition === 'fallback_noop')
+        .sort((a,b) => sumCost(runtimeCostFor(a)) - sumCost(runtimeCostFor(b)))[0];
+      if (enchantCard) {
+        const result = playCard(state, ownerId, enchantCard.instanceId);
+        if (result.ok) { progressed = true; continue; }
+      }
       const equip = candidates.filter(c => c.type === 'item' &&
         (!Array.isArray(c.allowedUnitAbilities) || !c.allowedUnitAbilities.length ||
          c.allowedUnitAbilities.includes('만능') ||
