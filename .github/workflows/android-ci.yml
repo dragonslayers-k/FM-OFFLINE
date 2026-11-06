@@ -4,23 +4,28 @@ on:
   push:
     branches:
       - main
-# Add [run-emulator] to a PR title to request the long import/emulator validation.
+# PRs run lightweight JS/Python checks by default. Add [build-card-pack] to request DB29 packing; add [run-emulator] with it to request the full install/launch smoke.
   pull_request:
     branches:
       - main
     types: [opened, synchronize, reopened, edited]
   workflow_dispatch:
     inputs:
+      build_apk:
+        description: "Debug APK 및 설정된 경우 서명 Release APK 빌드"
+        required: false
+        type: boolean
+        default: false
       build_card_pack:
         description: "기존 카드DB Release에서 Android용 카드 ZIP 생성"
         required: false
         type: boolean
-        default: true
+        default: false
       run_emulator:
-        description: "Android 에뮬레이터에 APK 설치 및 실행"
+        description: "Android 에뮬레이터에 APK 설치 및 실행 (카드 ZIP 생성 필요)"
         required: false
         type: boolean
-        default: true
+        default: false
       db_release_tag:
         description: "T 저장소의 정규화 SQLite DB Release tag"
         required: false
@@ -48,6 +53,12 @@ jobs:
     steps:
       - name: Checkout this APK repository
         uses: actions/checkout@v7
+      - name: Validate workflow gate combinations
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_emulator == true && inputs.build_card_pack != true }}
+        run: |
+          echo "::error::run_emulator requires build_card_pack=true so the emulator receives the audited DB29 data ZIP."
+          exit 1
+
 
       - name: Record source revision
         run: echo "FM_SOURCE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
@@ -223,22 +234,26 @@ jobs:
           echo "FM1_DATA_PACK_STATUS=built-from-$CARD_DB_RELEASE_TAG" >> "$GITHUB_ENV"
 
       - name: Set up JDK 17
+        if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.build_apk == true || inputs.build_card_pack == true || inputs.run_emulator == true)) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-apk]') || contains(github.event.head_commit.message, '[build-card-pack]'))) || (github.event_name == 'pull_request' && (contains(github.event.pull_request.title, '[build-apk]') || contains(github.event.pull_request.title, '[build-card-pack]'))) }}
         uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Set up Android SDK
+        if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.build_apk == true || inputs.build_card_pack == true || inputs.run_emulator == true)) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-apk]') || contains(github.event.head_commit.message, '[build-card-pack]'))) || (github.event_name == 'pull_request' && (contains(github.event.pull_request.title, '[build-apk]') || contains(github.event.pull_request.title, '[build-card-pack]'))) }}
         uses: android-actions/setup-android@v4
         with:
           packages: "platform-tools"
 
       - name: Set up Gradle 8.9
+        if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.build_apk == true || inputs.build_card_pack == true || inputs.run_emulator == true)) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-apk]') || contains(github.event.head_commit.message, '[build-card-pack]'))) || (github.event_name == 'pull_request' && (contains(github.event.pull_request.title, '[build-apk]') || contains(github.event.pull_request.title, '[build-card-pack]'))) }}
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "8.9"
 
       - name: Install Android SDK components
+        if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.build_apk == true || inputs.build_card_pack == true || inputs.run_emulator == true)) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-apk]') || contains(github.event.head_commit.message, '[build-card-pack]'))) || (github.event_name == 'pull_request' && (contains(github.event.pull_request.title, '[build-apk]') || contains(github.event.pull_request.title, '[build-card-pack]'))) }}
         run: |
           set -euo pipefail
           yes | sdkmanager --licenses >/dev/null || true
@@ -267,6 +282,7 @@ jobs:
           done
 
       - name: Prepare optional release signing
+        if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.build_apk == true || inputs.build_card_pack == true || inputs.run_emulator == true)) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-apk]') || contains(github.event.head_commit.message, '[build-card-pack]'))) || (github.event_name == 'pull_request' && (contains(github.event.pull_request.title, '[build-apk]') || contains(github.event.pull_request.title, '[build-card-pack]'))) }}
         run: |
           set -euo pipefail
           if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ] && \
@@ -284,6 +300,7 @@ jobs:
           fi
 
       - name: Build Debug APK and optional signed Release APK
+        if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.build_apk == true || inputs.build_card_pack == true || inputs.run_emulator == true)) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-apk]') || contains(github.event.head_commit.message, '[build-card-pack]'))) || (github.event_name == 'pull_request' && (contains(github.event.pull_request.title, '[build-apk]') || contains(github.event.pull_request.title, '[build-card-pack]'))) }}
         run: |
           set -euo pipefail
           gradle --no-daemon --stacktrace :app:assembleDebug
@@ -300,6 +317,7 @@ jobs:
           echo "RELEASE_APK_STATUS=$RELEASE_STATUS" >> "$GITHUB_ENV"
 
       - name: Verify APK application IDs, signatures and ZIP integrity
+        if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.build_apk == true || inputs.build_card_pack == true || inputs.run_emulator == true)) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-apk]') || contains(github.event.head_commit.message, '[build-card-pack]'))) || (github.event_name == 'pull_request' && (contains(github.event.pull_request.title, '[build-apk]') || contains(github.event.pull_request.title, '[build-card-pack]'))) }}
         run: |
           set -euo pipefail
           for APK in FantasyMastersOffline-debug.apk FantasyMastersOffline-release.apk; do
