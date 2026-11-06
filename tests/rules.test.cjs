@@ -2,6 +2,7 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const FM=require('../app/src/main/assets/game/rules.js');
 const CardSchema=require('../app/src/main/assets/game/card-schema.js');
+const DeckState=require('../app/src/main/assets/game/deck-state.js');
 
 function land(id,color,requiredLP=1,neutral=0){
   return {id,name:id,type:'land',faction:color,souls:[color],soulValue:1,requiredLP,requiredLPKnown:true,
@@ -3686,19 +3687,33 @@ test('AI uses the same runtime cost profile as actual card payment',()=>{
   assert.equal(s.prepared.ai,true);
 });
 
-test('deck editor source preserves an intentionally empty or partial deck',()=>{
-  const fs=require('node:fs');
-  const source=fs.readFileSync(require.resolve('../app/src/main/assets/game/app.js'),'utf8');
-  assert.match(source,/if \(!data\.deckCounts \|\| typeof data\.deckCounts !== 'object' \|\| Array\.isArray\(data\.deckCounts\)\)/);
-  assert.doesNotMatch(source,/!data\.deckCounts \|\| countDeck\(data\.deckCounts\) !== DEMO_DECK_SIZE/);
+test('deck editor state initializes starter counts only for a new profile and preserves zero/partial edits',()=>{
+  let created=0;
+  const starter=()=>{created++;return {starterCard:50};};
+  const fresh={deckCounts:null};
+  assert.deepEqual(DeckState.currentDeckCounts(fresh,50,starter),{starterCard:50});
+  assert.equal(created,1);
+  const partial={deckCounts:{cardA:3}};
+  assert.deepEqual(DeckState.currentDeckCounts(partial,50,starter),{cardA:3});
+  assert.equal(created,1,'partial user edits must not be reset to a starter deck');
+  const empty={deckCounts:{}};
+  assert.deepEqual(DeckState.currentDeckCounts(empty,50,starter),{});
+  assert.equal(created,1,'an intentionally cleared deck must remain empty');
+  assert.deepEqual(DeckState.currentDeckCounts(fresh,0,starter),{});
+  assert.equal(created,1,'no available cards must not initialize a deck');
 });
 
-test('deck editor exposes an explicit clear action that persists zero cards',()=>{
+test('deck editor clear action resets state to an empty object and is wired to persist it',()=>{
   const fs=require('node:fs');
   const appSource=fs.readFileSync(require.resolve('../app/src/main/assets/game/app.js'),'utf8');
   const htmlSource=fs.readFileSync(require.resolve('../app/src/main/assets/game/index.html'),'utf8');
+  const htmlScript=fs.readFileSync(require.resolve('../app/src/main/assets/game/index.html'),'utf8');
   assert.match(htmlSource,/id="clear-deck"/);
-  assert.match(appSource,/el\('clear-deck'\)\.addEventListener\('click', \(\) => \{ data\.deckCounts = \{\}; safeWrite\(\); renderDeck\(\); \}\)/);
+  assert.match(htmlScript,/<script src="deck-state\.js"><\/script>\s*<script src="app\.js"><\/script>/);
+  assert.match(appSource,/el\('clear-deck'\)\.addEventListener\('click', \(\) => \{ FM\.DeckState\.clearDeckCounts\(data\); safeWrite\(\); renderDeck\(\); \}\)/);
+  const data={deckCounts:{cardA:50}};
+  assert.deepEqual(DeckState.clearDeckCounts(data),{});
+  assert.deepEqual(JSON.parse(JSON.stringify(data.deckCounts)),{},'empty deck state must survive serialization');
 });
 
 test('AI skips an unaffordable land and installs the next payable land',()=>{
