@@ -474,12 +474,23 @@
     if (card.type === 'item') {
       const targetOwnerId = card.itemConditions && card.itemConditions.owner === 'enemy' ? 'ai' : 'player';
       candidates = state.players[targetOwnerId].units.filter(unit => canEquipOn(card,unit,targetOwnerId));
-      title = targetOwnerId === 'ai' ? '장착 조건을 충족하는 적군 유닛' : '장착 조건을 충족하는 아군 유닛';
-      if (!candidates.length) { alert('원본 장착 능력·종족·소속 조건에 맞는 유닛이 없습니다.'); return; }
+      if (card.runtimeItemConditionStatus === 'fallback_any_unit' && !candidates.length) {
+        candidates = state.players[targetOwnerId].units.slice();
+      }
+      title = targetOwnerId === 'ai' ? '장착 대상 유닛' : '장착 대상 유닛';
+      if (!candidates.length && card.runtimeItemConditionStatus !== 'fallback_any_unit') {
+        alert('현재 장착 가능한 유닛이 없습니다.'); return;
+      }
     } else if (card.type === 'enchant') {
-      alert('인챈트는 원본 발동 시점·지속 턴·슬롯 위치를 확인할 수 있지만, 카드별 효과가 아직 실행 규칙으로 매핑되지 않아 임의 발동하지 않습니다. 상세 보기에서 원문 조건을 확인할 수 있습니다.');
-      return;
-    } else if (card.type === 'spell' && ['ownUnit','enemyUnit'].includes(card.effect?.target)) {
+      if (card.runtimeEffectDisposition === 'fallback_noop') {
+        completePlay(card,null);
+        return;
+      }
+      const targetOwnerId = card.slotOwner === 'enemy' ? 'ai' : 'player';
+      candidates = state.players[targetOwnerId].units.filter(unit => Number(unit.slotIndex) === Number(card.slotIndex));
+      title = '인챈트 대상 유닛';
+      if (!candidates.length) { alert('지정 슬롯에 인챈트를 적용할 유닛이 없습니다.'); return; }
+    } else if (card.type === 'spell' && card.runtimeEffectDisposition !== 'fallback_noop' && ['ownUnit','enemyUnit'].includes(card.effect?.target)) {
       candidates = card.effect.target === 'ownUnit' ? state.players.player.units : state.players.ai.units;
       title = card.effect.target === 'ownUnit' ? '효과를 받을 아군 유닛' : '마법의 대상이 될 적 유닛';
       if (!candidates.length) { alert('효과를 적용할 대상 유닛이 없습니다.'); return; }
