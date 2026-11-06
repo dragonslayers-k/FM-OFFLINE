@@ -1390,7 +1390,8 @@ test('explicit LP 0 terrain remains free to install at zero current LP',()=>{
 
 test('candidate source status is preserved while a simple timed spell gets an inferred runtime handler',()=>{
   const card=CardSchema.normalize({id:'simple-spell',name:'간단한 피해 마법',type:'spell',faction:'forest',
-    text:'적군 유닛에게 2의 피해',triggerTiming:'공격 턴',cost:{},runtimeCost:{neutral:1},runtimeCostKnown:true,
+    text:'적군 유닛에게 2의 피해',triggerTiming:'공격 턴',
+    tabs:{'분류별':[{label:'발동 시점',text:'공격 턴'}]},cost:{},runtimeCost:{neutral:1},runtimeCostKnown:true,
     runtimeEffectDisposition:'implemented_inferred',effectExecutionStatus:'candidate-only',
     effectVerificationStatus:'pattern_candidate',effectCandidates:[{verificationStatus:'pattern_candidate'}]});
   assert.equal(card.effectExecutionStatus,'candidate-only');
