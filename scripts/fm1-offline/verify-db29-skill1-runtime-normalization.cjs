@@ -16,6 +16,9 @@ const EXPECTED = {
   '10010624551': { name: '해적전투원', ruleId: 'shield_break', sourceLabel: '방패파괴' },
   '10012024612': { name: '선더골렘', ruleId: 'fatal_attack', sourceLabel: '치명공격' },
   '10010624563': { name: '리듬포이', ruleId: 'defense_convert', sourceLabel: null },
+  '11011925567': { name: '네추럴마스터', ruleId: 'beast_tamer', sourceLabel: '야수조련', sourceSkill1Enum: '450', sourceDescriptionIncludes: 'AP1 이상으로 공격시 상대가 야수면 상대는 AP,DP=0' },
+  '10010624550': { name: '혼드비스트', ruleId: 'spell_suppression', sourceLabel: '주문봉쇄', sourceSkill1Enum: '602', sourceDescriptionIncludes: 'AP1 이상으로 공격시 상대가 마법이면 상대는 AP,DP=0' },
+  '10010624543': { name: '데크라프', ruleId: 'weapon_suppression', sourceLabel: '무기봉쇄', sourceSkill1Enum: '224', sourceDescriptionIncludes: 'AP1 이상으로 공격시 상대가 장비면 상대는 AP,DP=0' },
 };
 
 function fail(message) {
@@ -84,6 +87,13 @@ function main() {
     }
     if (expected.sourceLabel && raw.specialSkill1 !== expected.sourceLabel) {
       fail(id + ': source Skill1 label ' + raw.specialSkill1 + ' != ' + expected.sourceLabel);
+    }
+    if (expected.sourceSkill1Enum != null && String(raw.specialSkill1EnumValue) !== expected.sourceSkill1Enum) {
+      fail(id + ': source Skill1 enum ' + raw.specialSkill1EnumValue + ' != ' + expected.sourceSkill1Enum);
+    }
+    if (expected.sourceDescriptionIncludes &&
+        !String(raw.description || '').includes(expected.sourceDescriptionIncludes)) {
+      fail(id + ': original card description does not contain the expected source clause');
     }
     if (card.type === 'unit') {
       if (raw.specialSkillMappingStatus !== 'manual_verified' ||
