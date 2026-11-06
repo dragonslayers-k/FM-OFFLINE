@@ -74,11 +74,11 @@ DB 변환 결과는 다음을 포함합니다.
 - `skill-catalogue.json`: 원본 규칙의 출처·충돌·미구현 상태까지 별도 보존
 - T SQLite에 기록된 대형 이미지 SHA-256을 데이터팩 이미지 추출 결과와 재대조
 
-현재 5종 공식 분류는 Land 289, Unit 8,633, Magic 3,857, Item 1,748, Enchant 823입니다. Enchant는 다섯 번째 정식 분류입니다. T SQLite의 기준으로 비지형 비용 14,244건은 확정 토큰 매핑, 817건은 검토(혼합 매핑 38건 + NCS/BONUS 의미 779건)이며 지형 설치 비용 275건 확정, 14건 검토입니다. 검토 비용은 무료나 확정 비용으로 바꾸지 않습니다. 효과 후보 17,407개와 절 구간 48,281개는 원문 위치를 보존하되 모두 `pattern_candidate`로 유지하며 실행하지 않습니다. 매뉴얼에서 확인한 특수기술 27개는 카드의 Skill1 매핑이 정확할 때만 기준 규칙으로 연결합니다. 후대 커뮤니티 후보 41개와 매핑되지 않은 기술은 실행하지 않습니다.
+현재 5종 공식 분류는 Land 289, Unit 8,633, Magic 3,857, Item 1,748, Enchant 823입니다. Enchant는 다섯 번째 정식 분류입니다. T SQLite의 기준으로 비지형 비용 14,244건은 확정 토큰 매핑, 817건은 검토(혼합 매핑 38건 + NCS/BONUS 의미 779건)이며 지형 설치 비용 275건 확정, 14건 검토입니다. 검토 비용은 무료나 확정 비용으로 바꾸지 않습니다. 효과 후보 17,407개와 절 구간 48,281개는 원문 위치 및 `pattern_candidate` 검증 상태를 보존하며, 각 절에는 별도 runtime disposition을 부여합니다. 검증된 handler가 없는 절은 `fallback_noop`으로 종료하며 카드 전체 사용을 막지 않습니다. 매뉴얼에서 확인한 특수기술 27개는 카드의 Skill1 매핑이 정확할 때만 기준 규칙으로 연결합니다. 후대 커뮤니티 후보 41개와 매핑되지 않은 기술은 실행하지 않습니다.
 
 ## 구현 상태 표기
 
-이 저장소는 FM1 오프라인 복원 프로젝트이며 원작 전체 플레이 완료판이 아닙니다. 카드 도감에 보이는 것, APK 빌드 성공, 데이터팩 구조 검사 성공, 실제 카드 효과 실행 및 대전 검증은 각각 별도 단계입니다. 미확인 비용과 미지원 효과는 안전하게 차단하고, 확인 전에는 완성으로 표시하지 않습니다.
+이 저장소는 FM1 오프라인 복원 프로젝트이며 원작 전체 플레이 완료판이 아닙니다. 카드 도감에 보이는 것, APK 빌드 성공, 데이터팩 구조 검사 성공, 실제 카드 효과 실행 및 대전 검증은 각각 별도 단계입니다. 미확인 비용은 무료로 취급하지 않고 지불 가능한 runtime 추정/fallback을 적용합니다. 미지원 효과는 해당 clause만 no-op으로 종료하며 실제 불법 행동만 차단합니다.
 
 자세한 제한과 검증 경계는 docs/PROJECT_STATUS.md, docs/CARD_SCHEMA.md, docs/RULES_SOURCES.md를 참고하십시오.
 
@@ -93,3 +93,11 @@ DB 변환 결과는 다음을 포함합니다.
 - 혼합 소울 비용과 NCS/BONUS는 T DB의 검토 상태를 그대로 전달하며, 무료 비용으로 바꾸지 않는다.
 - T DB의 효과 후보와 절 단위 원문 위치는 보존하지만 `pattern_candidate`는 실행하지 않는다. 매뉴얼·카드별 검증 및 게임 엔진 테스트를 통과한 핸들러만 실행 가능하다.
 - 특수기술 실행은 `Skill1`의 `manual_verified` + `manual` 매핑만 허용한다. `Skill2`, 커뮤니티 후보, 미매핑 값은 표시·분석 자료이며 자동 발동하지 않는다.
+
+## v4.9 runtime playability policy
+
+- `source cost` and source-review flags remain immutable provenance. The engine consumes `runtimeCost` first; pending source review does not block use.
+- NCS uses any generated soul and contributes recurring upkeep only for units. BONUS uses any generated soul once and does not become recurring upkeep.
+- Every card receives a payable runtime cost (explicit source zero remains zero; missing/unknown is a tagged neutral fallback). Every unit receives a finite `runtimeUpkeepCost`.
+- Unmapped item target conditions receive a deterministic fallback target rule. MagicLand can be installed without invented normal production. Unmapped spell/enchant effects are paid and closed through a deterministic no-op terminal action.
+- Full DB29 pack validation and emulator smoke are separate explicit gates; ordinary PR synchronization runs lightweight tests only.
