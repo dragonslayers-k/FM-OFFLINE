@@ -1227,6 +1227,22 @@ test('DB29 Manual shield-break and curse attacks apply their source-defined stat
     defenderAP:4,defenderDP:3});
   assert.equal(FM.totalPower(x.defender,'ap'),2);
   assert.equal(FM.totalPower(x.defender,'dp'),1);
+
+  // Manual cardability marker rule: △ blocks decreases and ▽ permits them.
+  x=run({id:'10030324708',name:'다크조커',skill:'저주공격',ruleId:'curse_attack',
+    defenderAP:4,defenderDP:3,defenderStatMarkers:{ap:'△',dp:'▽'}});
+  assert.equal(FM.totalPower(x.defender,'ap'),4,'△ protects AP from the curse decrease');
+  assert.equal(FM.totalPower(x.defender,'dp'),1,'▽ permits the DP -2 curse');
+
+  x=run({id:'10030324708',name:'다크조커',skill:'저주공격',ruleId:'curse_attack',
+    defenderAP:4,defenderDP:3,defenderStatMarkers:{ap:'▽',dp:'△'}});
+  assert.equal(FM.totalPower(x.defender,'ap'),2,'▽ permits the AP -2 curse');
+  assert.equal(FM.totalPower(x.defender,'dp'),3,'△ protects DP from the curse decrease');
+
+  x=run({id:'10030324708',name:'다크조커',skill:'저주공격',ruleId:'curse_attack',
+    attackerAP:0,defenderAP:4,defenderDP:3});
+  assert.equal(FM.totalPower(x.defender,'ap'),4,'zero AP does not trigger the curse effect');
+  assert.equal(FM.totalPower(x.defender,'dp'),3,'zero AP leaves target DP unchanged');
 });
 
 test('DB29 Manual piercing and weakening attacks follow their exact AP and DP effects',()=>{
