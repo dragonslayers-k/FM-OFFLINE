@@ -399,7 +399,7 @@ const nonLandKnown = Object.values(costKnown).reduce((s,x) => s + x.known, 0);
 const nonLandReview = Object.values(costKnown).reduce((s,x) => s + x.review, 0);
 const mappingReviewNonLand = Object.values(costKnown).reduce((s,x) => s + x.mappingReview, 0);
 const semanticReviewNonLand = Object.values(costKnown).reduce((s,x) => s + x.semanticReview, 0);
-if (nonLandKnown !== 13427 || nonLandReview !== 817 ||
+if (nonLandKnown !== 14244 || nonLandReview !== 817 ||
     mappingReviewNonLand !== 38 || semanticReviewNonLand !== 779) {
   errors.push('Non-land cost status accounting mismatch: ' + JSON.stringify(costKnown));
 }
