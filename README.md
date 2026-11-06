@@ -100,4 +100,6 @@ DB 변환 결과는 다음을 포함합니다.
 - NCS uses any generated soul and contributes recurring upkeep only for units. BONUS uses any generated soul once and does not become recurring upkeep.
 - Every card receives a payable runtime cost (explicit source zero remains zero; missing/unknown is a tagged neutral fallback). Every unit receives a finite `runtimeUpkeepCost`.
 - Unmapped item target conditions receive a deterministic fallback target rule. MagicLand can be installed without invented normal production. Unmapped spell/enchant effects are paid and closed through a deterministic no-op terminal action.
+
+- 단순 패턴으로 정확히 파싱되고 공격/방어/전투시작 발동 시점이 확인된 마법은 테스트된 `implemented_inferred` handler로 실행한다. 인챈트는 현재 엔진에 이벤트·지속 턴 슬롯 실행기가 없으므로 단순 문구라도 카드 사용은 허용하되 효과만 `fallback_noop` 처리한다.
 - Full DB29 pack validation and emulator smoke are separate explicit gates; ordinary PR synchronization runs lightweight tests only.
