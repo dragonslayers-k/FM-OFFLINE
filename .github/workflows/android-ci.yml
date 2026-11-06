@@ -70,30 +70,48 @@ jobs:
           exit 1
 
 
-      - name: Reuse existing audited DB29 Android card data pack
+      - name: Reuse existing audited DB29 Android card data ZIP
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.reuse_existing_card_pack == true }}
-        uses: actions/download-artifact@v7
-        with:
-          name: FM1-CardData-v1.3.0-IMPORT-DB29
-          repository: ${{ github.repository }}
-          run-id: ${{ inputs.card_pack_run_id }}
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/fm1-pack
-
-      - name: Validate reused DB29 card data pack
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.reuse_existing_card_pack == true }}
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          PACK_DIR="$RUNNER_TEMP/fm1-pack"
+          mkdir -p release-package "$RUNNER_TEMP/fm1-reuse-check"
+          META="$RUNNER_TEMP/fm1-reuse-check/artifacts.json"
+          curl --fail --location --retry 4 --retry-delay 2 --retry-all-errors \
+            -H "Authorization: Bearer $GH_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/${{ inputs.card_pack_run_id }}/artifacts?per_page=100" \
+            -o "$META"
+          ARTIFACT_ID="$(python - "$META" <<'PY'
+          import json,sys
+          data=json.load(open(sys.argv[1],encoding="utf-8"))
+          name="FM1-CardData-v1.3.0-IMPORT-DB29"
+          matches=[x for x in data.get("artifacts",[]) if x.get("name")==name and not x.get("expired")]
+          if len(matches)!=1:
+              raise SystemExit(f"Expected one unexpired {name} artifact, found {len(matches)}")
+          print(matches[0]["id"])
+          PY
+          )"
+          # Download the original Actions artifact archive itself. This is the
+          # already-built, directly importable ZIP; do not rebuild or repackage DB29.
+          curl --fail --location --retry 4 --retry-delay 3 --retry-all-errors \
+            -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            -o release-package/FM1-CardData-v1.3.0.zip
+          test -s release-package/FM1-CardData-v1.3.0.zip
+          unzip -tq release-package/FM1-CardData-v1.3.0.zip
           for file in cards.json manifest.json card-skill-mappings.json card-effect-candidates.json skill2-catalogue.json; do
-            test -s "$PACK_DIR/$file" || { echo "::error::Reused DB29 pack is missing $file"; exit 1; }
+            unzip -p release-package/FM1-CardData-v1.3.0.zip "$file" > "$RUNNER_TEMP/fm1-reuse-check/$file"
+            test -s "$RUNNER_TEMP/fm1-reuse-check/$file" || { echo "::error::Reused DB29 ZIP is missing $file"; exit 1; }
           done
-          test -d "$PACK_DIR/images"
           node scripts/fm1-offline/validate-app-card-pack.cjs \
-            "$PACK_DIR/cards.json" "$PACK_DIR/card-skill-mappings.json" \
-            "$PACK_DIR/card-effect-candidates.json" "$PACK_DIR/skill2-catalogue.json" \
-            "$PACK_DIR/manifest.json"
-          echo "FM1_DATA_PACK_STATUS=reused-existing-run-${{ inputs.card_pack_run_id }}" >> "$GITHUB_ENV"
+            "$RUNNER_TEMP/fm1-reuse-check/cards.json" \
+            "$RUNNER_TEMP/fm1-reuse-check/card-skill-mappings.json" \
+            "$RUNNER_TEMP/fm1-reuse-check/card-effect-candidates.json" \
+            "$RUNNER_TEMP/fm1-reuse-check/skill2-catalogue.json" \
+            "$RUNNER_TEMP/fm1-reuse-check/manifest.json"
+          echo "FM1_DATA_PACK_STATUS=reused-existing-run-${{ inputs.card_pack_run_id }}-artifact-$ARTIFACT_ID" >> "$GITHUB_ENV"
 
       - name: Record source revision
         run: echo "FM_SOURCE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
