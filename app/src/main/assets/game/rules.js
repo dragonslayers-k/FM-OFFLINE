@@ -745,18 +745,43 @@
     return p.hand.length;
   }
 
+  function isInitialPlayableLand(card) {
+    if (!card || card.type !== 'land' || card.requiredLPKnown !== true ||
+        !Number.isInteger(Number(card.requiredLP)) || Number(card.requiredLP) > 1 ||
+        card.landInstallCostKnown !== true) return false;
+    const parsed = readCost(card.landInstallCost);
+    return parsed.ok && sumCost(parsed.cost) === 0;
+  }
+
   function drawInitialHand(state, id) {
     const p = player(state,id);
     const rng = state.rng || Math.random;
+    // A zero-soul first preparation can install only a free land at LP <= 1.
+    // If one exists in the deck, do not stop at a merely-present but unusable land.
+    const requirePlayableLand = p.deck.some(isInitialPlayableLand);
+    const hasRequiredLand = hand => hand.some(card =>
+      requirePlayableLand ? isInitialPlayableLand(card) : card.type === 'land');
     let attempts = 0;
     do {
       p.hand = [];
       while (p.hand.length < 6 && p.deck.length) p.hand.push(p.deck.shift());
-      if (p.hand.some(card => card.type === 'land')) break;
+      if (hasRequiredLand(p.hand)) break;
       p.deck = shuffle(p.deck.concat(p.hand),rng);
       p.hand = [];
       attempts++;
-    } while (attempts < 20 && p.deck.some(card => card.type === 'land'));
+    } while (attempts < 20 && p.deck.some(card =>
+      requirePlayableLand ? isInitialPlayableLand(card) : card.type === 'land'));
+    // Preserve the guarantee even with a deterministic/degenerate RNG.
+    if (requirePlayableLand && !hasRequiredLand(p.hand)) {
+      const index = p.deck.findIndex(isInitialPlayableLand);
+      if (index >= 0) {
+        const playableLand = p.deck.splice(index,1)[0];
+        const displaced = p.hand.pop();
+        if (displaced) p.deck.push(displaced);
+        p.hand.push(playableLand);
+        p.deck = shuffle(p.deck,rng);
+      }
+    }
     if (!p.hand.length) drawToSix(state,id);
     if (!p.hand.some(card => card.type === 'land') && p.deck.length === 0) checkWinner(state);
     return p.hand.length;

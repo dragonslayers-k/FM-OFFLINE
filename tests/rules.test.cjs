@@ -3799,3 +3799,14 @@ test('AI pays and uses a no-op fallback spell even when its source target is una
   assert.equal(ai.playedAnyCardThisPhase,true);
   assert.equal(s.prepared.ai,true);
 });
+
+test('initial hand prefers an installable zero-soul land over an unusable paid land',()=>{
+  const deck=Array.from({length:50},(_,i)=>unit('initial-unit-'+i));
+  deck[1]={...land('paid-first-land','forest',1,0),deckLimit:4,instanceId:'paid-first-land-1',
+    landInstallCost:{forest:1}};
+  deck[7]={...land('free-playable-land','forest',1,0),deckLimit:4,instanceId:'free-playable-land-1',
+    landInstallCost:{neutral:0}};
+  const game=FM.newGame({cards:deck,playerDeck:deck,aiDeck:deck,rng:()=>0});
+  assert.ok(game.players.player.hand.some(card=>card.id==='free-playable-land'));
+  assert.ok(game.players.ai.hand.some(card=>card.id==='free-playable-land'));
+});
