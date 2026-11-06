@@ -257,3 +257,11 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - Actions #356 / run `42221573459`, test HEAD `c665a105de796bb4eb10a60bdf1650990e52f2bd`: failed one new marker assertion (236 tests, 1 failure). The `△` case expected HP damage 0 but old engine returned 4, revealing that a blocked DP decrease was incorrectly treated as available HP overflow.
 - Runtime fix commit `6d736aa9e56c677aa7f2dcbfe94571b9a54d818b`; Actions #357 / run `42221699683`: success; 236 JS tests / 0 failures; Python converter 13 / OK. HP overflow now occurs only if positive DP is actually reduced to zero, or the defender DP was already zero/negative. `△` blocks DP reduction and HP overflow; `▽` permits DP reduction and normal overflow.
 - #355~#357 are lightweight PR tests only. DB29 pack, Gradle/APK, package/signature/ZIP and emulator were skipped. No DB29 SQLite/source mapping or release asset was changed. The Manual Skill1 T spec still records 172 exact label rows and representative card ID, but its card-local effect excerpt/runtime status remains pending; this APK fixture is not an SQLite→pack→Android lineage proof.
+
+
+## 2026-11-06 — Manual Skill1 shield-break boundary and stat-marker tests (#361)
+
+- APK PR #28 test commit `74ce501d4b97081ad4223b9868eb9bb26711ea68`, Actions #361 / run `42223636601`: success; JS 236 tests / 0 failures; Python converter tests success. Lightweight PR gate only; DB29 pack/APK/emulator skipped.
+- Exact DB29 Manual Skill1 label fixture: 해적전투원 / `10010624551` / `방패파괴`. Manual.zip `specialability.htm` §21 says after the attack, target DP becomes 0; if target DP is negative, the rule has no effect. The spec row records 96 exact label rows but the card-local effect excerpt remains pending; do not overstate this as a recovered card-local quote.
+- Added checks: AP0 does not trigger the effect; DP0 permits ordinary AP damage and stays 0; positive DP is set to 0 after the attack; negative DP remains unchanged; DP `△` blocks the reduction and prevents any HP overflow; DP `▽` permits the reduction. The effect is post-attack and does not itself add damage to HP.
+- Runtime handler unchanged; test-only. This is fixture-level rule coverage, not DB29 SQLite→converter→APK pack lineage proof. DB29 remains preserved, DB30 unpublished.
