@@ -192,6 +192,16 @@ class SqliteCardPackTests(unittest.TestCase):
         self.assertEqual(parsed["runtimeUpkeepNeutral"], 1)
         self.assertEqual(parsed["runtimeCostStatus"], "implemented_inferred")
 
+    def test_simple_spell_inference_requires_supported_timing_and_enchant_stays_fallback(self):
+        enums = {"TurnType": {"1": "공격"}, "EnchantSlot": {"1": "아군 슬롯 1"}}
+        spell = {"raw_payload": {"Category": 3, "TextBase": "적군 유닛에게 2의 피해", "TurnType": 1}}
+        self.assertEqual(CONVERTER.runtime_effect_mapping_for_row(spell, enums),
+                         {"type": "damage", "target": "enemyUnit"})
+        unsupported_timing = {"raw_payload": {"Category": 3, "TextBase": "적군 유닛에게 2의 피해", "TurnType": 99}}
+        self.assertIsNone(CONVERTER.runtime_effect_mapping_for_row(unsupported_timing, enums))
+        enchant = {"raw_payload": {"Category": 5, "TextBase": "아군 유닛의 AP를 +2만큼 증가", "TurnType": 1, "EnchantSlot": 1}}
+        self.assertIsNone(CONVERTER.runtime_effect_mapping_for_row(enchant, enums))
+
     def test_missing_and_unresolved_costs_get_nonzero_payable_runtime_fallbacks(self):
         missing = CONVERTER.db_cost_to_app(None)
         self.assertEqual(missing["runtimeCost"], {"neutral": 1})
