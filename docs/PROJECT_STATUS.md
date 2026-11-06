@@ -323,3 +323,10 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - Regression tests exercise the real AI preparation path for wounded-ally healing and lethal enemy selection.
 - Actions #402 / run 42305382686 succeeded on test commit 846e2105346a4da4bd1c47b4104887bf7ab6916a: 255 JS tests passed / 0 failed; Python converter self-test, 13 SQLite tests, and enchant audit self-test passed.
 - Lightweight PR CI only; card pack, APK build and emulator remain skipped. DB29/DB30/main/release unchanged; PR #28 remains Draft/Open/unmerged.
+
+## 2026-11-07 — AI tactical spell ordering and regression diagnosis
+
+- AI now scores spell utility and gives a legal high-value spell (especially a lethal target) priority over a unit when both compete for preparation souls; lower-value spells remain behind unit deployment.
+- Added a real preparation-phase regression with a lethal damage spell and a summon sharing the same two-soul pool. The spell must be queued first, then the unit deployed using the remaining soul.
+- CI attempts #405–#407 failed only in this new ordering assertion. Log inspection showed the runtime's log array is newest-first, so the test compared the array indices in the wrong direction; no gameplay assertion or existing test failed. The assertion was corrected to match that contract in commit 66b3a6cc6918f258a15c99db9067f1ceb2646398. Verification for this corrected HEAD is pending.
+- DB29 immutable; DB30 unpublished; main/release untouched; PR #28 remains Draft/Open/unmerged.
