@@ -747,6 +747,7 @@
       if (card) { const id = card.dataset.cardDetail; closeGraveyard(); openCardDetail(id); }
     });
     el('save-deck').addEventListener('click', () => { safeWrite(); alert('현재 덱 구성을 기기에 저장했습니다.'); });
+    el('clear-deck').addEventListener('click', () => { data.deckCounts = {}; safeWrite(); renderDeck(); });
     el('starter-deck').addEventListener('click', () => {
       const faction = el('starter-faction').value;
       const sample = FM.buildStarterDeck(cards, faction);

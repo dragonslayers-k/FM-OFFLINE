@@ -3689,3 +3689,11 @@ test('deck editor source preserves an intentionally empty or partial deck',()=>{
   assert.match(source,/if \(!data\.deckCounts \|\| typeof data\.deckCounts !== 'object' \|\| Array\.isArray\(data\.deckCounts\)\)/);
   assert.doesNotMatch(source,/!data\.deckCounts \|\| countDeck\(data\.deckCounts\) !== DEMO_DECK_SIZE/);
 });
+
+test('deck editor exposes an explicit clear action that persists zero cards',()=>{
+  const fs=require('node:fs');
+  const appSource=fs.readFileSync(require.resolve('../app/src/main/assets/game/app.js'),'utf8');
+  const htmlSource=fs.readFileSync(require.resolve('../app/src/main/assets/game/index.html'),'utf8');
+  assert.match(htmlSource,/id="clear-deck"/);
+  assert.match(appSource,/el\('clear-deck'\)\.addEventListener\('click', \(\) => \{ data\.deckCounts = \{\}; safeWrite\(\); renderDeck\(\); \}\)/);
+});
