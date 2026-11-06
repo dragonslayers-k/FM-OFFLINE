@@ -290,3 +290,11 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - Exact DB29 Skill1 label fixture: 타락자 / `13020626691` / `노화공격`; Manual.zip `specialability.htm` §8 says an attack applies AP−2 to the target.
 - Added assertions: AP0 no-trigger; AP1 against defender DP2 produces zero HP damage but still applies AP−2; target AP `△` blocks the decrease; `▽` permits it; target AP1 falls to −1 after the full −2 (no inferred zero clamp).
 - Test-only. `rules.js`, converter, source mapping, DB29 SQLite/pack, tag and Release unchanged. T formal spec remains design-only and card-local TextBase/TextExtra packet is still pending. APK #367 ran JS/Python only; pack/APK/emulator skipped.
+
+
+## 2026-11-06 — Manual Skill1 target-ability AP marker boundaries (#369)
+
+- APK test commit `7c18d444f0b9d1e852abb7a8cef49dc0b0dec84c`, Actions #369 / run `42231717568`: success; 236 JS / 0 fail, Python converter 13 / OK.
+- Exact DB29 Skill1 fixtures: 네추럴마스터 `11011925567` / 야수조련; 혼드비스트 `10010624550` / 주문봉쇄; 데크라프 `10010624543` / 무기봉쇄. Manual `specialability.htm` §§10, 18, 19 set target AP to zero only when the target has the respective Beast, Magic, or Equipment ability.
+- Added for each rule: AP0 no-trigger; matching target with AP `△` protects AP from reduction; AP `▽` permits reduction to zero. Existing matched-ability and nonmatching-ability cases remain.
+- Test-only. Runtime handler, source mapping, converter, DB29 and Release unchanged. Formal T spec remains design-only and card-local source/pack lineage pending. DB29 pack/APK/emulator skipped.
