@@ -1381,14 +1381,83 @@ test('explicit LP 0 terrain remains free to install at zero current LP',()=>{
   assert.equal(p.lands[0].id,'explicit-lp-zero');
 });
 
-test('candidate-only enchant effects are blocked until a verified handler exists',()=>{
+test('candidate-only enchant resolves as a paid deterministic no-op instead of blocking the card',()=>{
   const card={id:'candidate-enchant',instanceId:'candidate-enchant-1',name:'후보 인챈트',type:'enchant',
-    cost:{fire:1},costKnown:true,costMapped:true,slotIndex:1,slotOwner:'own',
+    cost:{},costKnown:false,costMapped:false,runtimeCost:{fire:1},runtimeCostKnown:true,
+    runtimeEffectDisposition:'fallback_noop',slotIndex:null,slotOwner:null,
     effectExecutionStatus:'candidate-only',effectVerificationStatus:'pattern_candidate',
     effectCandidates:[{verificationStatus:'pattern_candidate'}]};
-  const result=FM.validateCardForPlay(card);
-  assert.equal(result.ok,false);
-  assert.match(result.reason,/검증되기 전까지 실행을 차단/);
+  const p=player('player',{hand:[card],soulPool:{colored:{fire:1},neutral:0}});
+  const s=state(p,player('ai'));
+  const result=FM.playCard(s,'player','candidate-enchant-1');
+  assert.equal(result.ok,true);
+  assert.equal(result.effectDisposition,'fallback_noop');
+  assert.equal(p.hand.length,0);
+  assert.equal(p.graveyard.length,1);
+  assert.equal(p.soulPool.colored.fire,0);
+  assert.equal(s.status,'playing');
+});
+
+test('pending source-cost status does not block a card with an inferred payable runtime cost',()=>{
+  const card=unit('inferred-runtime-cost',{instanceId:'inferred-runtime-cost-1',cost:{},costKnown:false,costMapped:false,
+    runtimeCost:{neutral:1},runtimeCostKnown:true,runtimeCostStatus:'implemented_inferred',
+    runtimeUpkeepCost:{neutral:0}});
+  const p=player('player',{hand:[card],soulPool:{colored:{},neutral:1},unitDeployLimit:1});
+  const result=FM.playCard(state(p,player('ai')),'player','inferred-runtime-cost-1');
+  assert.equal(result.ok,true);
+  assert.equal(p.soulPool.neutral,0);
+  assert.equal(p.units.length,1);
+});
+
+test('BONUS one-time runtime payment is excluded from recurring unit upkeep',()=>{
+  const bonus=unit('bonus-runtime',{runtimeCost:{neutral:2},runtimeCostKnown:true,
+    runtimeUpkeepCost:{neutral:0},costKnown:false,costMapped:false});
+  const p=player('player',{units:[bonus],soulPool:{colored:{},neutral:0}});
+  const s=state(p,player('ai'));
+  FM._test.beginPhase(s,'player');
+  assert.equal(p.neutralUpkeep,0);
+  assert.equal(p.deck.length,20);
+  assert.equal(s.status,'playing');
+});
+
+test('missing legacy upkeep provenance uses finite conservative fallback and never ends the match by Infinity',()=>{
+  const unknown=unit('unknown-upkeep',{cost:{},costKnown:false,costMapped:false});
+  const p=player('player',{units:[unknown],soulPool:{colored:{},neutral:0}});
+  const s=state(p,player('ai'));
+  FM._test.beginPhase(s,'player');
+  assert.equal(p.neutralUpkeep,1);
+  assert.equal(s.status,'playing');
+  assert.equal(p.deck.length,19);
+});
+
+test('unmapped spell effect is paid, consumed and closed as a deterministic no-op',()=>{
+  const card={id:'unknown-spell',instanceId:'unknown-spell-1',name:'미확인 마법',type:'spell',
+    costKnown:false,costMapped:false,runtimeCost:{neutral:1},runtimeCostKnown:true,
+    runtimeEffectDisposition:'fallback_noop',effect:null};
+  const p=player('player',{hand:[card],soulPool:{colored:{},neutral:1}});
+  const s=state(p,player('ai'));
+  const result=FM.playCard(s,'player','unknown-spell-1');
+  assert.equal(result.ok,true);
+  assert.equal(result.effectDisposition,'fallback_noop');
+  assert.equal(p.hand.length,0);
+  assert.equal(p.graveyard.length,1);
+  assert.equal(p.soulPool.neutral,0);
+  assert.equal(s.status,'playing');
+});
+
+test('unmapped item condition gets a deterministic any-unit fallback and remains consumable without a target',()=>{
+  const card={id:'unknown-item',instanceId:'unknown-item-1',name:'미확인 장비',type:'item',
+    costKnown:false,costMapped:false,runtimeCost:{neutral:1},runtimeCostKnown:true,
+    runtimeItemConditionStatus:'fallback_any_unit',allowedUnitAbilities:['만능'],
+    itemConditions:{mapped:false,unsupported:['race']}};
+  const p=player('player',{hand:[card],soulPool:{colored:{},neutral:1}});
+  const s=state(p,player('ai'));
+  const result=FM.playCard(s,'player','unknown-item-1');
+  assert.equal(result.ok,true);
+  assert.equal(result.effectDisposition,'fallback_noop');
+  assert.equal(p.hand.length,0);
+  assert.equal(p.graveyard.length,1);
+  assert.equal(p.soulPool.neutral,0);
 });
 
 test('compact DB29 community candidate status blocks source-name fallback',()=>{
