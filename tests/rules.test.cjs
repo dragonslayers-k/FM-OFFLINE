@@ -1577,6 +1577,38 @@ test('a Skill2-only ability never falls through to the Skill1 combat handler',()
   assert.equal(FM._test.normalizeSpecialSkillForEngine(attacker,attacker.specialSkill2),'');
 });
 
+test('a unit with an unmapped Skill2 remains playable and completes its summon action',()=>{
+  const card=unit('db29-unmapped-skill2',{
+    instanceId:'db29-unmapped-skill2',
+    name:'Skill2 검토 대기 유닛',
+    skill:'일반공격기술 / 헌신방어',
+    specialSkill1:'없음',
+    specialSkill2:'헌신방어',
+    specialSkillMappingStatus:'no_special_skill',
+    specialSkillRuleAuthority:null,
+    specialSkillRuleId:null,
+    specialSkill2MappingStatus:'unmapped',
+    specialSkill2RuleId:null,
+    cost:{forest:1},
+    costKnown:true,
+    costMapped:true
+  });
+  const p=player('player',{
+    hand:[card],
+    soulPool:{colored:{forest:1},neutral:0},
+    unitDeployLimit:1
+  });
+  const s=state(p,player('ai'));
+  const result=FM.playCard(s,'player','db29-unmapped-skill2');
+  assert.equal(result.ok,true,'unmapped Skill2 provenance must not disable the whole card');
+  assert.equal(p.hand.length,0,'the card leaves the hand');
+  assert.equal(p.units.length,1,'the unit is deployed normally');
+  assert.equal(p.unitDeployedThisPhase,1);
+  assert.equal(p.playedAnyCardThisPhase,true,'the preparation-phase action reaches its terminal state');
+  assert.equal(FM._test.normalizeSpecialSkill2ForEngine(p.units[0],p.units[0].specialSkill2),'',
+    'unverified Skill2 remains non-executable without blocking the unit summon');
+});
+
 function sourceSkill2(id,name,extra={}){
   const ruleIds={
     '기선제압':'skill2_tactical_initiative',
