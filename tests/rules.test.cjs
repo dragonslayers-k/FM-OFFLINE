@@ -895,7 +895,7 @@ test('DB29 Manual Regeneration restores one HP on attack even when defender DP b
 });
 
 test('DB29 Manual source-backed Skill1 cards preserve petrify, aging and charge attack rules',()=>{
-  const run=({id,name,skill,ruleId,attackerAP=1,attackerDP=0,defenderAP=4,defenderDP=2}={})=>{
+  const run=({id,name,skill,ruleId,attackerAP=1,attackerDP=0,defenderAP=4,defenderDP=2,defenderStatMarkers={}}={})=>{
     const attacker=unit(id,{
       instanceId:'manual-source-attacker',
       name,skill,ap:attackerAP,dp:attackerDP,hp:5,maxHp:5,
@@ -905,7 +905,7 @@ test('DB29 Manual source-backed Skill1 cards preserve petrify, aging and charge 
     });
     const defender=unit('manual-source-defender',{
       instanceId:'manual-source-defender',
-      ap:defenderAP,dp:defenderDP,hp:10,maxHp:10
+      ap:defenderAP,dp:defenderDP,hp:10,maxHp:10,statMarkers:defenderStatMarkers
     });
     const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
     const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
@@ -920,6 +920,17 @@ test('DB29 Manual source-backed Skill1 cards preserve petrify, aging and charge 
   assert.equal(FM.totalPower(x.defender,'ap'),0);
   assert.equal(FM.totalPower(x.defender,'dp'),3);
   assert.equal(x.defender.hp,10);
+
+  // Manual cardability.htm: ▲ prevents decrease, ▼ prevents increase.
+  x=run({id:'10010624589',name:'파프니르',skill:'석화공격',ruleId:'petrify_attack',
+    defenderStatMarkers:{ap:'▲'}});
+  assert.equal(FM.totalPower(x.defender,'ap'),4,'AP increase-only marker protects the printed AP from =0');
+  assert.equal(FM.totalPower(x.defender,'dp'),3,'independent DP +1 still applies');
+
+  x=run({id:'10010624589',name:'파프니르',skill:'석화공격',ruleId:'petrify_attack',
+    defenderStatMarkers:{dp:'▼'}});
+  assert.equal(FM.totalPower(x.defender,'ap'),0,'AP =0 still applies independently');
+  assert.equal(FM.totalPower(x.defender,'dp'),2,'DP decrease-only marker blocks the +1 increase');
 
   // DB29 exact Manual Skill1 source matches: 타락자 / 13020626691 / 노화공격.
   x=run({id:'13020626691',name:'타락자',skill:'노화공격',ruleId:'aging_attack',defenderDP:0});
@@ -1038,6 +1049,13 @@ test('DB29 Manual piercing and weakening attacks follow their exact AP and DP ef
   assert.equal(x.result.damage,0,'the defender DP blocks the initial attack');
   assert.equal(FM.totalPower(x.defender,'ap'),3,'weakening applies AP -1 after an attack even when HP damage is zero');
   assert.equal(FM.totalPower(x.defender,'dp'),2,'weakening applies DP -1 after an attack even when HP damage is zero');
+
+  x=run({id:'10091525190',name:'이블크로우',skill:'약화공격',ruleId:'weaken_attack',
+    attackerAP:3,defenderDP:1});
+  assert.equal(x.result.damage,2,'the source-backed weakening effect also applies after positive HP damage');
+  assert.equal(x.defender.hp,8);
+  assert.equal(FM.totalPower(x.defender,'ap'),3);
+  assert.equal(FM.totalPower(x.defender,'dp'),0);
 });
 
 test('DB29 Manual charm attack disables AP only when DP prevents all HP damage',()=>{
