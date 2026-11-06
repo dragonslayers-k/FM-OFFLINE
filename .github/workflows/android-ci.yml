@@ -64,23 +64,24 @@ jobs:
       - name: Checkout this APK repository
         uses: actions/checkout@v7
       - name: Validate workflow gate combinations
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true && inputs.build_card_pack != true && inputs.reuse_existing_card_pack != true) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]') && !contains(github.event.pull_request.title, '[build-card-pack]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true && inputs.build_card_pack != true && inputs.reuse_existing_card_pack != true) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]') && !contains(github.event.pull_request.title, '[build-card-pack]') && !contains(github.event.pull_request.title, '[reuse-card-pack]')) }}
         run: |
           echo "::error::run_emulator requires build_card_pack=true or reuse_existing_card_pack=true so the emulator receives the audited DB29 data ZIP."
           exit 1
 
 
       - name: Reuse existing audited DB29 Android card data ZIP
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.reuse_existing_card_pack == true }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.reuse_existing_card_pack == true) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[reuse-card-pack]')) }}
         env:
           GH_TOKEN: ${{ github.token }}
+          REUSE_CARD_PACK_RUN_ID: ${{ inputs.card_pack_run_id || '42192845020' }}
         run: |
           set -euo pipefail
           mkdir -p release-package "$RUNNER_TEMP/fm1-reuse-check"
           META="$RUNNER_TEMP/fm1-reuse-check/artifacts.json"
           curl --fail --location --retry 4 --retry-delay 2 --retry-all-errors \
             -H "Authorization: Bearer $GH_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/${{ inputs.card_pack_run_id }}/artifacts?per_page=100" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$REUSE_CARD_PACK_RUN_ID/artifacts?per_page=100" \
             -o "$META"
           ARTIFACT_ID="$(python - "$META" <<'PY'
           import json,sys
@@ -111,7 +112,7 @@ jobs:
             "$RUNNER_TEMP/fm1-reuse-check/card-effect-candidates.json" \
             "$RUNNER_TEMP/fm1-reuse-check/skill2-catalogue.json" \
             "$RUNNER_TEMP/fm1-reuse-check/manifest.json"
-          echo "FM1_DATA_PACK_STATUS=reused-existing-run-${{ inputs.card_pack_run_id }}-artifact-$ARTIFACT_ID" >> "$GITHUB_ENV"
+          echo "FM1_DATA_PACK_STATUS=reused-existing-run-$REUSE_CARD_PACK_RUN_ID-artifact-$ARTIFACT_ID" >> "$GITHUB_ENV"
 
       - name: Record source revision
         run: echo "FM_SOURCE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
@@ -315,7 +316,7 @@ jobs:
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Install Android emulator components
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]') && contains(github.event.head_commit.message, '[build-card-pack]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]') && contains(github.event.pull_request.title, '[build-card-pack]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]') && contains(github.event.head_commit.message, '[build-card-pack]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]') && (contains(github.event.pull_request.title, '[build-card-pack]') || contains(github.event.pull_request.title, '[reuse-card-pack]'))) }}
         run: |
           set -euo pipefail
           # Hosted SDK downloads can occasionally arrive truncated (sdkmanager reports
@@ -389,7 +390,7 @@ jobs:
           done
 
       - name: Reclaim runner disk space for Android emulator userdata
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]') && contains(github.event.head_commit.message, '[build-card-pack]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]') && contains(github.event.pull_request.title, '[build-card-pack]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]') && contains(github.event.head_commit.message, '[build-card-pack]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]') && (contains(github.event.pull_request.title, '[build-card-pack]') || contains(github.event.pull_request.title, '[reuse-card-pack]'))) }}
         run: |
           set -euo pipefail
           echo "Disk space before cleanup:"
@@ -409,7 +410,7 @@ jobs:
           fi
 
       - name: Prepare Android emulator KVM permissions
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]') && contains(github.event.head_commit.message, '[build-card-pack]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]') && contains(github.event.pull_request.title, '[build-card-pack]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]') && contains(github.event.head_commit.message, '[build-card-pack]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]') && (contains(github.event.pull_request.title, '[build-card-pack]') || contains(github.event.pull_request.title, '[reuse-card-pack]'))) }}
         run: |
           set -euo pipefail
           if [ -e /dev/kvm ]; then
@@ -425,7 +426,7 @@ jobs:
           fi
 
       - name: Install and launch APK in Android emulator
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]') && contains(github.event.head_commit.message, '[build-card-pack]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]') && contains(github.event.pull_request.title, '[build-card-pack]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]') && contains(github.event.head_commit.message, '[build-card-pack]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]') && (contains(github.event.pull_request.title, '[build-card-pack]') || contains(github.event.pull_request.title, '[reuse-card-pack]'))) }}
         id: emulator
         timeout-minutes: 25
         uses: reactivecircus/android-emulator-runner@v2.38.0
