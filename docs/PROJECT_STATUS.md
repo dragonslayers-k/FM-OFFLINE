@@ -298,3 +298,13 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - Exact DB29 Skill1 fixtures: 네추럴마스터 `11011925567` / 야수조련; 혼드비스트 `10010624550` / 주문봉쇄; 데크라프 `10010624543` / 무기봉쇄. Manual `specialability.htm` §§10, 18, 19 set target AP to zero only when the target has the respective Beast, Magic, or Equipment ability.
 - Added for each rule: AP0 no-trigger; matching target with AP `△` protects AP from reduction; AP `▽` permits reduction to zero. Existing matched-ability and nonmatching-ability cases remain.
 - Test-only. Runtime handler, source mapping, converter, DB29 and Release unchanged. Formal T spec remains design-only and card-local source/pack lineage pending. DB29 pack/APK/emulator skipped.
+
+## 2026-11-07 — Deck quantity zero-state and Skill1 authorization tuple follow-up
+
+- PR #28 adds DeckState.adjustDeckCounts() as the single quantity-edit rule: it validates ±1 changes, keeps 1 → 0 as an empty saved deck, rejects underflow, enforces per-card limits, and prevents exceeding the 50-card editor ceiling.
+- app.js now delegates quantity changes to the helper; match startup remains separately gated at exactly 50 cards and reports the current deck size.
+- Added regression coverage for the full zero transition, intentional empty-state persistence, underflow, per-card limit, deck ceiling, and app wiring. Added Skill1 normalization matrix coverage for mapping status + authority + known rule ID as a complete authorization tuple.
+- Commits: bb4ade030346ac970ca84a18b0e21a995e417d5a (Skill1 authorization matrix), e01b9d922c94df019c0864d3c995080884579b30 (shared quantity helper), dbf0b1d09975f309dfcf14ce4937a672d504eb04 (app integration), 5fc4bdfda69eb2c29cc07595eeb214d249da6a2c (zero/limit regression tests).
+- At documentation update time, no PR-triggered Actions run was returned for latest HEAD 5fc4bdf...; these new tests are therefore pending CI verification. Latest previously confirmed run remains #394 / 42303760472 on earlier commit 4d7d92d..., successful lightweight JS/Python checks. It did not run Gradle/APK/emulator.
+- DB29, DB30, main/release and PR merge state unchanged. PR #28 remains Draft/Open.
+
