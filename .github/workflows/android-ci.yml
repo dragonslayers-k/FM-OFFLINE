@@ -80,7 +80,7 @@ jobs:
           python scripts/fm1-offline/audit-enchant-cards.py --self-test
 
       - name: Download the audited T SQLite DB release and build Android data ZIP
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.build_card_pack == true) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-card-pack]') || contains(github.event.head_commit.message, '[run-emulator]'))) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.build_card_pack == true) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-card-pack]') || contains(github.event.head_commit.message, '[run-emulator]'))) || (github.event_name == 'pull_request' && (contains(github.event.pull_request.title, '[run-emulator]') || github.event.pull_request.head.ref == 'feat/combat-event-foundation')) }}
         env:
           CARD_DB_RELEASE: https://github.com/dragonslayers-k/T/releases/download/${{ env.CARD_DB_RELEASE_TAG }}
           SOURCE_DIR: ${{ runner.temp }}/fm1-source
