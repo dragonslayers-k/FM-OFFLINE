@@ -392,8 +392,10 @@
       const timingOrSlotReady=type==='spell'?!!n.triggerTiming:
         (Number.isInteger(Number(n.slotIndex))&&Number(n.slotIndex)>0&&['own','enemy'].includes(n.slotOwner));
       const runtimeEffectReady=!!n.effect&&supportedEffectTypes.includes(n.effect.type)&&effectTargetValid&&slotMatchesEffect&&timingOrSlotReady;
-      n.runtimeEffectDisposition=raw.effectVerified===true?'implemented_verified':
-        (runtimeEffectReady&&mayRunInferred?'implemented_inferred':'fallback_noop');
+      n.runtimeEffectDisposition=runtimeEffectReady?
+        (raw.effectVerified===true?'implemented_verified':(mayRunInferred?'implemented_inferred':'fallback_noop')):
+        'fallback_noop';
+      if(n.runtimeEffectDisposition==='fallback_noop')n.effect=null;
       n.runtimeEffectFallbackReason=n.runtimeEffectDisposition==='fallback_noop'?
         (raw.runtimeEffectFallbackReason||'source-effect-clause-not-yet-mapped'):null;
     }else{n.rules.status='incomplete';n.rules.unsupportedReason='원본 카드 종류를 판별하지 못했습니다.';}
