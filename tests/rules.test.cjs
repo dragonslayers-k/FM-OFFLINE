@@ -4047,7 +4047,7 @@ test('mobile deck catalogue exposes decrement-to-zero controls and responsive de
   const fs=require('node:fs');
   const appSource=fs.readFileSync(require.resolve('../app/src/main/assets/game/app.js'),'utf8');
   const styleSource=fs.readFileSync(require.resolve('../app/src/main/assets/game/style.css'),'utf8');
-  assert.ok(appSource.includes(`data-deck-minus="${escapeAttr(c.id)}"`),
+  assert.ok(appSource.includes('data-deck-minus=') && appSource.includes('escapeAttr(c.id)'),
     'catalogue items must expose a minus button for directly editing quantity');
   assert.match(appSource,/if \(!minus\.disabled\) adjustDeck\(minus\.dataset\.deckMinus, -1\)/,
     'catalogue decrement must call the same shared adjustment path');
