@@ -553,7 +553,8 @@
         card.runtimeItemConditionStatus !== 'fallback_any_unit') return false;
     if (condition.owner === 'own' && targetOwnerId !== ownerId) return false;
     if (condition.owner === 'enemy' && targetOwnerId === ownerId) return false;
-    if (card.runtimeItemConditionStatus === 'fallback_any_unit') return true;
+    // Keep every parsed condition even when one unsupported source clause needs
+    // fallback; only the unparsed part is ignored.
     if (condition.race && String(unit.race || '') !== condition.race) return false;
     if (condition.affiliation && String(unit.affiliation || '') !== condition.affiliation) return false;
     return true;
