@@ -220,3 +220,12 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - Corrective test commit `59384b9381cad328ed60801895635077ecdeefba` changed the assertion to compare against `ai.name`, not a hardcoded label. Actions #346 / run `42215917221`: success; 235 JS tests / fail 0; Python converter 13 tests / OK.
 - The passing test calls actual `FM.endPhase()` for the human side, enters AI `beginPhase()`, and verifies the empty AI deck cannot refill hand to six, the match ends with player victory, no phantom draw occurs, the round does not advance, and AI auto-play does not start after `status=finished`.
 - Both #345 and #346 were lightweight JS/Python checks. DB29 pack/APK/emulator were skipped. The first failure was a fixture assertion mismatch, not a runtime code defect; runtime `rules.js` was not changed.
+
+
+## 2026-11-06 — NCS 유지비로 인한 AI 준비 단계 매치 종료 (#348)
+
+- Test commit `c4bb96875778d3a038fba6e3a058191e943fa4a4`, Actions #348 / run `42216514570`: success; 236 JS tests / fail 0; 13 Python converter tests / OK.
+- New test `AI preparation stops when neutral upkeep destroys its final deck card` traverses the real player `FM.endPhase()` → AI `beginPhase()` → `payNeutralUpkeep()` path. The AI has one neutral-cost unit, no lands/soul pool, and exactly one deck card. Unpaid upkeep destroys that final card; the player wins; AI hand refill, automated card review/play, and round advance do not occur.
+- Manual.zip `soulcost.htm` states that a unit with a neutral bead pays the neutral upkeep every turn and, if unable to pay, destroys that many deck cards. This test covers the terminal boundary where the last card is destroyed.
+- Prior adjacent path: #346 / run `42215917221` verified empty-deck draw-to-six loss, after fixing the test to compare the actual lowercase fixture name (`ai.name`). Initial #345 / `42215759449` failed only that hardcoded log-text assertion (234/235 passed); runtime code was not changed. #346 passed 235/235.
+- #348 is lightweight JS/Python only. DB29 pack/APK/emulator skipped. No runtime rules code or DB29 data changed.
