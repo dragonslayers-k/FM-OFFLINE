@@ -3944,3 +3944,32 @@ test('shared deck quantity adjustment enforces card limit and the 50-card ceilin
   assert.match(appSource,/if \(deck\.length !== DEMO_DECK_SIZE\)/,
     'editing may save a partial/empty deck while match startup independently requires 50 cards');
 });
+
+
+test('AI healing spell selects the most wounded eligible ally instead of the highest-AP full-health unit',()=>{
+  const healthy=unit('ai-heal-healthy',{instanceId:'ai-heal-healthy',ap:9,hp:8,maxHp:8});
+  const wounded=unit('ai-heal-wounded',{instanceId:'ai-heal-wounded',ap:2,hp:2,maxHp:8});
+  const spell={id:'ai-heal-spell',instanceId:'ai-heal-spell',name:'회복 마법',type:'spell',
+    cost:{neutral:0},costKnown:true,costMapped:true,triggerTiming:'공격턴',
+    effect:{type:'heal',amount:3,target:'ownUnit'}};
+  const p=player('player',{units:[]});
+  const ai=player('ai',{units:[healthy,wounded],hand:[spell],unitDeployLimit:0});
+  const s=state(p,ai,{activeId:'ai',settings:{difficulty:'normal',deckSize:20}});
+  FM.runAIPhase(s,'ai');
+  assert.equal(ai.spells.length,1);
+  assert.equal(ai.spells[0].selectedTargetId,'ai-heal-wounded');
+});
+
+test('AI damage spell prioritizes an eligible lethal target',()=>{
+  const durable=unit('ai-damage-durable',{instanceId:'ai-damage-durable',ap:8,hp:8,maxHp:8});
+  const lethal=unit('ai-damage-lethal',{instanceId:'ai-damage-lethal',ap:1,hp:2,maxHp:8});
+  const spell={id:'ai-damage-spell',instanceId:'ai-damage-spell',name:'파괴 마법',type:'spell',
+    cost:{neutral:0},costKnown:true,costMapped:true,triggerTiming:'공격턴',
+    effect:{type:'damage',amount:3,target:'enemyUnit'}};
+  const p=player('player',{units:[durable,lethal]});
+  const ai=player('ai',{hand:[spell],unitDeployLimit:0});
+  const s=state(p,ai,{activeId:'ai',settings:{difficulty:'normal',deckSize:20}});
+  FM.runAIPhase(s,'ai');
+  assert.equal(ai.spells.length,1);
+  assert.equal(ai.spells[0].selectedTargetId,'ai-damage-lethal');
+});
