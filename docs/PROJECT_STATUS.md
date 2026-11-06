@@ -186,3 +186,12 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - Core runtime action/cost gate는 #325에서 통과했고, UI fix는 #329에서 APK build 및 integrity 검사를 통과했다. 최신 UI/doc-only 변경까지 포함한 APK build가 필요할 때는 별도 필요한 범위만 실행한다.
 - 남은 핵심은 48,263 fallback clauses와 1,249 low-confidence source rows의 evidence-linked 의미 검토/handler promotion, Skill1/Skill2 crosswalk coverage, 고정 seed의 실제 전투·턴 전체 시나리오다.
 - DB29 보존, DB30 미발행, T PR #9/#12/#13 및 APK PR #28/#26/#25/#9 미병합 승인 경계 유지.
+
+
+## 2026-11-06 — Skill2 provenance와 unit playability 재검증
+
+- APK PR #28 code audit #325의 실제 DB29 pack result는 Skill2 enum 189, active skill names 188, active cards 1,366, source mappings/references 10,381, executable rules 7이다. rules.js에 여덟 handler가 등록된 사실과 DB29에서 실행 허가된 일곱 규칙을 혼동하지 않는다.
+- 홀리오오라 handler/test는 존재하지만 DB29 카드별 매핑은 미승인 상태로 유지한다. 카드별 원문 2행의 표현이 다르고, 한 행만 `(내림)`을 명시한다. 아이템 카드의 표현을 유닛 효과 근거로 전용하지 않는다.
+- APK commit `9f24fe688845a0a0c67fd5d523adcb7ae0fcce7d` adds a focused `FM.playCard()` regression: an unmapped/unverified Skill2 does not prevent unit payment, hand removal, deployment, or preparation-phase terminal state. The special ability itself remains non-executable and cannot fall through to Skill1.
+- Actions #333 / run `42203252263` passed on HEAD `300dd507850175e3aa19168633c6d33a1f1c6c55`; the test log explicitly names the new regression and reports 0 failures. JS/Python lightweight suite only; no pack/APK/emulator gate.
+- Documentation follow-up commit `de467e60f9164f75274f261d2bc769028befea01` records the #333 result. No PR-triggered run has been returned for this doc-only commit by the available query; do not claim it has separate CI validation.
