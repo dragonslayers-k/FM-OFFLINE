@@ -271,11 +271,13 @@
       return 'AP '+card.ap+' · DP '+card.dp+' · HP '+card.hp+' · '+(card.unitAbility||'능력 미상')+' · '+(card.skill||'스킬 없음')+(coinText?' · '+coinText:'');
     }
     if(card.type==='land'){
+      const install=card.landInstallCostKnown===true
+        ? runtimeCostLabel(card.landInstallCost,card.runtimeCostStatus)
+        : '설치 소울 확인 필요';
       if(card.isMagicLand||card.soulProductionStatus==='magicland-effect')
-        return '매직랜드 · 소울 코스트 발동 효과 구현 대기';
+        return '매직랜드 · LP '+(card.requiredLP??'미상')+' · 설치 '+install+' · 특수 효과 fallback (일반 소울 생산 없음)';
       const prod=card.soulProduction||{colored:{},neutral:0};
       const colors=Object.entries(prod.colored||{}).filter(([,v])=>Number(v)>0).map(([c,v])=>(COLOR_LABEL[c]||c)+' '+v).join(' + ')||'유색 소울 없음';
-      const install=card.landInstallCostKnown===true?FM.costText(card.landInstallCost):'설치 소울 확인 필요';
       return '필요 LP '+(card.requiredLP??'미상')+' · 설치 소울 '+install+' · 생산 '+colors+' · 무소울 '+(prod.neutral??0);
     }
     if(card.type==='item')return '장착 능력 '+(card.equipAbility||'미상')+' · AP '+(card.apBonus||0)+' · DP '+(card.dpBonus||0)+' · HP '+(card.hpBonus||0)+' · 코인 '+(card.coinDeltaText||'미상');
@@ -283,18 +285,28 @@
     if(card.type==='spell')return '발동 '+(card.triggerTiming||'미상')+' · 지속 '+(card.durationText||'미상')+' · '+(card.effect?effectText(card.effect):'효과 매핑 대기');
     return '특수 효과';
   }
+  function runtimeCostLabel(cost,status) {
+    const amount=FM.costText(cost);
+    if(status==='implemented_inferred')return '추정 비용 '+amount;
+    if(status==='fallback_payable')return '대체 비용 '+amount;
+    return '비용 '+amount;
+  }
   function costLabel(card) {
     if(card.type==='land'){
-      if(card.isMagicLand||card.soulProductionStatus==='magicland-effect')return '매직랜드 효과 구현 대기';
-      const install=card.landInstallCostKnown===true?FM.costText(card.landInstallCost):
-        (card.costMappingReview?'혼합 설치 비용 검토':'설치 소울 확인 필요');
-      return 'LP '+(card.requiredLP??'미상')+' · 설치 소울 '+install;
+      const install=card.landInstallCostKnown===true
+        ? runtimeCostLabel(card.landInstallCost,card.runtimeCostStatus)
+        : '설치 소울 확인 필요';
+      if(card.isMagicLand||card.soulProductionStatus==='magicland-effect')
+        return 'LP '+(card.requiredLP??'미상')+' · 설치 '+install+' · 효과 fallback';
+      return 'LP '+(card.requiredLP??'미상')+' · 설치 '+install;
     }
-    if(card.costKnown===true&&card.costMapped===true)return FM.costText(card.cost);
+    if(card.runtimeCostKnown===true&&card.runtimeCost&&typeof card.runtimeCost==='object')
+      return runtimeCostLabel(card.runtimeCost,card.runtimeCostStatus);
+    if(card.costKnown===true&&card.costMapped===true)return '원본 비용 '+FM.costText(card.cost);
     if(card.costMappingReview&&card.costSemanticReview)return '혼합/특수 소울 검토';
     if(card.costMappingReview)return '혼합 소울 비용 검토';
     if(card.costSemanticReview)return '특수 소울 의미 검토';
-    return '소울 구슬 비용 검증 대기';
+    return '런타임 비용 확인 필요';
   }
   function canEquipOn(card, unit, targetOwnerId = 'player') {
     if (!card || !unit) return false;
