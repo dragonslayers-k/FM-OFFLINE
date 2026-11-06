@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Convert FM Lunatic Firestore release data into the Android app's FM1-CARD-DATA ZIP."""
-import argparse, gzip, hashlib, json, os, shutil, sqlite3, tarfile, zipfile
+import argparse, gzip, hashlib, html, json, os, re, shutil, sqlite3, tarfile, zipfile
 from collections import Counter
 from pathlib import Path, PurePosixPath
 
@@ -605,7 +605,7 @@ def load_normalized_database(db_path, expected_count=TOTAL):
 
 
 def simple_effect_mapping(text):
-    raw = str(text or "").strip()
+    raw = html.unescape(re.sub(r"<[^>]*>", "", str(text or ""))).strip()
     compact = re.sub(r"\s+", "", raw)
     if not compact or re.search(r"수만큼|각각|무작위|랜덤|레벨에맞게|교체|복제|유지턴|조건부|~일때|마다", compact):
         return None
