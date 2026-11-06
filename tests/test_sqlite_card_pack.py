@@ -197,6 +197,8 @@ class SqliteCardPackTests(unittest.TestCase):
         spell = {"raw_payload": {"Category": 3, "TextBase": "적군 유닛에게 2의 피해", "TurnType": 1}}
         self.assertEqual(CONVERTER.runtime_effect_mapping_for_row(spell, enums),
                          {"type": "damage", "target": "enemyUnit"})
+        spell_with_extra = {"raw_payload": {**spell["raw_payload"], "TextExtra": "추가 조건 문구"}}
+        self.assertIsNone(CONVERTER.runtime_effect_mapping_for_row(spell_with_extra, enums))
         unsupported_timing = {"raw_payload": {"Category": 3, "TextBase": "적군 유닛에게 2의 피해", "TurnType": 99}}
         self.assertIsNone(CONVERTER.runtime_effect_mapping_for_row(unsupported_timing, enums))
         enchant = {"raw_payload": {"Category": 5, "TextBase": "아군 유닛의 AP를 +2만큼 증가", "TurnType": 1, "EnchantSlot": 1}}
