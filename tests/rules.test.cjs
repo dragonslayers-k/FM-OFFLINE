@@ -233,7 +233,7 @@ test('AI preparation stops immediately when an empty deck cannot refill its hand
   assert.equal(s.round,3,'the failed draw does not advance a round');
   assert.ok(!s.log.some(entry=>entry.text.includes('카드를 검토하고 있습니다.')),
     'AI automation must not start after beginPhase has already ended the match');
-  assert.ok(s.log.some(entry=>entry.text.includes('AI의 서고가 소진되었습니다.')));
+  assert.ok(s.log.some(entry=>entry.text.includes(ai.name+'의 서고가 소진되었습니다.')));
 });
 
 test('LP accumulates each turn and a land placement consumes LP only',()=>{
