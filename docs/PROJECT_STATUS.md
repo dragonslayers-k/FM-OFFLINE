@@ -212,3 +212,11 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - Test commit `3837301571449a17e28a09d08911cd5ce87f3336`, Actions #342 / run `42214419550`: JS 234 tests / fail 0, Python converter 13 tests passed. New test `fixed-seed slot battle ends the match on direct deck depletion without advancing the round` enters the real `resolveBattle()` slot path with a two-soul attacker and the defender's final two deck cards. It verifies immediate `status=finished`, `result=player`, no round increment, no attacker rotation, no additional preparation, and the final-deck/ victory log.
 - #342 workflow steps: JS game rule tests success; Python Firestore converter success; DB29 download/pack, JDK/SDK/Gradle/APK/emulator skipped according to PR-lightweight CI policy.
 - These are deterministic integration assertions over seeded fixture decks, not DB29-pack-import or seeded full game using the actual 15,350-card release. Original effects remain incomplete (48,263 fallback_noop of 48,281 clauses; only 18 implemented_inferred). Do not describe this as full game certification.
+
+
+## 2026-11-06 — AI 준비 단계 서고 소진 종료 경로 (#345/#346)
+
+- Test commit `de07a48573b8752a635e81667e5d905614c19550`, Actions #345 / run `42215759449`: first run failed one assertion (235 tests, 234 pass / 1 fail). The engine correctly ended the match during `beginPhase()` when the AI had five cards and an empty deck; the test incorrectly expected literal `AI` in the log, while the fixture's `ai.name` is lowercase `ai`.
+- Corrective test commit `59384b9381cad328ed60801895635077ecdeefba` changed the assertion to compare against `ai.name`, not a hardcoded label. Actions #346 / run `42215917221`: success; 235 JS tests / fail 0; Python converter 13 tests / OK.
+- The passing test calls actual `FM.endPhase()` for the human side, enters AI `beginPhase()`, and verifies the empty AI deck cannot refill hand to six, the match ends with player victory, no phantom draw occurs, the round does not advance, and AI auto-play does not start after `status=finished`.
+- Both #345 and #346 were lightweight JS/Python checks. DB29 pack/APK/emulator were skipped. The first failure was a fixture assertion mismatch, not a runtime code defect; runtime `rules.js` was not changed.
