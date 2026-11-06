@@ -3810,3 +3810,21 @@ test('initial hand prefers an installable zero-soul land over an unusable paid l
   assert.ok(game.players.player.hand.some(card=>card.id==='free-playable-land'));
   assert.ok(game.players.ai.hand.some(card=>card.id==='free-playable-land'));
 });
+
+test('AI plays a supported spell into its spell row when it can pay',()=>{
+  const spell={id:'ai-supported-spell',name:'AI supported spell',type:'spell',
+    instanceId:'ai-supported-spell-1',faction:'forest',cost:{forest:1},costKnown:true,costMapped:true,
+    runtimeCost:{forest:1},runtimeCostKnown:true,runtimeCostStatus:'source_verified',
+    runtimeEffectDisposition:'source_verified',effect:{type:'draw',amount:1},triggerTiming:'turn_start',
+    duration:1};
+  const p=player('player');
+  const ai=player('ai',{hand:[spell],soulPool:{colored:{forest:1},neutral:0},unitDeployLimit:0});
+  const s=state(p,ai,{activeId:'ai',settings:{difficulty:'normal'}});
+  FM.runAIPhase(s,'ai');
+  assert.equal(ai.hand.length,0);
+  assert.equal(ai.spells.length,1);
+  assert.equal(ai.spells[0].id,'ai-supported-spell');
+  assert.equal(ai.soulPool.colored.forest,0);
+  assert.equal(ai.playedAnyCardThisPhase,true);
+  assert.equal(s.prepared.ai,true);
+});
