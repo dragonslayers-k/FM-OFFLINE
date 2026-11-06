@@ -1625,10 +1625,45 @@ if (card.type === 'unit') {
 
   function bestSpellTarget(state, ownerId, card) {
     const effect = card.effect || {};
-    const targetOwner = effect.target === 'ownUnit' ? player(state, ownerId) : player(state, opponentId(ownerId));
-    if (!targetOwner.units.length) return null;
-    if (effect.target === 'ownUnit') return targetOwner.units.slice().sort((a, b) => totalPower(b, 'ap') - totalPower(a, 'ap'))[0];
-    return targetOwner.units.slice().sort((a, b) => a.hp - b.hp)[0];
+    const ownTarget = effect.target === 'ownUnit';
+    const targetOwner = ownTarget ? player(state, ownerId) : player(state, opponentId(ownerId));
+    const units = (targetOwner.units || []).filter(unit => Number(unit.hp || 0) > 0);
+    if (!units.length) return null;
+    const amount = Math.max(0, Number(effect.amount || 0));
+
+    if (effect.type === 'heal' && ownTarget) {
+      return units.filter(unit => Number(unit.hp || 0) < Number(unit.maxHp || 0) + Number(unit.itemHP || 0) + Number(unit.tempHP || 0) &&
+        canChangeStat(unit, 'hp', 1))
+        .sort((a, b) => {
+          const missingA = Number(a.maxHp || 0) + Number(a.itemHP || 0) + Number(a.tempHP || 0) - Number(a.hp || 0);
+          const missingB = Number(b.maxHp || 0) + Number(b.itemHP || 0) + Number(b.tempHP || 0) - Number(b.hp || 0);
+          return missingB - missingA || totalPower(b, 'ap') - totalPower(a, 'ap');
+        })[0] || null;
+    }
+
+    if ((effect.type === 'damage' || effect.type === 'drain') && !ownTarget) {
+      return units.filter(unit => canChangeStat(unit, 'hp', -1))
+        .sort((a, b) => {
+          const lethalA = amount >= Number(a.hp || 0) ? 1 : 0;
+          const lethalB = amount >= Number(b.hp || 0) ? 1 : 0;
+          return lethalB - lethalA || Number(a.hp || 0) - Number(b.hp || 0) ||
+            totalPower(b, 'ap') - totalPower(a, 'ap');
+        })[0] || null;
+    }
+
+    if (effect.type === 'buff' && ownTarget) {
+      const ap = Number(effect.ap || 0), dp = Number(effect.dp || 0), hp = Number(effect.hp || 0);
+      return units.slice().sort((a, b) => {
+        const value = unit => (ap && canChangeStat(unit, 'ap', Math.sign(ap)) ? Math.abs(ap) : 0) +
+          (dp && canChangeStat(unit, 'dp', Math.sign(dp)) ? Math.abs(dp) : 0) +
+          (hp && canChangeStat(unit, 'hp', Math.sign(hp)) ? Math.abs(hp) : 0);
+        return value(b) - value(a) || totalPower(b, 'ap') - totalPower(a, 'ap');
+      })[0] || null;
+    }
+
+    if (ownTarget) return units.slice().sort((a, b) => totalPower(b, 'ap') - totalPower(a, 'ap'))[0];
+    return units.slice().sort((a, b) => Number(a.hp || 0) - Number(b.hp || 0) ||
+      totalPower(b, 'ap') - totalPower(a, 'ap'))[0];
   }
 
   function runAIPhase(state, ownerId) {
