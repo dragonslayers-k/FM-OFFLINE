@@ -555,7 +555,7 @@
     if(!card||!['land','unit','item','spell','enchant'].includes(card.type))return {ok:false,reason:'카드 종류 또는 데이터가 올바르지 않습니다.'};
     if(card.type!=='land'){
       const hasRuntimeCost=card.runtimeCostKnown===true;
-      if(!hasRuntimeCost&&(card.costKnown!==true||card.costMapped!==true))return {ok:false,reason:'원본 카드 비용과 런타임 비용이 모두 확인되지 않았습니다.'};
+      if(!hasRuntimeCost&&(card.costKnown!==true||card.costMapped!==true))return {ok:false,reason:'소울 구슬 비용과 런타임 비용이 모두 확인되지 않았습니다.'};
       const parsed=readCost(hasRuntimeCost?card.runtimeCost:card.cost);if(!parsed.ok)return parsed;
     }
     if(card.type==='unit'&&(!Number.isFinite(Number(card.ap))||!Number.isFinite(Number(card.dp))||!Number.isFinite(Number(card.hp))||Number(card.hp)<=0))
