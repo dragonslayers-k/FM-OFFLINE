@@ -62,4 +62,17 @@ DB29에는 189개의 Skill2 enum 항목이 있다. 이 중 1개는 미보유/없
 
 ### Cost review gate
 
-- DB29 audit identifies 14,244 known non-land costs and 817 review-required non-land costs (38 mapping-review, 779 semantic-review). The converter preserves candidate cost data for inspection but must not expose review-required costs as playable/known. Do not turn unknown cost into free cost.
+- DB29 source review totals (14,244 known / 817 review-required non-land costs; 38 mapping-review + 779 semantic-review) are provenance counts, not a playability gate. The Android runtime consumes separate `runtimeCost`; the #325 pack audit found 15,350/15,350 runtime costs ready (0 blocked), with 14,519 `implemented_verified` and 831 `implemented_inferred`. Original source values/review flags remain unchanged; inferred/fallback runtime amounts are not source verification. Unknown costs must never become free zero.
+
+
+## 2026-11-06 integrated runtime reconciliation — Actions #325
+
+- The production dispatcher has eight Skill2 handler implementations, but code registration must not be confused with DB29 card-mapping executability.
+- The DB29 pack audit on APK PR #28 code SHA `60681acc02974f6f6e8721def63b24f0823a6d6e`, Actions #325 / run `42192845020`, measured 189 enum entries, 188 active Skill2 names, 1,366 active cards, 10,381 source mappings/references, and **7 executable rules**.
+- Holy Aura remains the non-executable rule in the current DB29 pack. Its handler and isolated arithmetic tests exist, but card-local evidence does not yet justify promoting the DB29 mappings. The crosswalk found two source rows with different wording: only one explicitly says floor rounding; the source phrase used as a rounding needle must not be borrowed from an item card to authorize a unit defense rule. Keep the mapping review-only until exact unit-card evidence resolves the wording and damage-source boundaries.
+- The eight handler tests are not a claim that eight rules are mapped to actual DB29 cards. Only the seven validated rules counted by the actual pack audit are executable in the current DB29 runtime pack; unknown/unverified Skill2 remains non-executable while the unit itself remains playable.
+- Cost semantics are also split: the source 817 review-required records keep their provenance flags, while the 15,350-card runtime payment overlay guarantees a payable runtime cost. Runtime readiness does not change source evidence state.
+
+## 2026-11-06 regression — unmapped Skill2 must not block card use
+
+APK PR #28 adds a focused test that attempts a real `FM.playCard()` unit-summon action for a unit carrying an unverified/unmapped Skill2. The expected contract is: the unit pays its normal runtime cost, leaves the hand, enters the field, and sets `playedAnyCardThisPhase`; the unverified Skill2 remains non-executable and does not fall through to Skill1. The test must pass on the latest PR HEAD before this regression is considered complete.
