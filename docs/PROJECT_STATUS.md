@@ -238,3 +238,12 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - Pathfinder / `10010624588` charge boundaries at AP0: own DP3 vs defender DP2 yields 1 damage; own DP1 vs defender DP3 is fully absorbed (0 damage).
 - Dark Familiar / `10010624538` frenzy boundary at AP0: HP4 falls to 1 (3 sacrificed) and defender DP2 reduces the final damage to 1. Existing one-HP no-sacrifice boundary remains.
 - This was test-only. No runtime handler, source mapping or DB29 data changed; DB29 pack/APK/emulator were skipped.
+
+
+## 2026-11-06 — 관통공격 DP 상한/0 경계 (#352)
+
+- Test commit `d95bbed32445de4b6577efe4600a0fa3cc0abb46`, Actions #352 / run `42218090054`: success; JS 236 tests / 0 failures; Python converter 13 tests / OK.
+- Manual.zip `specialability.htm` §4 says piercing destroys target DP by attacker AP; when DP reaches zero, remaining AP damage is carried to HP.
+- DB29 Manual card fixture 블랙유니콘 / `10091525214`: attacker AP2 vs target DP4 leaves DP2 and HP damage 0; attacker AP3 vs target DP0 leaves DP0 and deals 3 HP damage. Existing AP4 vs DP2 still leaves 2 HP damage.
+- The same Manual text does not explicitly state how an already-negative DP modifies piercing leftover damage. No generic AP-minus-negative-DP inference was added; that case remains review-only until a reliable source rule clarifies it.
+- Test-only; no rules.js, mapping, converter, DB29 data, pack, APK or emulator mutation/run.
