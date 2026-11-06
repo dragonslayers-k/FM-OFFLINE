@@ -396,7 +396,7 @@ for (const card of cards) {
       errors.push(card.id + ': enchant has no supported event/duration runtime handler and must use fallback_noop');
     }
     if (card.type==='spell' && disposition==='implemented_inferred' &&
-        !/전투시작|전투개시|공격|공격턴|방어|방어턴/.test(String(card.triggerTiming||'').replace(/\\s/g,''))) {
+        !/전투시작|전투개시|공격|공격턴|방어|방어턴/.test(String(card.triggerTiming||'').replace(/\s/g,''))) {
       errors.push(card.id + ': inferred spell handler has unsupported trigger timing');
     }
   }
