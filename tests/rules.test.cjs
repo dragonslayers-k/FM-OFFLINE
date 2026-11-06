@@ -298,15 +298,17 @@ test('item with unrestricted ability still requires matching native affiliation'
   assert.equal(FM.playCard(s,'player','clan1','m1').ok,true);
 });
 
-test('unparsed native item target restrictions fail closed',()=>{
+test('unparsed native item target restrictions use deterministic any-unit fallback',()=>{
   const item={id:'unknown-item',instanceId:'unknown1',name:'조건 미해석 아이템',type:'item',
-    cost:{forest:0},costKnown:true,costMapped:true,allowedUnitAbilities:['만능'],itemConditions:{owner:'own',race:null,affiliation:null,unsupported:['race'],mapped:false}};
+    cost:{forest:0},costKnown:true,costMapped:true,runtimeItemConditionStatus:'fallback_any_unit',
+    allowedUnitAbilities:['만능'],itemConditions:{owner:'own',race:null,affiliation:null,unsupported:['race'],mapped:false}};
   const target=unit('target',{instanceId:'t1',race:'버드'});
   const p=player('player',{hand:[item],units:[target],soulPool:{colored:{},neutral:0}});
   const s=state(p,player('ai'));
   const result=FM.playCard(s,'player','unknown1','t1');
-  assert.equal(result.ok,false);
-  assert.equal(p.hand.length,1);
+  assert.equal(result.ok,true);
+  assert.equal(p.hand.length,0);
+  assert.equal(target.equipment.includes('조건 미해석 아이템'),true);
 });
 
 test('successful unit summon emits one source-linked event after the field commit',()=>{
