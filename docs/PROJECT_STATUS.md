@@ -204,3 +204,11 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - APK PR #28 Actions #337 / run `42204718679` passed tests for petrify AP/DP stat-marker boundaries and the positive-HP-damage weakening case; `fail 0`.
 - Test-only additions: no runtime behavior/source mapping is changed or promoted. `FM.playCard()` unmapped Skill2 regression remains #333 success; DB29 Skill2 executable count remains seven, not eight.
 - These checks are JS/Python lightweight only. The full DB29 pack/APK/emulator verification remains #325 at the earlier integrated code SHA.
+
+
+## 2026-11-06 — 고정 seed 전투 및 승패 종료 게이트 (#341/#342)
+
+- APK PR #28 code HEAD `be42ec585f6b124ceb310b875f7f08ae0d12b155`, Actions #341 / run `42206456060`: JS 233 tests / fail 0, Python converter 13 tests passed. The fixed-seed full preparation/battle cycle installed a paid land, summoned units on both sides (including AI easy mode), resolved paired slot attacks/counters, advanced to round 2, rotated attacker, and began the next preparation phase. The run was lightweight JS/Python only; DB29 pack/APK/emulator skipped.
+- Test commit `3837301571449a17e28a09d08911cd5ce87f3336`, Actions #342 / run `42214419550`: JS 234 tests / fail 0, Python converter 13 tests passed. New test `fixed-seed slot battle ends the match on direct deck depletion without advancing the round` enters the real `resolveBattle()` slot path with a two-soul attacker and the defender's final two deck cards. It verifies immediate `status=finished`, `result=player`, no round increment, no attacker rotation, no additional preparation, and the final-deck/ victory log.
+- #342 workflow steps: JS game rule tests success; Python Firestore converter success; DB29 download/pack, JDK/SDK/Gradle/APK/emulator skipped according to PR-lightweight CI policy.
+- These are deterministic integration assertions over seeded fixture decks, not DB29-pack-import or seeded full game using the actual 15,350-card release. Original effects remain incomplete (48,263 fallback_noop of 48,281 clauses; only 18 implemented_inferred). Do not describe this as full game certification.
