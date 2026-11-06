@@ -346,6 +346,11 @@
       const conditionText=[cardText,detail['장착 조건'],detail['장착 대상']].filter(Boolean).join('\n');
       n.itemConditions=parseItemConditions(conditionText);n.itemConditions.universal=n.itemConditions.universal||allowed.includes('만능');
       n.itemConditions.mapped=!!(n.itemConditions.mapped&&(allowed.length>0||n.itemConditions.universal||n.itemConditions.owner||n.itemConditions.race||n.itemConditions.affiliation));
+      // Keep the original condition parser status for diagnostics, but assign a
+      // deterministic any-unit runtime target when the source wording cannot
+      // be mapped. Provenance uncertainty is not an item-use gate.
+      if(!n.itemConditions.mapped)n.runtimeItemConditionStatus='fallback_any_unit';
+      else if(!n.runtimeItemConditionStatus)n.runtimeItemConditionStatus='source_mapped';
       n.rules.cardText=cardText;n.rules.itemConditions=n.itemConditions;
       const hasEquipRule=allowed.length>0||n.itemConditions.universal||n.itemConditions.owner||n.itemConditions.race||n.itemConditions.affiliation;
       n.rules.status=!hasEquipRule?'incomplete':!n.itemConditions.mapped?'unmapped':'condition-text';
