@@ -3913,3 +3913,34 @@ test('DB29 Skill1 normalization enforces mapping status, authority and known rul
   assert.equal(normalize({...valid,specialSkillRuleId:'defense_bypass'},'조롱공격'),'방어무시',
     'runtime execution follows the verified rule ID, not an unrelated printed/raw label');
 });
+
+
+test('deck quantity decrement from one to zero persists an empty edit and rejects underflow',()=>{
+  const data={deckCounts:{singleCard:1}};
+  const result=DeckState.adjustDeckCounts(data,'singleCard',-1,4,50);
+  assert.equal(result.ok,true);
+  assert.equal(result.next,0);
+  assert.deepEqual(data.deckCounts,{});
+  assert.deepEqual(DeckState.currentDeckCounts(data,15350,()=>({starter:50})),{},
+    'zero cards is an intentional edit, not a reason to regenerate the starter deck');
+  const underflow=DeckState.adjustDeckCounts(data,'singleCard',-1,4,50);
+  assert.equal(underflow.ok,false);
+  assert.equal(underflow.reason,'below_zero');
+  assert.deepEqual(data.deckCounts,{});
+});
+
+test('shared deck quantity adjustment enforces card limit and the 50-card ceiling',()=>{
+  const data={deckCounts:{}};
+  assert.equal(DeckState.adjustDeckCounts(data,'limited',1,1,50).ok,true);
+  assert.equal(DeckState.adjustDeckCounts(data,'limited',1,1,50).reason,'card_limit');
+  data.deckCounts=Object.fromEntries(Array.from({length:49},(_,i)=>['existing-'+i,1]));
+  const last=DeckState.adjustDeckCounts(data,'newCard',1,4,50);
+  assert.equal(last.ok,true);
+  assert.equal(last.total,50);
+  assert.equal(DeckState.adjustDeckCounts(data,'overflow',1,4,50).reason,'deck_full');
+  const fs=require('node:fs');
+  const appSource=fs.readFileSync(require.resolve('../app/src/main/assets/game/app.js'),'utf8');
+  assert.match(appSource,/FM\.DeckState\.adjustDeckCounts\(data, id, delta, limit, DEMO_DECK_SIZE\)/);
+  assert.match(appSource,/if \(deck\.length !== DEMO_DECK_SIZE\)/,
+    'editing may save a partial/empty deck while match startup independently requires 50 cards');
+});
