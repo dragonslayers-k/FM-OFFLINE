@@ -643,22 +643,15 @@ def simple_effect_mapping(text):
 def runtime_effect_mapping_for_row(row, enums):
     payload = row.get("raw_payload") or {}
     category = CATEGORY.get(integer(payload.get("Category")))
-    if category not in ("spell", "enchant"):
+    if category != "spell":
+        # The current engine has no event/duration-bound enchant runtime slot.
+        # Even simple text is not safe to apply immediately as an enchant.
         return None
     mapping = simple_effect_mapping(payload.get("TextBase"))
     if not mapping:
         return None
-    if category == "spell":
-        timing = label(enums, "TurnType", payload.get("TurnType"))
-        return mapping if timing else None
-    slot = label(enums, "EnchantSlot", payload.get("EnchantSlot"))
-    slot_match = re.search(r"슬롯\s*(\d+)", str(slot or ""))
-    slot_owner = "enemy" if "적군" in str(slot or "") else "own" if "아군" in str(slot or "") else None
-    if not slot_match or not slot_owner:
-        return None
-    if mapping.get("target") == "ownUnit" and slot_owner != "own":
-        return None
-    if mapping.get("target") == "enemyUnit" and slot_owner != "enemy":
+    timing = re.sub(r"\s+", "", str(label(enums, "TurnType", payload.get("TurnType")) or ""))
+    if not re.search(r"전투시작|전투개시|공격|공격턴|방어|방어턴", timing):
         return None
     return mapping
 
