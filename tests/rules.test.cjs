@@ -4012,3 +4012,30 @@ test('AI preserves a targeted spell when no legal enemy target exists and spends
     'the targeted spell remains in hand because no enemy target is legal');
   assert.equal(ai.spells.length,0,'AI does not queue an invalid-target spell');
 });
+
+test('AI buff spell avoids units whose requested stat changes are blocked by Manual markers',()=>{
+  const blocked=unit('ai-buff-blocked',{instanceId:'ai-buff-blocked',ap:3,statMarkers:{ap:'*'}});
+  const eligible=unit('ai-buff-eligible',{instanceId:'ai-buff-eligible',ap:3,statMarkers:{}});
+  const spell={id:'ai-buff-spell',instanceId:'ai-buff-spell',name:'공격 강화 마법',type:'spell',
+    cost:{neutral:0},costKnown:true,costMapped:true,triggerTiming:'공격턴',
+    effect:{type:'buff',ap:2,target:'ownUnit'}};
+  const p=player('player');
+  const ai=player('ai',{hand:[spell],units:[blocked,eligible]});
+  const s=state(p,ai,{activeId:'ai',settings:{difficulty:'normal',deckSize:20}});
+  FM.runAIPhase(s,'ai');
+  assert.equal(ai.spells.length,1);
+  assert.equal(ai.spells[0].selectedTargetId,'ai-buff-eligible');
+});
+
+test('AI keeps a buff spell when every friendly target blocks its requested stat change',()=>{
+  const blocked=unit('ai-buff-only-blocked',{instanceId:'ai-buff-only-blocked',ap:3,statMarkers:{ap:'*'}});
+  const spell={id:'ai-buff-only-spell',instanceId:'ai-buff-only-spell',name:'공격 강화 마법',type:'spell',
+    cost:{neutral:0},costKnown:true,costMapped:true,triggerTiming:'공격턴',
+    effect:{type:'buff',ap:2,target:'ownUnit'}};
+  const p=player('player');
+  const ai=player('ai',{hand:[spell],units:[blocked]});
+  const s=state(p,ai,{activeId:'ai',settings:{difficulty:'normal',deckSize:20}});
+  FM.runAIPhase(s,'ai');
+  assert.equal(ai.spells.length,0,'AI must not spend a spell that cannot change any target');
+  assert.equal(ai.hand.some(card=>card.instanceId==='ai-buff-only-spell'),true);
+});
