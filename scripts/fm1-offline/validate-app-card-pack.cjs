@@ -450,7 +450,7 @@ if (effectAudit.candidates !== 17407 || effectAudit.clauses !== 48281 ||
     Object.values(effectAudit.runtimeDispositions).reduce((n,v)=>n+Number(v||0),0)!==48281 ||
     JSON.stringify(effectData.runtimeClauseDispositionCounts||{})!==JSON.stringify(effectAudit.runtimeDispositions) ||
     effectAudit.spanErrors !== 0 || effectAudit.unexpectedExecutableEffects !== 0) {
-  errors.push('Effect candidate/clause counts, spans, or runtime dispositions do not match the DB29 audit contract.');
+  errors.push('Effect candidate audit mismatch: ' + JSON.stringify(effectAudit));
 }
 const manifestEffectReview=manifest.effectReview||{};
 if (JSON.stringify(manifestEffectReview.runtimeClauseDispositionCounts||{})!==JSON.stringify(effectAudit.runtimeDispositions)) {
@@ -462,8 +462,6 @@ if (Number(manifestEffectReview.runtimeInferredClauseCount||0)!==Number(effectAu
 }
 if (JSON.stringify(manifestEffectReview.runtimeCardEffectDispositionCounts||{})!==JSON.stringify(runtimeEffectDisposition)) {
   errors.push('Manifest card-level effect dispositions do not match normalized cards.');
-}
-  errors.push('Effect candidate audit mismatch: ' + JSON.stringify(effectAudit));
 }
 if (skillAudit.mappingRows < 15000 || skillAudit.manualVerifiedMappings < 1000 ||
     skillAudit.communityCandidates < 100 || skillAudit.communityRuleExecution !== 0) {
