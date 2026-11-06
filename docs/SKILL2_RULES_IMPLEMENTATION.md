@@ -75,4 +75,13 @@ DB29에는 189개의 Skill2 enum 항목이 있다. 이 중 1개는 미보유/없
 
 ## 2026-11-06 regression — unmapped Skill2 must not block card use
 
-APK PR #28 adds a focused test that attempts a real `FM.playCard()` unit-summon action for a unit carrying an unverified/unmapped Skill2. The expected contract is: the unit pays its normal runtime cost, leaves the hand, enters the field, and sets `playedAnyCardThisPhase`; the unverified Skill2 remains non-executable and does not fall through to Skill1. The test must pass on the latest PR HEAD before this regression is considered complete.
+APK PR #28 adds a focused test that attempts a real `FM.playCard()` unit-summon action for a unit carrying an unverified/unmapped Skill2. The expected contract is: the unit pays its normal runtime cost, leaves the hand, enters the field, and sets `playedAnyCardThisPhase`; the unverified Skill2 remains non-executable and does not fall through to Skill1. The focused regression passed on APK PR #28 HEAD `300dd507850175e3aa19168633c6d33a1f1c6c55`, Actions #333 / run `42203252263`.
+
+
+### Verified regression result — Actions #333 (2026-11-06)
+
+- Test source commit: `9f24fe688845a0a0c67fd5d523adcb7ae0fcce7d`.
+- Documentation/current PR HEAD: `300dd507850175e3aa19168633c6d33a1f1c6c55`.
+- Actions #333 / run `42203252263`: success. JS rule tests and Python converter tests passed; DB29 pack, JDK/SDK/Gradle/APK/emulator were skipped by the lightweight-PR policy.
+- Test log explicitly reports: `a unit with an unmapped Skill2 remains playable and completes its summon action` and `fail 0`.
+- Assertions confirm payable soul cost, removal from hand, field deployment, incremented deployment count and `playedAnyCardThisPhase=true`; unverified Skill2 normalization remains empty. This protects the rule that an unknown Skill2 does not disable the entire unit.
