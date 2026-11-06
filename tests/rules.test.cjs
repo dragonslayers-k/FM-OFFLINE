@@ -206,6 +206,36 @@ test('fixed-seed slot battle ends the match on direct deck depletion without adv
   assert.ok(s.log.some(entry=>entry.text.includes('승리!')));
 });
 
+test('AI preparation stops immediately when an empty deck cannot refill its hand to six',()=>{
+  const p=player('player',{
+    hand:Array.from({length:6},(_,i)=>({id:'player-ready-'+i})),
+    deck:Array.from({length:10},(_,i)=>({id:'player-deck-'+i}))
+  });
+  const ai=player('ai',{
+    hand:Array.from({length:5},(_,i)=>({id:'ai-ready-'+i})),
+    deck:[]
+  });
+  const s=state(p,ai,{
+    round:3,
+    attackerId:'player',
+    activeId:'player',
+    prepared:{player:false,ai:false}
+  });
+
+  const result=FM.endPhase(s,'player');
+
+  assert.equal(result.ok,true,'the player can complete the preparation handoff');
+  assert.equal(s.status,'finished','AI cannot complete a required draw from an empty deck');
+  assert.equal(s.result,'player','the player wins when the AI cannot refill to six');
+  assert.equal(ai.hand.length,5,'no phantom card is drawn');
+  assert.equal(ai.deck.length,0);
+  assert.equal(s.activeId,'ai','the terminal condition occurs during the AI preparation handoff');
+  assert.equal(s.round,3,'the failed draw does not advance a round');
+  assert.ok(!s.log.some(entry=>entry.text.includes('카드를 검토하고 있습니다.')),
+    'AI automation must not start after beginPhase has already ended the match');
+  assert.ok(s.log.some(entry=>entry.text.includes('AI의 서고가 소진되었습니다.')));
+});
+
 test('LP accumulates each turn and a land placement consumes LP only',()=>{
   const p=player('player',{hand:[{...land('high-lp','light',2,2),instanceId:'l1'}],
     lp:2,soulPool:{colored:{forest:1},neutral:0}});
