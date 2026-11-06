@@ -1528,7 +1528,7 @@ test('partial item fallback preserves parsed owner and race restrictions',()=>{
   assert.equal(FM.playCard(s,'player','partial-item-1','wrong-race-1').ok,false);
   assert.equal(p.hand.length,1);
   assert.equal(FM.playCard(s,'player','partial-item-1','right-race-1').ok,true);
-  assert.equal(correct.equipment.includes('部分 해석 아이템'),true);
+  assert.equal(correct.equipment.includes('부분 해석 아이템'),true);
 });
 
 test('unmapped item condition gets a deterministic any-unit fallback and remains consumable without a target',()=>{
