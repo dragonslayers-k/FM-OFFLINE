@@ -666,9 +666,11 @@
     // The starter profile is intended to be playable immediately, not merely
     // a 50-card sample in database order. Prioritize low-LP/low-install-cost
     // lands and affordable cards so both human and AI can establish resources.
+    const landInstallScore = card => card.landInstallCostKnown === true
+      ? sumCost(card.landInstallCost) : Number.MAX_SAFE_INTEGER;
     const lands = source.filter(c => c.type === 'land').sort((a,b) =>
       (Number(a.requiredLP || 0) - Number(b.requiredLP || 0)) ||
-      (sumCost(a.landInstallCost) - sumCost(b.landInstallCost)));
+      (landInstallScore(a) - landInstallScore(b)));
     const units = source.filter(c => c.type === 'unit').sort((a,b) =>
       (sumCost(runtimeCostFor(a)) - sumCost(runtimeCostFor(b))) ||
       ((Number(b.ap || 0) + Number(b.dp || 0) + Number(b.hp || 0)) -
