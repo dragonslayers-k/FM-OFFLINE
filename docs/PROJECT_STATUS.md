@@ -308,3 +308,10 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - At documentation update time, no PR-triggered Actions run was returned for latest HEAD 5fc4bdf...; these new tests are therefore pending CI verification. Latest previously confirmed run remains #394 / 42303760472 on earlier commit 4d7d92d..., successful lightweight JS/Python checks. It did not run Gradle/APK/emulator.
 - DB29, DB30, main/release and PR merge state unchanged. PR #28 remains Draft/Open.
 
+
+## 2026-11-07 — Follow-up CI verification (#399)
+
+- Actions #399 / run 42305021654 completed successfully on the exact source HEAD `accc3e389333dacd9d69418f897ad80e677f62a5`.
+- JS rule tests: 253 passed / 0 failed. Python converter self-test passed; SQLite pack tests: 13 passed; enchant audit self-test passed.
+- The new deck quantity 1 → 0/underflow/limit/50-card-ceiling cases and Skill1 mapping authorization tuple matrix are included in the passing JS run.
+- This remains lightweight CI. DB29 pack build, JDK/SDK/Gradle, APK verification and emulator launch were skipped by the PR policy. DB29 is unchanged; no DB30; main/release unchanged; PR #28 remains Draft/Open/unmerged.
