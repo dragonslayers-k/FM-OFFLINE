@@ -274,3 +274,11 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - Manual source: Dropbox `/판마/Manual.zip`, `specialability.htm` §21 Shield Break (DP becomes 0 after attack; no effect if DP is negative) and §22 Curse Attack (target AP/DP −2); common stat-marker directions from `cardability.htm`.
 - T machine-readable Skill1 spec currently still says `implementation_status=pending_engine_test` for shield_break and keeps `exact_db29_source_text=null`; these focused fixture tests exist but card-local packet/runtime pack lineage is not completed. Do not invent an accepted status enum or treat label match as card-local source evidence.
 - Both runs are lightweight JS/Python only. DB29 pack/APK/emulator skipped. No runtime source mapping or DB29 data was changed.
+
+
+## 2026-11-06 — Manual Skill1 Vampiric Attack HP marker directions (#365)
+
+- Test HEAD `15162b6d46043e9e297392feecf48bc40d3bacce`, Actions #365 / run `42228582000`: success; 236 JS tests / 0 failures; Python converter tests 13 passed.
+- Exact DB29 Skill1 fixture: Dark Countess `10010624542` / `흡혈공격`. Manual `specialability.htm` §7: heal 50% of actual HP damage, odd damage rounds half-up (5 damage→3 heal). `cardability.htm` §6(b): `*` blocks all stat changes, `△` blocks decreases but allows increases, `▽` blocks increases.
+- Added focused checks: HP `△` allows +2 heal from actual damage 3 (HP 2→4); HP `▽` blocks positive heal; HP `*` blocks all healing. Existing test already covered actual damage, half-up for 1/2/5 damage, fully DP-blocked no-heal and `▼` blocked increase.
+- Test-only change. Runtime handler, source mapping, SQLite, DB29 pack, APK build and emulator were unchanged/skipped. Formal T spec and card-local source packet remain pending; no mapping/status promotion.
