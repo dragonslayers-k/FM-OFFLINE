@@ -1416,7 +1416,7 @@ test('pending source-cost status does not block a card with an inferred payable 
 });
 
 test('Manual NCS runtime cost pays from the pool and applies unit-only recurring upkeep',()=>{
-  const ncs=unit('ncs-runtime',{runtimeCost:{neutral:1},runtimeCostKnown:true,
+  const ncs=unit('ncs-runtime',{instanceId:'ncs-runtime-1',runtimeCost:{neutral:1},runtimeCostKnown:true,
     runtimeUpkeepCost:{neutral:1},costKnown:false,costMapped:false});
   const p=player('player',{hand:[ncs],soulPool:{colored:{},neutral:2},unitDeployLimit:1});
   const s=state(p,player('ai'));
