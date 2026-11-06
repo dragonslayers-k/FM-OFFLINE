@@ -247,3 +247,13 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - DB29 Manual card fixture 블랙유니콘 / `10091525214`: attacker AP2 vs target DP4 leaves DP2 and HP damage 0; attacker AP3 vs target DP0 leaves DP0 and deals 3 HP damage. Existing AP4 vs DP2 still leaves 2 HP damage.
 - The same Manual text does not explicitly state how an already-negative DP modifies piercing leftover damage. No generic AP-minus-negative-DP inference was added; that case remains review-only until a reliable source rule clarifies it.
 - Test-only; no rules.js, mapping, converter, DB29 data, pack, APK or emulator mutation/run.
+
+
+## 2026-11-06 — 관통공격 DP marker/overflow 회귀 수정 (#355~#357)
+
+- DB29 Manual Skill1 대표 fixture: 블랙유니콘 / `10091525214` / `관통공격`. Manual.zip `specialability.htm` §4: 공격자 AP로 상대 DP를 파괴하고 DP가 0이 된 뒤 남은 AP만 HP 피해로 전달한다.
+- Manual의 공통 능력치 표식 설명: `△`는 하락 방지, `▽`는 상승 방지. 따라서 `△`가 양수 DP 감소를 막으면 DP가 깨지지 않았으므로 관통 잔여 AP가 HP로 전달되지 않아야 한다. `▽`는 하락을 막지 않으므로 DP 감소가 가능하다.
+- Actions #355 / run `42221259328`, test HEAD `cce73a83702daa9ab5ee114350497b560f2acda6`: success; 236 JS tests / 0 failures; Python converter 13 / OK. Added AP=DP exact boundary and negative DP conservative case. Negative DP is treated as already exhausted; its magnitude is not added as extra damage. Manual §4 does not explicitly resolve negative DP, so this remains an explicit conservative runtime interpretation.
+- Actions #356 / run `42221573459`, test HEAD `c665a105de796bb4eb10a60bdf1650990e52f2bd`: failed one new marker assertion (236 tests, 1 failure). The `△` case expected HP damage 0 but old engine returned 4, revealing that a blocked DP decrease was incorrectly treated as available HP overflow.
+- Runtime fix commit `6d736aa9e56c677aa7f2dcbfe94571b9a54d818b`; Actions #357 / run `42221699683`: success; 236 JS tests / 0 failures; Python converter 13 / OK. HP overflow now occurs only if positive DP is actually reduced to zero, or the defender DP was already zero/negative. `△` blocks DP reduction and HP overflow; `▽` permits DP reduction and normal overflow.
+- #355~#357 are lightweight PR tests only. DB29 pack, Gradle/APK, package/signature/ZIP and emulator were skipped. No DB29 SQLite/source mapping or release asset was changed. The Manual Skill1 T spec still records 172 exact label rows and representative card ID, but its card-local effect excerpt/runtime status remains pending; this APK fixture is not an SQLite→pack→Android lineage proof.
