@@ -2,6 +2,7 @@
   'use strict';
 
   const COLORS = ['dark','fire','water','forest','metal','earth','light','neutral'];
+  const COST_KEYS = [...COLORS,'bonus'];
   const TYPE_NAMES = { land:'지형', unit:'유닛', item:'아이템', spell:'마법', enchant:'인챈트' };
   const META_LABELS = {
     '분류':'category','속성':'faction','에피소드':'episode','덱 수량제한':'deckLimit',
@@ -79,7 +80,7 @@
   function normalizeCostObject(value) {
     if(!value||typeof value!=='object'||Array.isArray(value)) return null;
     const out={}; for(const [color,amount] of Object.entries(value)){
-      if(!COLORS.includes(color)||!Number.isInteger(Number(amount))||Number(amount)<0) return null;
+      if(!COST_KEYS.includes(color)||!Number.isInteger(Number(amount))||Number(amount)<0) return null;
       out[color]=Number(amount);
     } return out;
   }
@@ -237,6 +238,11 @@
     const sourceCost=hasPrimaryCost?primaryCost:(verifiedImageCost!==null?verifiedImageCost:normalizeCostObject(raw.soulCost));
     const costKnown=verifiedImageCost!==null||(raw.costKnown!==false&&sourceCost!==null&&Object.keys(sourceCost).length>0);
     n.cost=costKnown?sourceCost:null;n.costKnown=costKnown;n.costMapped=costKnown;
+    const runtimeCost=normalizeCostObject(raw.runtimeCost);
+    n.runtimeCostKnown=raw.runtimeCostKnown===true&&runtimeCost!==null;
+    n.runtimeCost=n.runtimeCostKnown?runtimeCost:null;
+    n.runtimeCostStatus=String(raw.runtimeCostStatus||'source-not-available');
+    n.runtimeCostInference=Array.isArray(raw.runtimeCostInference)?raw.runtimeCostInference:[];
     n.costSource=hasPrimaryCost?'source-json':(verifiedImageCost!==null?'verified-image-map':(sourceCost?'source-soulCost':'unknown'));
     const landCandidates=[raw.landInstallCost,raw.installCost,raw.summonCost,raw.soulCost,type==='land'?raw.cost:null]
       .map(normalizeCostObject).filter(value=>value!==null&&Object.keys(value).length>0);

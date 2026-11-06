@@ -625,6 +625,16 @@ test('a unit cannot be deployed more times than terrain-generated souls allow in
   assert.equal(p.hand.length,1);
 });
 
+test('runtime cost overlay allows inferred BONUS payment while source review remains visible',()=>{
+  const card={...unit('overlay'),instanceId:'overlay-1',cost:{},costKnown:false,costMapped:false,
+    runtimeCost:{forest:1,bonus:1},runtimeCostKnown:true,runtimeCostStatus:'implemented_inferred'};
+  const p=player('player',{hand:[card],soulPool:{colored:{forest:1,metal:1},neutral:0},unitDeployLimit:10});
+  const result=FM.playCard(state(p,player('ai')),'player','overlay-1');
+  assert.equal(result.ok,true);
+  assert.equal(p.soulPool.colored.forest,0);
+  assert.equal(p.soulPool.colored.metal,0);
+});
+
 test('a card with numeric cost but no verified original cost flag cannot be played',()=>{
   const card={...unit('unverified'),instanceId:'unverified-1',cost:{forest:0},costKnown:false,costMapped:false};
   const p=player('player',{hand:[card],soulPool:{colored:{forest:10},neutral:10},unitDeployLimit:10});

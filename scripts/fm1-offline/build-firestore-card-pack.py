@@ -205,7 +205,7 @@ def db_cost_to_app(cost_row):
     """Read and reconcile every persisted cost-review signal; conflicting status fails closed."""
     if cost_row is None:
         return {
-            "cost": {}, "candidateCost": {}, "known": False, "mappingReview": False,
+            "cost": {}, "candidateCost": {}, "runtimeCost": {"neutral": 1}, "runtimeCostKnown": True, "runtimeCostStatus": "fallback_payable", "runtimeCostInference": ["missing-source-cost"], "known": False, "mappingReview": False,
             "semanticReview": False, "soulKnown": False, "review": ["database-cost-row-missing"],
             "tokens": [], "sourceStatus": "missing"
         }
@@ -293,6 +293,10 @@ def db_cost_to_app(cost_row):
     return {
         "cost":app_cost,
         "candidateCost":candidate,
+        "runtimeCost":dict(candidate) if candidate else {"neutral":0},
+        "runtimeCostKnown":True,
+        "runtimeCostStatus":("implemented_inferred" if mapping_review or (integer(colors.get("bonus")) or 0)>0 else "implemented_verified"),
+        "runtimeCostInference":(["hybrid-both-components"] if mapping_review else []) + (["bonus-generic-one-time-payment"] if (integer(colors.get("bonus")) or 0)>0 else []),
         "known":known,
         "mappingReview":mapping_review,
         "semanticReview":semantic_review,
@@ -583,6 +587,10 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
     card={
         "id":cid,"name":name,"type":typ,"faction":color,
         "cost":c["cost"] if cost_known else {},
+        "runtimeCost":c.get("runtimeCost",c["cost"]),
+        "runtimeCostKnown":c.get("runtimeCostKnown",c["known"]),
+        "runtimeCostStatus":c.get("runtimeCostStatus","implemented_verified"),
+        "runtimeCostInference":c.get("runtimeCostInference",[]),
         "costKnown":cost_known,"costMapped":cost_known,
         "costSource":c.get("sourceStatus","legacy-enum-parse"),
         "soulCostRaw":f.get("RequireSoul"),"costReview":c["review"],
@@ -654,8 +662,8 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
         card["requiredLPStatus"]="source-defined" if lp is not None else "source-missing"
         if lp is not None: add(tabs,"분류별","필요LP",lp)
 
-        land_cost_known=bool(c["known"] and not c.get("mappingReview",False) and not c.get("semanticReview",False))
-        card["landInstallCost"]=c["cost"] if land_cost_known else None
+        land_cost_known=bool(c.get("runtimeCostKnown",False))
+        card["landInstallCost"]=c.get("runtimeCost") if land_cost_known else None
         card["landInstallCostKnown"]=land_cost_known
         card["landInstallCostRaw"]=f.get("RequireSoul")
         card["landInstallCostReview"]=c["review"]

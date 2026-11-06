@@ -2,9 +2,10 @@
   'use strict';
 
   const COLORS = ['dark', 'fire', 'water', 'forest', 'metal', 'earth', 'light', 'neutral'];
+  const COST_KEYS = [...COLORS, 'bonus'];
   const COLOR_NAMES = {
     dark: '암흑', fire: '불', water: '물', forest: '숲',
-    metal: '금속', earth: '대지', light: '빛', neutral: '무속성'
+    metal: '금속', earth: '대지', light: '빛', neutral: '무속성', bonus: '보너스'
   };
   const TYPE_NAMES = { land: '지형', unit: '유닛', item: '아이템', spell: '마법', enchant: '인챈트' };
 
@@ -371,9 +372,9 @@
   function colorName(key) { return COLOR_NAMES[key] || key || '무속성'; }
   function readCost(cost) {
     if(!cost||typeof cost!=='object'||Array.isArray(cost)||Object.keys(cost).length===0)return {ok:false,reason:'비용 데이터가 없습니다. 원본 카드 비용을 확인해야 합니다.'};
-    const normalized=Object.fromEntries(COLORS.map(c=>[c,0]));
+    const normalized=Object.fromEntries(COST_KEYS.map(c=>[c,0]));
     for(const [color,value] of Object.entries(cost)){
-      if(!COLORS.includes(color)||!Number.isInteger(Number(value))||Number(value)<0)return {ok:false,reason:'비용 데이터 형식이 올바르지 않습니다.'};
+      if(!COST_KEYS.includes(color)||!Number.isInteger(Number(value))||Number(value)<0)return {ok:false,reason:'비용 데이터 형식이 올바르지 않습니다.'};
       normalized[color]=Number(value);
     }
     return {ok:true,cost:normalized};
@@ -553,8 +554,9 @@
   function validateCardForPlay(card) {
     if(!card||!['land','unit','item','spell','enchant'].includes(card.type))return {ok:false,reason:'카드 종류 또는 데이터가 올바르지 않습니다.'};
     if(card.type!=='land'){
-      if(card.costKnown!==true||card.costMapped!==true)return {ok:false,reason:'원본 카드 이미지의 소울 구슬 비용이 아직 검증되지 않았습니다. 무료 카드로 취급하지 않습니다.'};
-      const parsed=readCost(card.cost);if(!parsed.ok)return parsed;
+      const hasRuntimeCost=card.runtimeCostKnown===true;
+      if(!hasRuntimeCost&&(card.costKnown!==true||card.costMapped!==true))return {ok:false,reason:'원본 카드 비용과 런타임 비용이 모두 확인되지 않았습니다.'};
+      const parsed=readCost(hasRuntimeCost?card.runtimeCost:card.cost);if(!parsed.ok)return parsed;
     }
     if(card.type==='unit'&&(!Number.isFinite(Number(card.ap))||!Number.isFinite(Number(card.dp))||!Number.isFinite(Number(card.hp))||Number(card.hp)<=0))
       return {ok:false,reason:'유닛의 AP·DP·HP 데이터가 누락되었거나 올바르지 않습니다.'};
@@ -806,12 +808,12 @@
     const next = clonePool(pool);
     let coloredRequired = 0;
     for (const [color, amount] of Object.entries(requirements)) {
-      if (color === 'neutral' || amount <= 0) continue;
+      if (color === 'neutral' || color === 'bonus' || amount <= 0) continue;
       if (Number(next.colored[color] || 0) < amount) return null;
       next.colored[color] -= amount;
       coloredRequired += amount;
     }
-    const genericRequired = Number(requirements.neutral || 0);
+    const genericRequired = Number(requirements.neutral || 0) + Number(requirements.bonus || 0);
     if (poolTotal(next) < genericRequired) return null;
     // FM1's neutral bead is a generic soul requirement; it may be paid from any generated soul.
     let left = genericRequired;
@@ -841,8 +843,8 @@
   }
 
   function unitNeutralUpkeep(unit) {
-    if (!unit || unit.costKnown !== true || unit.costMapped !== true) return Number.POSITIVE_INFINITY;
-    const parsed = readCost(unit.cost);
+    if (!unit || (unit.runtimeCostKnown !== true && (unit.costKnown !== true || unit.costMapped !== true))) return Number.POSITIVE_INFINITY;
+    const parsed = readCost(unit.runtimeCostKnown === true ? unit.runtimeCost : unit.cost);
     return parsed.ok ? Number(parsed.cost.neutral || 0) : Number.POSITIVE_INFINITY;
   }
 
@@ -942,7 +944,7 @@ if (card.type === 'unit') {
       if (p.unitDeployedThisPhase >= p.unitDeployLimit) {
         return {ok:false,reason:'이번 준비 단계의 유닛 배치는 지형이 생성한 소울 수(' + p.unitDeployLimit + ')를 초과할 수 없습니다.'};
       }
-      if (!spendSoul(p, card.cost)) {
+      if (!spendSoul(p, card.runtimeCostKnown===true?card.runtimeCost:card.cost)) {
         return {ok:false,reason:'소울이 부족해 유닛을 소환할 수 없습니다.'};
       }
       removeHand(p, instanceId);
@@ -1021,7 +1023,7 @@ if (card.type === 'unit') {
       if (['ownUnit','enemyUnit'].includes(effect.target) && !target) {
         return { ok: false, reason: '마법 효과의 정확한 대상 유닛을 선택해야 합니다.' };
       }
-      if (!spendSoul(p, card.cost)) return { ok: false, reason: '소울 지불에 실패했습니다.' };
+      if (!spendSoul(p, card.runtimeCostKnown===true?card.runtimeCost:card.cost)) return { ok: false, reason: '소울 지불에 실패했습니다.' };
       const spell = removeHand(p, instanceId);
       p.playedAnyCardThisPhase = true;
       spell.instanceId = spell.instanceId || uid('spell');
