@@ -3864,3 +3864,31 @@ test('player land and unit payments lead into an AI resource-play phase and batt
   assert.ok(s.round>=2,'the preparation phases should resolve into the next battle round');
   assert.equal(s.status,'playing');
 });
+
+
+test('unverified Skill1 candidate cannot dispatch a manual combat handler but retains ordinary attack',()=>{
+  const attacker=unit('candidate-skill1',{
+    instanceId:'candidate-skill1-instance',
+    name:'검증 대기 유닛',
+    skill:'조롱공격',
+    ap:1,dp:0,hp:5,maxHp:5,
+    specialSkillRuleId:'taunt_attack',
+    specialSkillMappingStatus:'candidate',
+    specialSkillRuleAuthority:'community'
+  });
+  const defender=unit('candidate-skill1-target',{
+    instanceId:'candidate-skill1-target-instance',
+    name:'상대 유닛',
+    ap:4,dp:0,hp:10,maxHp:10
+  });
+  const p=player('player',{units:[attacker]});
+  const ai=player('ai',{units:[defender]});
+  const s=state(p,ai);
+  const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+    attacker:{ap:{value:1},dp:{value:0},hp:{value:5}},
+    defender:{ap:{value:4},dp:{value:0},hp:{value:10}}
+  });
+  assert.equal(result.damage,1,'candidate mapping must not alter ordinary attack damage');
+  assert.equal(defender.hp,9,'the card remains playable and performs its base attack');
+  assert.equal(FM.totalPower(defender,'ap'),4,'unverified taunt rule must not be dispatched');
+});
