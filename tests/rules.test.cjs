@@ -1422,23 +1422,24 @@ test('DB29 Manual defense-convert applies the negative DP marker only when targe
   assert.equal(FM.totalPower(x.defender,'dp'),-2,'already-negative DP stays negative');
 });
 
-test('DB29 Manual beast tamer, spell suppression and weapon suppression require the exact target ability',()=>{
-  const run=({id,name,skill,ruleId,targetAbility,targetTags,ap=4}={})=>{
+test('DB29 Manual beast tamer, spell suppression and weapon suppression require the exact target ability and honor AP markers',()=>{
+  const run=({id,name,skill,ruleId,targetAbility,targetTags,attackerAP=1,ap=4,defenderStatMarkers={}}={})=>{
     const attacker=unit(id,{
-      instanceId:'ability-gate-attacker',name,skill,ap:1,dp:0,hp:5,maxHp:5,
+      instanceId:'ability-gate-attacker',name,skill,ap:attackerAP,dp:0,hp:5,maxHp:5,
       specialSkillRuleId:ruleId,specialSkillMappingStatus:'manual_verified',
       specialSkillRuleAuthority:'manual'
     });
     const defender=unit('ability-gate-defender',{
       instanceId:'ability-gate-defender',ap,dp:0,hp:10,maxHp:10,
-      unitAbility:targetAbility,unitAbilityTags:targetTags
+      unitAbility:targetAbility,unitAbilityTags:targetTags,
+      statMarkers:defenderStatMarkers
     });
     const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
     const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
-      attacker:{ap:{value:1},dp:{value:0},hp:{value:5}},
+      attacker:{ap:{value:attackerAP},dp:{value:0},hp:{value:5}},
       defender:{ap:{value:ap},dp:{value:0},hp:{value:10}}
     });
-    return {defender,result};
+    return {attacker,defender,result};
   };
 
   // DB29 exact Manual Skill1: 네추럴마스터 / 11011925567 / 야수조련.
@@ -1449,6 +1450,19 @@ test('DB29 Manual beast tamer, spell suppression and weapon suppression require 
     targetAbility:'장비능력',targetTags:['장비']});
   assert.equal(FM.totalPower(x.defender,'ap'),4,'non-beast target is unaffected');
 
+  x=run({id:'11011925567',name:'네추럴마스터',skill:'야수조련',ruleId:'beast_tamer',
+    targetAbility:'야수능력',targetTags:['야수'],attackerAP:0});
+  assert.equal(x.result.damage,0);
+  assert.equal(FM.totalPower(x.defender,'ap'),4,'zero AP does not trigger Beast Tamer');
+
+  x=run({id:'11011925567',name:'네추럴마스터',skill:'야수조련',ruleId:'beast_tamer',
+    targetAbility:'야수능력',targetTags:['야수'],defenderStatMarkers:{ap:'△'}});
+  assert.equal(FM.totalPower(x.defender,'ap'),4,'AP △ blocks Beast Tamer');
+
+  x=run({id:'11011925567',name:'네추럴마스터',skill:'야수조련',ruleId:'beast_tamer',
+    targetAbility:'야수능력',targetTags:['야수'],defenderStatMarkers:{ap:'▽'}});
+  assert.equal(FM.totalPower(x.defender,'ap'),0,'AP ▽ permits Beast Tamer');
+
   // DB29 exact Manual Skill1: 혼드비스트 / 10010624550 / 주문봉쇄.
   x=run({id:'10010624550',name:'혼드비스트',skill:'주문봉쇄',ruleId:'spell_suppression',
     targetAbility:'마법능력',targetTags:['마법']});
@@ -1457,6 +1471,19 @@ test('DB29 Manual beast tamer, spell suppression and weapon suppression require 
     targetAbility:'야수능력',targetTags:['야수']});
   assert.equal(FM.totalPower(x.defender,'ap'),4,'non-magic target is unaffected');
 
+  x=run({id:'10010624550',name:'혼드비스트',skill:'주문봉쇄',ruleId:'spell_suppression',
+    targetAbility:'마법능력',targetTags:['마법'],attackerAP:0});
+  assert.equal(x.result.damage,0);
+  assert.equal(FM.totalPower(x.defender,'ap'),4,'zero AP does not trigger Spell Suppression');
+
+  x=run({id:'10010624550',name:'혼드비스트',skill:'주문봉쇄',ruleId:'spell_suppression',
+    targetAbility:'마법능력',targetTags:['마법'],defenderStatMarkers:{ap:'△'}});
+  assert.equal(FM.totalPower(x.defender,'ap'),4,'AP △ blocks Spell Suppression');
+
+  x=run({id:'10010624550',name:'혼드비스트',skill:'주문봉쇄',ruleId:'spell_suppression',
+    targetAbility:'마법능력',targetTags:['마법'],defenderStatMarkers:{ap:'▽'}});
+  assert.equal(FM.totalPower(x.defender,'ap'),0,'AP ▽ permits Spell Suppression');
+
   // DB29 exact Manual Skill1: 데크라프 / 10010624543 / 무기봉쇄.
   x=run({id:'10010624543',name:'데크라프',skill:'무기봉쇄',ruleId:'weapon_suppression',
     targetAbility:'장비능력',targetTags:['장비']});
@@ -1464,6 +1491,19 @@ test('DB29 Manual beast tamer, spell suppression and weapon suppression require 
   x=run({id:'10010624543',name:'데크라프',skill:'무기봉쇄',ruleId:'weapon_suppression',
     targetAbility:'마법능력',targetTags:['마법']});
   assert.equal(FM.totalPower(x.defender,'ap'),4,'non-equipment target is unaffected');
+
+  x=run({id:'10010624543',name:'데크라프',skill:'무기봉쇄',ruleId:'weapon_suppression',
+    targetAbility:'장비능력',targetTags:['장비'],attackerAP:0});
+  assert.equal(x.result.damage,0);
+  assert.equal(FM.totalPower(x.defender,'ap'),4,'zero AP does not trigger Weapon Suppression');
+
+  x=run({id:'10010624543',name:'데크라프',skill:'무기봉쇄',ruleId:'weapon_suppression',
+    targetAbility:'장비능력',targetTags:['장비'],defenderStatMarkers:{ap:'△'}});
+  assert.equal(FM.totalPower(x.defender,'ap'),4,'AP △ blocks Weapon Suppression');
+
+  x=run({id:'10010624543',name:'데크라프',skill:'무기봉쇄',ruleId:'weapon_suppression',
+    targetAbility:'장비능력',targetTags:['장비'],defenderStatMarkers:{ap:'▽'}});
+  assert.equal(FM.totalPower(x.defender,'ap'),0,'AP ▽ permits Weapon Suppression');
 });
 
 test('DB29 source card Eunryong Sword uses the Manual ordinary-attack baseline',()=>{
