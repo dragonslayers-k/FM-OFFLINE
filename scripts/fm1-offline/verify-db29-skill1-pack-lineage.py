@@ -11,8 +11,6 @@ EXPECTED = {
     "10091525190": ("이블크로우", "weaken_attack", "약화공격"),
     "10010624589": ("파프니르", "petrify_attack", "석화공격"),
     "10010624551": ("해적전투원", "shield_break", "방패파괴"),
-    # The display/source label is compared to the exact DB mapping below rather
-    # than guessed here; this rule has legacy aliases in the APK.
     "10010624563": ("리듬포이", "defense_convert", None),
 }
 
@@ -25,6 +23,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", required=True)
     parser.add_argument("--cards-json", required=True)
+    parser.add_argument("--skill-mappings-json")
     parser.add_argument("--release-tag", required=True)
     args = parser.parse_args()
     if args.release_tag != "fm1-carddb-29":
@@ -37,6 +36,22 @@ def main():
     if len(pack) != len(cards):
         fail("cards.json contains duplicate card IDs")
 
+    mapping_path = (
+        Path(args.skill_mappings_json) if args.skill_mappings_json
+        else Path(args.cards_json).with_name("fm1-app-skill-mappings.json")
+    )
+    if not mapping_path.is_file():
+        fail(f"card-skill-mappings.json is unavailable: {mapping_path}")
+    mapping_data = json.loads(mapping_path.read_text(encoding="utf-8"))
+    if (mapping_data.get("schemaVersion") != 1
+            or mapping_data.get("sourceDatabaseRelease") != args.release_tag
+            or not isinstance(mapping_data.get("records"), list)
+            or mapping_data.get("recordCount") != len(mapping_data["records"])):
+        fail("card-skill-mappings.json schema, release tag, or record count mismatch")
+    mappings_by_card = {}
+    for mapping in mapping_data["records"]:
+        mappings_by_card.setdefault(str(mapping.get("cardId")), []).append(mapping)
+
     db = sqlite3.connect(args.db)
     db.row_factory = sqlite3.Row
     if db.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
@@ -44,9 +59,9 @@ def main():
 
     verified = []
     for card_id, (expected_name, expected_rule, expected_label) in EXPECTED.items():
-        row = db.execute(
+        rows = db.execute(
             """SELECT c.card_id,c.name,c.raw_payload_json,
-                      m.source_field,m.source_name,m.rule_id,m.mapping_status,
+                      m.source_field,m.source_enum_value,m.source_name,m.rule_id,m.mapping_status,
                       g.source_authority
                FROM cards c
                JOIN card_rule_mappings m ON m.card_id=c.card_id
@@ -54,9 +69,9 @@ def main():
                WHERE c.card_id=? AND m.source_field='Skill1'""",
             (card_id,),
         ).fetchall()
-        if len(row) != 1:
-            fail(f"{card_id}: expected exactly one Skill1 mapping row, found {len(row)}")
-        source = row[0]
+        if len(rows) != 1:
+            fail(f"{card_id}: expected exactly one Skill1 mapping row, found {len(rows)}")
+        source = rows[0]
         if source["name"] != expected_name:
             fail(f"{card_id}: DB name {source['name']!r} != {expected_name!r}")
         if source["rule_id"] != expected_rule:
@@ -76,8 +91,25 @@ def main():
             fail(f"{card_id}: missing from generated cards.json")
         if card.get("name") != expected_name:
             fail(f"{card_id}: pack name {card.get('name')!r} != {expected_name!r}")
-        if card.get("specialSkill1") != source["source_name"]:
-            fail(f"{card_id}: pack Skill1 label {card.get('specialSkill1')!r} != DB mapping source name {source['source_name']!r}")
+
+        pack_skill1_rows = [
+            m for m in mappings_by_card.get(card_id, [])
+            if m.get("sourceField") == "Skill1"
+        ]
+        if len(pack_skill1_rows) != 1:
+            fail(f"{card_id}: expected exactly one Skill1 row in card-skill-mappings.json, found {len(pack_skill1_rows)}")
+        pack_mapping = pack_skill1_rows[0]
+        if pack_mapping.get("sourceName") != source["source_name"]:
+            fail(f"{card_id}: pack mapping sourceName {pack_mapping.get('sourceName')!r} != SQLite {source['source_name']!r}")
+        if pack_mapping.get("ruleId") != expected_rule:
+            fail(f"{card_id}: pack mapping ruleId {pack_mapping.get('ruleId')!r} != {expected_rule!r}")
+        if pack_mapping.get("mappingStatus") != "manual_verified":
+            fail(f"{card_id}: pack mapping status is not Manual-verified")
+        if pack_mapping.get("ruleAuthority") != "manual":
+            fail(f"{card_id}: pack mapping authority is not Manual")
+        if str(pack_mapping.get("sourceEnumValue")) != str(raw_source.get("Skill1")):
+            fail(f"{card_id}: pack mapping Skill1 enum value differs from SQLite")
+
         if card.get("specialSkillMappingStatus") != "manual_verified":
             fail(f"{card_id}: pack Manual mapping status was not preserved")
         if card.get("specialSkillRuleAuthority") != "manual":
@@ -89,7 +121,6 @@ def main():
         if card.get("sourceCardUrl") != f"https://fmlunatic.com/card/{card_id}":
             fail(f"{card_id}: source card URL is missing or mismatched")
 
-        # Preserve the original Skill1/Skill2 enum values independently.
         source_fields = card.get("sourceFields") or {}
         if source_fields.get("Skill1") != raw_source.get("Skill1"):
             fail(f"{card_id}: raw Skill1 enum value changed in the pack")
@@ -104,6 +135,7 @@ def main():
             "cardId": card_id,
             "name": expected_name,
             "skill1SourceName": source["source_name"],
+            "skill1DisplayLabel": card.get("specialSkill1"),
             "ruleId": expected_rule,
             "skill2EnumValue": raw_source.get("Skill2"),
             "sourceCardUrl": card["sourceCardUrl"],
@@ -117,8 +149,8 @@ def main():
         "checks": [
             "SQLite Skill1 source row",
             "Manual-verified mapping and authority",
-            "generated pack Skill1 label and rule ID",
-            "source detail URL",
+            "generated card-skill-mappings.json source name and rule ID",
+            "cards.json runtime metadata and source detail URL",
             "independent raw Skill1/Skill2 enum preservation",
         ],
         "cards": verified,
