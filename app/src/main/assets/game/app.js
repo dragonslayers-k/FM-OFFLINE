@@ -222,7 +222,9 @@
   }
   function currentDeckCounts() {
     if (!cards.length) return {};
-    if (!data.deckCounts || countDeck(data.deckCounts) !== DEMO_DECK_SIZE) {
+    // Initialize a starter deck only for a new profile. An intentionally empty
+    // or partially edited deck is valid editor state and must never be reset.
+    if (!data.deckCounts || typeof data.deckCounts !== 'object' || Array.isArray(data.deckCounts)) {
       data.deckCounts = defaultDeckCounts(data.deckFaction || 'forest');
       safeWrite();
     }
@@ -245,7 +247,7 @@
     }
     const deck = deckArray(currentDeckCounts());
     if (deck.length !== DEMO_DECK_SIZE) {
-      alert(`대전 덱은 현재 데모 기준 ${DEMO_DECK_SIZE}장이어야 합니다. 덱 편집에서 장수를 맞춰주십시오.`);
+      alert(`대전 덱은 ${DEMO_DECK_SIZE}장이어야 합니다. 현재 ${deck.length}장입니다. 덱 편집에서 장수를 맞춰주십시오.`);
       switchTab('deck');
       return;
     }

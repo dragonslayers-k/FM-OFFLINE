@@ -1606,15 +1606,15 @@ if (card.type === 'unit') {
     while (progressed && actions < maxActions && state.status === 'playing') {
       progressed = false;
       actions++;
-      const candidates = ai.hand.filter(c => c.type !== 'land' && canPay(ai, c.cost) && validateCardForPlay(c).ok && (c.type !== 'unit' || ai.unitDeployedThisPhase < ai.unitDeployLimit));
+      const candidates = ai.hand.filter(c => c.type !== 'land' && canPay(ai, runtimeCostFor(c)) && validateCardForPlay(c).ok && (c.type !== 'unit' || ai.unitDeployedThisPhase < ai.unitDeployLimit));
       const unitCandidates = candidates.filter(c => c.type === 'unit');
       const unitCard = unitCandidates.sort((a, b) => {
         if (state.settings.difficulty === 'hard') {
-          const scoreA = (a.ap + a.dp + a.hp) / Math.max(1, sumCost(a.cost));
-          const scoreB = (b.ap + b.dp + b.hp) / Math.max(1, sumCost(b.cost));
+          const scoreA = (a.ap + a.dp + a.hp) / Math.max(1, sumCost(runtimeCostFor(a)));
+          const scoreB = (b.ap + b.dp + b.hp) / Math.max(1, sumCost(runtimeCostFor(b)));
           return scoreB - scoreA;
         }
-        return (sumCost(a.cost) - sumCost(b.cost)) || (b.ap + b.hp - a.ap - a.hp);
+        return (sumCost(runtimeCostFor(a)) - sumCost(runtimeCostFor(b))) || (b.ap + b.hp - a.ap - a.hp);
       })[0];
       if (unitCard) {
         const result = playCard(state, ownerId, unitCard.instanceId);

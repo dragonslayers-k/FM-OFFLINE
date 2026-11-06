@@ -3663,3 +3663,29 @@ test('combat unit snapshots preserve isolated status record evidence',()=>{
   assert.equal(event.snapshot.unit.statusRecords[0].sourceCardId,'11112425427');
   assert.equal(Object.isFrozen(event.snapshot.unit.statusRecords),true);
 });
+
+test('AI uses the same runtime cost profile as actual card payment',()=>{
+  const candidate=unit('runtime-cost-ai',{
+    instanceId:'runtime-cost-ai-1',
+    cost:{dark:1},costKnown:true,costMapped:true,
+    runtimeCost:{forest:1},runtimeCostKnown:true,runtimeCostStatus:'implemented_inferred'
+  });
+  const p=player('player');
+  const ai=player('ai',{hand:[candidate],soulPool:{colored:{forest:1},neutral:0},
+    unitDeployLimit:1,unitDeployedThisPhase:0});
+  const s=state(p,ai,{activeId:'ai',settings:{difficulty:'normal'}});
+  FM.runAIPhase(s,'ai');
+  assert.equal(ai.units.length,1,'AI should deploy a card affordable through runtimeCost');
+  assert.equal(ai.units[0].id,'runtime-cost-ai');
+  assert.equal(ai.hand.length,0);
+  assert.equal(ai.soulPool.colored.forest,0);
+  assert.equal(ai.soulPool.colored.dark||0,0);
+  assert.equal(s.prepared.ai,true);
+});
+
+test('deck editor source preserves an intentionally empty or partial deck',()=>{
+  const fs=require('node:fs');
+  const source=fs.readFileSync(require.resolve('../app/src/main/assets/game/app.js'),'utf8');
+  assert.match(source,/if \(!data\.deckCounts \|\| typeof data\.deckCounts !== 'object' \|\| Array\.isArray\(data\.deckCounts\)\)/);
+  assert.doesNotMatch(source,/!data\.deckCounts \|\| countDeck\(data\.deckCounts\) !== DEMO_DECK_SIZE/);
+});
