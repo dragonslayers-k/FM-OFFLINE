@@ -195,3 +195,12 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - APK commit `9f24fe688845a0a0c67fd5d523adcb7ae0fcce7d` adds a focused `FM.playCard()` regression: an unmapped/unverified Skill2 does not prevent unit payment, hand removal, deployment, or preparation-phase terminal state. The special ability itself remains non-executable and cannot fall through to Skill1.
 - Actions #333 / run `42203252263` passed on HEAD `300dd507850175e3aa19168633c6d33a1f1c6c55`; the test log explicitly names the new regression and reports 0 failures. JS/Python lightweight suite only; no pack/APK/emulator gate.
 - Documentation follow-up commit `de467e60f9164f75274f261d2bc769028befea01` records the #333 result. No PR-triggered run has been returned for this doc-only commit by the available query; do not claim it has separate CI validation.
+
+
+## 2026-11-06 — Skill1 Manual boundary tests #336/#337
+
+- T PR #9 source audit document commit `3f1707149b531562cea75b0fbda12d81393a23c4` was followed by Actions #724 / run `42204057551` success (lightweight regression + compact DB29 runtime inventory; no full crawl/image/SQLite/Release audit).
+- APK PR #28 Actions #336 / run `42203965191` passed the expanded `defense_convert` test for positive, zero and negative DP, tied to Manual.zip `specialability.htm` section 27 and DB29 source card 리듬포이 / `10010624563`.
+- APK PR #28 Actions #337 / run `42204718679` passed tests for petrify AP/DP stat-marker boundaries and the positive-HP-damage weakening case; `fail 0`.
+- Test-only additions: no runtime behavior/source mapping is changed or promoted. `FM.playCard()` unmapped Skill2 regression remains #333 success; DB29 Skill2 executable count remains seven, not eight.
+- These checks are JS/Python lightweight only. The full DB29 pack/APK/emulator verification remains #325 at the earlier integrated code SHA.
