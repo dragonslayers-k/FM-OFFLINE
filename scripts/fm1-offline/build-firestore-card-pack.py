@@ -604,6 +604,65 @@ def load_normalized_database(db_path, expected_count=TOTAL):
     return records
 
 
+def simple_effect_mapping(text):
+    raw = str(text or "").strip()
+    compact = re.sub(r"\s+", "", raw)
+    if not compact or re.search(r"수만큼|각각|무작위|랜덤|레벨에맞게|교체|복제|유지턴|조건부|~일때|마다", compact):
+        return None
+    slot_target = re.search(r"(아군|자신|적군|상대(?:방)?|적)(?:필드)?유닛(\d+)?", compact)
+    if slot_target:
+        target = "ownUnit" if slot_target.group(1) in {"아군", "자신"} else "enemyUnit"
+        stat_match = re.search(r"((?:AP|DP|HP)(?:/(?:AP|DP|HP))*)(?:를|이|은)?([+-]?\d+)(?:만큼|씩)?(증가|상승|감소|하락)", compact)
+        if stat_match:
+            return {"type": "buff", "target": target}
+    match = re.search(r"(?:적군|상대(?:방)?|적)(?:필드)?(?:유닛)?(?:의)?(?:HP)?(?:에게|에)?(\d+)(?:의)?(?:HP)?(?:데미지|피해)", compact)
+    if match:
+        return {"type": "damage", "target": "enemyUnit"}
+    match = re.search(r"(?:아군|자신)(?:필드)?(?:유닛)?(?:의)?(?:HP)?(?:를)?(\d+)(?:만큼)?(?:회복|증가)", compact)
+    if match:
+        return {"type": "heal", "target": "ownUnit"}
+    match = re.search(r"(?:상대|적군|적)(?:의)?덱(?:카드)?(\d+)장(?:을)?파괴", compact)
+    if match:
+        return {"type": "mill", "target": "enemyDeck"}
+    match = re.search(r"(?:카드|덱에서)(\d+)장(?:을)?(?:드로우|뽑)", compact)
+    if match:
+        return {"type": "draw", "target": "ownDeck"}
+    match = re.search(r"(?:상대|적군|적)(?:의)?HP(?:를)?(\d+)(?:만큼)?흡수", compact)
+    if match:
+        return {"type": "drain", "target": "enemyUnit"}
+    for stat in ("AP", "DP", "HP"):
+        match = re.search(r"(?:아군|자신)(?:필드)?(?:유닛)?(?:의)?" + stat + r"(?:를)?\+(\d+)(?:만큼)?(?:증가|상승)", compact)
+        if match:
+            return {"type": "buff", "target": "ownUnit"}
+        match = re.search(r"(?:적군|상대|적)(?:필드)?(?:유닛)?(?:의)?" + stat + r"(?:를)?-(\d+)(?:만큼)?(?:감소|하락)", compact)
+        if match:
+            return {"type": "buff", "target": "enemyUnit"}
+    return None
+
+
+def runtime_effect_mapping_for_row(row, enums):
+    payload = row.get("raw_payload") or {}
+    category = CATEGORY.get(integer(payload.get("Category")))
+    if category not in ("spell", "enchant"):
+        return None
+    mapping = simple_effect_mapping(payload.get("TextBase"))
+    if not mapping:
+        return None
+    if category == "spell":
+        timing = label(enums, "TurnType", payload.get("TurnType"))
+        return mapping if timing else None
+    slot = label(enums, "EnchantSlot", payload.get("EnchantSlot"))
+    slot_match = re.search(r"슬롯\s*(\d+)", str(slot or ""))
+    slot_owner = "enemy" if "적군" in str(slot or "") else "own" if "아군" in str(slot or "") else None
+    if not slot_match or not slot_owner:
+        return None
+    if mapping.get("target") == "ownUnit" and slot_owner != "own":
+        return None
+    if mapping.get("target") == "enemyUnit" and slot_owner != "enemy":
+        return None
+    return mapping
+
+
 def build_card(row, enums, earn_soul_enum, require_soul_enum):
     f=row.get("raw_payload") or {}
     cid=str(row.get("card_id") or f.get("ID") or "")
@@ -642,6 +701,8 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
     source_skill2=next((m for m in (row.get("skill_mappings") or []) if m.get("sourceField")=="Skill2"),None)
     verified_skill2_spec=verified_skill2_rule_for_card(typ,skill2_name,extra) if source_skill2 is not None else None
     skill2_named=bool(skill2_name and skill2_name!="없음")
+    runtime_effect_mapping=runtime_effect_mapping_for_row(row,enums)
+    runtime_effect_disposition=("implemented_inferred" if runtime_effect_mapping else "fallback_noop") if typ in ("spell","enchant") else "not_applicable"
     card={
         "id":cid,"name":name,"type":typ,"faction":color,
         "cost":c["cost"] if cost_known else {},
@@ -652,8 +713,9 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
         "runtimeUpkeepCost":{"neutral":(c.get("runtimeUpkeepNeutral",0) if typ=="unit" else 0)},
         "runtimeProfileVersion":1,
         "runtimeProfileStatus":"ready_with_effect_fallback",
-        "runtimeEffectDisposition":"fallback_noop" if typ in ("spell","enchant") else "not_applicable",
-        "runtimeEffectFallbackReason":"source-effect-candidate-not-yet-mapped" if typ in ("spell","enchant") else None,
+        "runtimeEffectDisposition":runtime_effect_disposition,
+        "runtimeEffectMapping":runtime_effect_mapping,
+        "runtimeEffectFallbackReason":"source-effect-candidate-not-yet-mapped" if runtime_effect_disposition=="fallback_noop" else None,
         "runtimeEffectClauseCount":sum(len(x.get("clauses") or []) for x in (row.get("effect_candidates") or [])),
         "runtimeSkill1Disposition":("implemented_verified" if source_skill1 and source_skill1.get("mappingStatus")=="manual_verified" and source_skill1.get("ruleAuthority")=="manual" else ("fallback_noop" if skill1_name and skill1_name!="없음" else "not_applicable")) if typ=="unit" else "not_applicable",
         "runtimeSkill2Disposition":("implemented_verified" if verified_skill2_spec else ("fallback_noop" if skill2_named else "not_applicable")) if typ=="unit" else "not_applicable",
@@ -1192,15 +1254,19 @@ def convert(a):
         for candidate in row.get("effect_candidates",[]):
             candidate_out=dict(candidate)
             clause_out=[]
-            for clause_index,clause in enumerate(candidate.get("clauses") or []):
+            candidate_clauses=candidate.get("clauses") or []
+            row_mapping=runtime_effect_mapping_for_row(row,enums)
+            can_infer=(row_mapping is not None and len(row.get("effect_candidates") or [])==1 and len(candidate_clauses)==1)
+            for clause_index,clause in enumerate(candidate_clauses):
                 resolved=dict(clause)
-                # Source clause text/spans remain immutable. Until a card-specific
-                # verified/inferred handler exists, close this clause with a
-                # deterministic no-op rather than blocking the whole card/action.
-                resolved["runtimeDisposition"]="fallback_noop"
-                resolved["runtimeDispositionReason"]="source-effect-clause-not-yet-mapped"
+                # Source clause text/spans remain immutable. Only a single,
+                # exact simple-text pattern with required spell timing/enchant
+                # slot metadata may use the tested inferred handler.
+                disposition="implemented_inferred" if can_infer else "fallback_noop"
+                resolved["runtimeDisposition"]=disposition
+                resolved["runtimeDispositionReason"]="simple-text-effect-parser-v1" if can_infer else "source-effect-clause-not-yet-mapped"
                 resolved["runtimeClauseIndex"]=clause_index
-                runtime_clause_dispositions["fallback_noop"]+=1
+                runtime_clause_dispositions[disposition]+=1
                 clause_out.append(resolved)
             candidate_out["clauses"]=clause_out
             effect_candidate_records.append({"cardId":row["card_id"],**candidate_out})
@@ -1338,7 +1404,7 @@ def convert(a):
           "verificationStatus":"pattern_candidate",
           "executableEffectMappings":0,
           "runtimeClauseDispositionCounts":dict(runtime_clause_dispositions),
-          "policy":"Original candidate text remains non-executable. Every candidate clause receives a separate deterministic fallback_noop disposition so card use and turn progression can complete."
+          "policy":"Original candidate text remains non-verified. A single exact simple-text pattern with required timing/slot metadata may use a tested inferred handler; all other clauses receive deterministic fallback_noop so card use and turn progression complete."
         },
         "specialSkillReview":{
           **skill_db_counts,
