@@ -1124,6 +1124,31 @@ test('DB29 Manual source-backed Skill1 cards preserve petrify, aging and charge 
   assert.equal(FM.totalPower(x.defender,'ap'),2);
   assert.equal(x.defender.hp,9);
 
+  // Manual specialability.htm §8: the effect follows an attack, not HP damage.
+  x=run({id:'13020626691',name:'타락자',skill:'노화공격',ruleId:'aging_attack',
+    attackerAP:1,defenderAP:4,defenderDP:2});
+  assert.equal(x.result.damage,0,'defender DP can block all HP damage');
+  assert.equal(x.defender.hp,10);
+  assert.equal(FM.totalPower(x.defender,'ap'),2,'the AP -2 aging effect still follows the attack');
+
+  x=run({id:'13020626691',name:'타락자',skill:'노화공격',ruleId:'aging_attack',
+    attackerAP:0,defenderAP:4,defenderDP:0});
+  assert.equal(x.result.damage,0,'zero AP does not constitute an attack for this rule');
+  assert.equal(FM.totalPower(x.defender,'ap'),4,'zero AP leaves target AP unchanged');
+
+  x=run({id:'13020626691',name:'타락자',skill:'노화공격',ruleId:'aging_attack',
+    attackerAP:1,defenderAP:4,defenderDP:0,defenderStatMarkers:{ap:'△'}});
+  assert.equal(FM.totalPower(x.defender,'ap'),4,'AP △ prevents the AP -2 decrease');
+
+  x=run({id:'13020626691',name:'타락자',skill:'노화공격',ruleId:'aging_attack',
+    attackerAP:1,defenderAP:4,defenderDP:0,defenderStatMarkers:{ap:'▽'}});
+  assert.equal(FM.totalPower(x.defender,'ap'),2,'AP ▽ permits the AP -2 decrease');
+
+  x=run({id:'13020626691',name:'타락자',skill:'노화공격',ruleId:'aging_attack',
+    attackerAP:1,defenderAP:1,defenderDP:0});
+  assert.equal(x.defender.hp,9,'the attack resolves before aging modifies AP');
+  assert.equal(FM.totalPower(x.defender,'ap'),-1,'AP 1 receives the full Manual AP -2 without a zero clamp');
+
   // DB29 exact Manual Skill1 source matches: 패스파인더 / 10010624588 / 돌진공격.
   x=run({id:'10010624588',name:'패스파인더',skill:'돌진공격',ruleId:'charge_attack',
     attackerAP:2,attackerDP:3,defenderDP:1});
