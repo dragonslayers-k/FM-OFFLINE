@@ -3892,3 +3892,24 @@ test('unverified Skill1 candidate cannot dispatch a manual combat handler but re
   assert.equal(defender.hp,9,'the card remains playable and performs its base attack');
   assert.equal(FM.totalPower(defender,'ap'),4,'unverified taunt rule must not be dispatched');
 });
+
+
+test('DB29 Skill1 normalization enforces mapping status, authority and known rule ID as a complete tuple',()=>{
+  const normalize=FM._test.normalizeSpecialSkillForEngine;
+  const valid={specialSkillMappingStatus:'manual_verified',specialSkillRuleAuthority:'manual',
+    specialSkillRuleId:'taunt_attack'};
+  assert.equal(normalize(valid,'untrusted raw text'),'조롱');
+  const invalidTuples=[
+    {specialSkillMappingStatus:'community_candidate',specialSkillRuleAuthority:'manual',specialSkillRuleId:'taunt_attack'},
+    {specialSkillMappingStatus:'manual_verified',specialSkillRuleAuthority:'community',specialSkillRuleId:'taunt_attack'},
+    {specialSkillMappingStatus:'source_card_verified',specialSkillRuleAuthority:'manual',specialSkillRuleId:'taunt_attack'},
+    {specialSkillMappingStatus:'manual_verified',specialSkillRuleAuthority:'manual',specialSkillRuleId:'not_a_real_rule'},
+    {specialSkillMappingStatus:'manual_verified',specialSkillRuleAuthority:'card_source',specialSkillRuleId:'taunt_attack'}
+  ];
+  for(const mapping of invalidTuples){
+    assert.equal(normalize(mapping,'조롱공격'),'',
+      'a compact DB29 mapping with an incomplete or unauthorized tuple must fail closed');
+  }
+  assert.equal(normalize({...valid,specialSkillRuleId:'defense_bypass'},'조롱공격'),'방어무시',
+    'runtime execution follows the verified rule ID, not an unrelated printed/raw label');
+});
