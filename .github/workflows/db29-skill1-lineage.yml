@@ -1,0 +1,173 @@
+name: DB29 Skill1 Source-to-Pack Lineage
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/workflows/db29-skill1-lineage.yml"
+      - "scripts/fm1-offline/build-firestore-card-pack.py"
+      - "scripts/fm1-offline/verify-db29-skill1-pack-lineage.py"
+      - "scripts/fm1-offline/validate-app-card-pack.cjs"
+      - "app/src/main/assets/game/card-schema.js"
+      - "app/src/main/assets/game/rules.js"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db29-skill1-lineage-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-db29-lineage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      DB_RELEASE_TAG: fm1-carddb-29
+      SOURCE_DIR: ${{ runner.temp }}/fm1-source
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout APK source
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Download and verify immutable DB29 release
+        run: |
+          set -euo pipefail
+          mkdir -p "$SOURCE_DIR" release-package
+          curl --fail --location --retry 4 --retry-delay 3 --retry-all-errors --connect-timeout 30 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/dragonslayers-k/T/releases/tags/$DB_RELEASE_TAG" \
+            -o "$SOURCE_DIR/release-metadata.json"
+
+          download_release_asset() {
+            local asset_name="$1"
+            local destination="$SOURCE_DIR/$asset_name"
+            local asset_id
+            asset_id="$(python - "$SOURCE_DIR/release-metadata.json" "$asset_name" <<'PY'
+          import json,sys
+          release=json.load(open(sys.argv[1],encoding="utf-8"))
+          asset=next((a for a in release.get("assets",[]) if a.get("name")==sys.argv[2]),None)
+          if not asset: raise SystemExit(f"Required DB29 asset missing: {sys.argv[2]}")
+          print(asset["id"])
+          PY
+          )"
+            if curl --fail --location --retry 2 --retry-delay 3 --retry-all-errors --connect-timeout 30 \
+                "https://github.com/dragonslayers-k/T/releases/download/$DB_RELEASE_TAG/$asset_name" \
+                -o "$destination"; then
+              test -s "$destination"
+              return
+            fi
+            rm -f "$destination"
+            curl --fail --location --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 \
+              -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/octet-stream" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/dragonslayers-k/T/releases/assets/$asset_id" \
+              -o "$destination"
+            test -s "$destination"
+          }
+
+          download_release_asset "fm1_cards.sqlite.gz"
+          download_release_asset "sqlite-build-summary.json"
+          download_release_asset "enumtable.json"
+          download_release_asset "images.tar.gz.part-aa"
+          download_release_asset "fm1-skill-catalog-v1.json"
+
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          root=Path(os.environ["SOURCE_DIR"])
+          release=json.loads((root/"release-metadata.json").read_text(encoding="utf-8"))
+          summary=json.loads((root/"sqlite-build-summary.json").read_text(encoding="utf-8"))
+          if release.get("tag_name") != os.environ["DB_RELEASE_TAG"]:
+              raise SystemExit("Release tag mismatch")
+          assets={x["name"]:str(x.get("digest") or "").removeprefix("sha256:") for x in release.get("assets",[])}
+          checks=[
+            ("fm1_cards.sqlite.gz",summary.get("sqliteGzipSha256")),
+            ("enumtable.json",summary.get("enumtableSha256")),
+            ("images.tar.gz.part-aa",summary.get("imageArchivePartAaSha256")),
+            ("fm1-skill-catalog-v1.json",assets.get("fm1-skill-catalog-v1.json")),
+          ]
+          for name,expected in checks:
+            actual=hashlib.sha256((root/name).read_bytes()).hexdigest()
+            if not expected or actual.lower()!=str(expected).lower():
+              raise SystemExit(f"DB29 asset SHA-256 mismatch: {name}: {actual} != {expected}")
+          if summary.get("integrity")!="ok" or summary.get("cards")!=15350:
+            raise SystemExit("DB29 release summary does not describe the immutable 15,350-card DB")
+          print("DB29 release assets and SHA-256 manifest: PASS")
+          PY
+
+          gzip -t "$SOURCE_DIR/fm1_cards.sqlite.gz"
+          gzip -dc "$SOURCE_DIR/fm1_cards.sqlite.gz" > "$SOURCE_DIR/fm1_cards.sqlite"
+          cat "$SOURCE_DIR"/images.tar.gz.part-* > "$SOURCE_DIR/images.tar.gz"
+          tar -tzf "$SOURCE_DIR/images.tar.gz" >/dev/null
+          python - "$SOURCE_DIR/fm1_cards.sqlite" <<'PY'
+          import hashlib,json,sqlite3,sys
+          from pathlib import Path
+          db_path=Path(sys.argv[1])
+          summary=json.loads((db_path.parent/"sqlite-build-summary.json").read_text(encoding="utf-8"))
+          actual=hashlib.sha256(db_path.read_bytes()).hexdigest()
+          if actual.lower()!=str(summary.get("sqliteDatabaseSha256","")).lower():
+            raise SystemExit("Uncompressed SQLite SHA-256 mismatch")
+          db=sqlite3.connect(db_path)
+          if db.execute("PRAGMA integrity_check").fetchone()[0]!="ok":
+            raise SystemExit("SQLite integrity_check failed")
+          if db.execute("SELECT COUNT(*) FROM cards").fetchone()[0]!=15350:
+            raise SystemExit("DB29 card count mismatch")
+          if db.execute("PRAGMA foreign_key_check").fetchall():
+            raise SystemExit("DB29 foreign-key check failed")
+          db.close()
+          print("DB29 SQLite integrity, SHA-256, card count, FK check: PASS")
+          PY
+
+      - name: Build Android card pack from immutable DB29
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/fm1-offline/build-firestore-card-pack.py scripts/fm1-offline/verify-db29-skill1-pack-lineage.py
+          python scripts/fm1-offline/build-firestore-card-pack.py \
+            --db-sqlite "$SOURCE_DIR/fm1_cards.sqlite" \
+            --db-release-tag "$DB_RELEASE_TAG" \
+            --skill-catalogue "$SOURCE_DIR/fm1-skill-catalog-v1.json" \
+            --enumtable "$SOURCE_DIR/enumtable.json" \
+            --images-tar-gz "$SOURCE_DIR/images.tar.gz" \
+            --output "$RUNNER_TEMP/fm1-pack" \
+            --zip-output "release-package/FM1-CardData-v1.3.0.zip"
+          test -s release-package/FM1-CardData-v1.3.0.zip
+
+      - name: Validate real DB29 source rows against generated pack
+        run: |
+          set -euo pipefail
+          unzip -p release-package/FM1-CardData-v1.3.0.zip cards.json > "$RUNNER_TEMP/fm1-app-cards.json"
+          unzip -p release-package/FM1-CardData-v1.3.0.zip card-skill-mappings.json > "$RUNNER_TEMP/fm1-app-skill-mappings.json"
+          unzip -p release-package/FM1-CardData-v1.3.0.zip card-effect-candidates.json > "$RUNNER_TEMP/fm1-app-effect-candidates.json"
+          unzip -p release-package/FM1-CardData-v1.3.0.zip skill2-catalogue.json > "$RUNNER_TEMP/fm1-app-skill2-catalogue.json"
+          node --check scripts/fm1-offline/validate-app-card-pack.cjs
+          node scripts/fm1-offline/validate-app-card-pack.cjs \
+            "$RUNNER_TEMP/fm1-app-cards.json" \
+            "$RUNNER_TEMP/fm1-app-skill-mappings.json" \
+            "$RUNNER_TEMP/fm1-app-effect-candidates.json" \
+            "$RUNNER_TEMP/fm1-app-skill2-catalogue.json"
+          python scripts/fm1-offline/verify-db29-skill1-pack-lineage.py \
+            --db "$SOURCE_DIR/fm1_cards.sqlite" \
+            --cards-json "$RUNNER_TEMP/fm1-app-cards.json" \
+            --release-tag "$DB_RELEASE_TAG"
+
+      - name: Upload DB29 lineage validation package
+        uses: actions/upload-artifact@v7
+        with:
+          name: FM1-DB29-Skill1-Lineage-Validation
+          path: |
+            release-package/FM1-CardData-v1.3.0.zip
+          if-no-files-found: error
+          retention-days: 14
