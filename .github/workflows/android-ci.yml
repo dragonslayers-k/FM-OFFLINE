@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-# PRs run lightweight JS/Python checks by default. Add [build-card-pack] to request DB29 packing; add [run-emulator] with it to request the full install/launch smoke.
+# PRs run lightweight JS/Python checks; only [build-apk] requests APK-only. DB29 pack/emulator require workflow_dispatch inputs or approved main-branch markers.
   pull_request:
     branches:
       - main
