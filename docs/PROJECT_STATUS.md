@@ -344,3 +344,10 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - Test commit `6b601cc719f420db165eeee4867c44e4759a3889`: added AI preparation-path regressions for choosing a legal buff target and retaining the spell when all targets are marker-blocked.
 - Actions #413 / run `42307205056` succeeded on exact HEAD `6b601cc719f420db165eeee4867c44e4759a3889`: 259 JS tests passed / 0 failed; Python converter self-test passed; SQLite pack tests 13 passed; enchant audit self-test passed.
 - This is a focused AI target-selection correction. It does not verify all card effects or full APK/emulator gameplay. DB29 unchanged; DB30 not published; main/release untouched; PR #28 remains Draft/Open/unmerged.
+
+
+## User test APK request — 2026-11-07
+
+- User requested an installable APK for hands-on testing from the current PR baseline. The latest successful lightweight PR run (#414 / `42307280303`) uploaded only `build-status.txt`; the report confirms `Signed release APK: not-configured`, and inspection of the 565-byte artifact ZIP confirms no APK was included.
+- PR #28 title now includes `[build-apk]` to request the APK-only Gradle build on the next PR synchronization. This will produce the debug APK without requiring release-signing secrets; signed Release APK remains optional.
+- DB29 pack/emulator execution is not requested by this note. DB29 remains unchanged, DB30 is not published, and PR #28 remains Draft/Open/unmerged.
