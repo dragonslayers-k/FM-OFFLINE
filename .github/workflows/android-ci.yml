@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-# PRs run lightweight JS/Python checks; only [build-apk] requests APK-only. DB29 pack/emulator require workflow_dispatch inputs or approved main-branch markers.
+# PR title markers can request a DB29 Android import ZIP and emulator smoke test; without markers, PRs remain lightweight.
   pull_request:
     branches:
       - main
@@ -54,7 +54,7 @@ jobs:
       - name: Checkout this APK repository
         uses: actions/checkout@v7
       - name: Validate workflow gate combinations
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_emulator == true && inputs.build_card_pack != true }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true && inputs.build_card_pack != true) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]') && !contains(github.event.pull_request.title, '[build-card-pack]')) }}
         run: |
           echo "::error::run_emulator requires build_card_pack=true so the emulator receives the audited DB29 data ZIP."
           exit 1
@@ -92,7 +92,7 @@ jobs:
           python scripts/fm1-offline/audit-enchant-cards.py --self-test
 
       - name: Download the audited T SQLite DB release and build Android data ZIP
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.build_card_pack == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[build-card-pack]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.build_card_pack == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[build-card-pack]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[build-card-pack]')) }}
         env:
           CARD_DB_RELEASE: https://github.com/dragonslayers-k/T/releases/download/${{ env.CARD_DB_RELEASE_TAG }}
           SOURCE_DIR: ${{ runner.temp }}/fm1-source
@@ -261,7 +261,7 @@ jobs:
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Install Android emulator components
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]') && contains(github.event.head_commit.message, '[build-card-pack]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]') && contains(github.event.head_commit.message, '[build-card-pack]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]') && contains(github.event.pull_request.title, '[build-card-pack]')) }}
         run: |
           set -euo pipefail
           # Hosted SDK downloads can occasionally arrive truncated (sdkmanager reports
@@ -335,7 +335,7 @@ jobs:
           done
 
       - name: Reclaim runner disk space for Android emulator userdata
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]') && contains(github.event.head_commit.message, '[build-card-pack]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]') && contains(github.event.head_commit.message, '[build-card-pack]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]') && contains(github.event.pull_request.title, '[build-card-pack]')) }}
         run: |
           set -euo pipefail
           echo "Disk space before cleanup:"
@@ -355,7 +355,7 @@ jobs:
           fi
 
       - name: Prepare Android emulator KVM permissions
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]') && contains(github.event.head_commit.message, '[build-card-pack]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]') && contains(github.event.head_commit.message, '[build-card-pack]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]') && contains(github.event.pull_request.title, '[build-card-pack]')) }}
         run: |
           set -euo pipefail
           if [ -e /dev/kvm ]; then
@@ -371,7 +371,7 @@ jobs:
           fi
 
       - name: Install and launch APK in Android emulator
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]') && contains(github.event.head_commit.message, '[build-card-pack]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]') && contains(github.event.head_commit.message, '[build-card-pack]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]') && contains(github.event.pull_request.title, '[build-card-pack]')) }}
         id: emulator
         timeout-minutes: 25
         uses: reactivecircus/android-emulator-runner@v2.38.0
