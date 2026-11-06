@@ -110,14 +110,23 @@ def main():
         if str(pack_mapping.get("sourceEnumValue")) != str(raw_source.get("Skill1")):
             fail(f"{card_id}: pack mapping Skill1 enum value differs from SQLite")
 
-        if card.get("specialSkillMappingStatus") != "manual_verified":
-            fail(f"{card_id}: pack Manual mapping status was not preserved")
-        if card.get("specialSkillRuleAuthority") != "manual":
-            fail(f"{card_id}: pack Manual authority was not preserved")
-        if card.get("specialSkillRuleId") != expected_rule:
-            fail(f"{card_id}: pack rule ID {card.get('specialSkillRuleId')!r} != {expected_rule!r}")
-        if card.get("specialSkillExecutionStatus") != "manual-rule-catalogue-mapped":
-            fail(f"{card_id}: pack execution metadata is not Manual-catalogue-mapped")
+        # Skill1 source mappings exist for some non-unit card categories too.
+        # The Android card model intentionally activates Skill1 runtime metadata
+        # only for units; non-unit mappings remain in the dedicated audit file.
+        if card.get("type") == "unit":
+            if card.get("specialSkillMappingStatus") != "manual_verified":
+                fail(f"{card_id}: unit Skill1 mapping status {card.get('specialSkillMappingStatus')!r} is not Manual-verified")
+            if card.get("specialSkillRuleAuthority") != "manual":
+                fail(f"{card_id}: unit Skill1 rule authority {card.get('specialSkillRuleAuthority')!r} is not Manual")
+            if card.get("specialSkillRuleId") != expected_rule:
+                fail(f"{card_id}: unit Skill1 rule ID {card.get('specialSkillRuleId')!r} != {expected_rule!r}")
+            if card.get("specialSkillExecutionStatus") != "manual-rule-catalogue-mapped":
+                fail(f"{card_id}: unit Skill1 execution metadata is not Manual-catalogue-mapped")
+        else:
+            if card.get("specialSkillExecutionStatus") != "metadata-only":
+                fail(f"{card_id}: non-unit Skill1 must remain metadata-only, got {card.get('specialSkillExecutionStatus')!r}")
+            if card.get("specialSkillRuleId") is not None or card.get("specialSkillRuleIds"):
+                fail(f"{card_id}: non-unit Skill1 mapping leaked into executable card rule fields")
         if card.get("sourceCardUrl") != f"https://fmlunatic.com/card/{card_id}":
             fail(f"{card_id}: source card URL is missing or mismatched")
 
