@@ -8,9 +8,11 @@ const file = process.argv[2];
 const mappingFile = process.argv[3];
 const effectFile = process.argv[4];
 const skill2File = process.argv[5];
+const manifestFile = process.argv[6];
 if (!file || !fs.existsSync(file) || !mappingFile || !fs.existsSync(mappingFile) ||
-    !effectFile || !fs.existsSync(effectFile) || !skill2File || !fs.existsSync(skill2File)) {
-  console.error('Usage: node validate-app-card-pack.cjs <cards.json> <card-skill-mappings.json> <card-effect-candidates.json> <skill2-catalogue.json>');
+    !effectFile || !fs.existsSync(effectFile) || !skill2File || !fs.existsSync(skill2File) ||
+    !manifestFile || !fs.existsSync(manifestFile)) {
+  console.error('Usage: node validate-app-card-pack.cjs <cards.json> <card-skill-mappings.json> <card-effect-candidates.json> <skill2-catalogue.json> <manifest.json>');
   process.exit(2);
 }
 const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -28,6 +30,10 @@ if (effectData.schemaVersion !== 2 || !Array.isArray(effectData.records) ||
   throw new Error('card-effect-candidates.json has an invalid schema or record count');
 }
 const skill2Data = JSON.parse(fs.readFileSync(skill2File, 'utf8'));
+const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+if (Number(manifest.cardCount||0)!==15350 || manifest.dbReleaseTag!=='fm1-carddb-29') {
+  throw new Error('manifest.json does not describe the protected DB29 15,350-card baseline');
+}
 const SKILL2_SOURCE_VERIFIED_RULES = Object.freeze({
   '기선제압': {ruleId:'skill2_tactical_initiative',evidenceNeedle:'데미지를 1 덜 받는다'},
   '헌신방어': {ruleId:'skill2_devoted_defense',evidenceNeedle:'아군 필드 다음 유닛 공방체 +1'},
