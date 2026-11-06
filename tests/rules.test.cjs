@@ -3973,3 +3973,25 @@ test('AI damage spell prioritizes an eligible lethal target',()=>{
   assert.equal(ai.spells.length,1);
   assert.equal(ai.spells[0].selectedTargetId,'ai-damage-lethal');
 });
+
+
+test('AI resolves a lethal spell before spending shared preparation souls on a unit',()=>{
+  const enemy=unit('ai-priority-enemy',{instanceId:'ai-priority-enemy',ap:2,dp:0,hp:3,maxHp:3});
+  const summon=unit('ai-priority-summon',{instanceId:'ai-priority-summon',cost:{forest:1},
+    costKnown:true,costMapped:true,ap:3,dp:2,hp:5,maxHp:5});
+  const lethalSpell={id:'ai-priority-spell',instanceId:'ai-priority-spell',name:'마무리 마법',type:'spell',
+    cost:{forest:1},costKnown:true,costMapped:true,triggerTiming:'공격턴',
+    effect:{type:'damage',amount:3,target:'enemyUnit'}};
+  const p=player('player',{units:[enemy]});
+  const ai=player('ai',{hand:[summon,lethalSpell],unitDeployLimit:1,
+    soulPool:{colored:{forest:2},neutral:0}});
+  const s=state(p,ai,{activeId:'ai',settings:{difficulty:'normal',deckSize:20}});
+  FM.runAIPhase(s,'ai');
+  assert.equal(ai.spells.length,1,'AI queues the spell');
+  assert.equal(ai.spells[0].selectedTargetId,'ai-priority-enemy');
+  assert.equal(ai.units.length,1,'AI still summons its unit with the remaining soul');
+  const spellLog=s.log.findIndex(entry=>entry.text.includes('마법 마무리 마법'));
+  const unitLog=s.log.findIndex(entry=>entry.text.includes('마무리 마법')===false&&entry.text.includes('ai-priority-summon'));
+  assert.ok(spellLog>=0);
+  assert.ok(unitLog>spellLog,'high-value spell is played before unit deployment');
+});
