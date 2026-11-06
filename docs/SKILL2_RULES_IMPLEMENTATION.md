@@ -92,3 +92,10 @@ APK PR #28 adds a focused test that attempts a real `FM.playCard()` unit-summon 
 - `tests/rules.test.cjs` commit `56f26aa9b30756c99adc0aca4a395ea8eb1403d7` passed Actions #336 / run `42203965191`: defense-convert positive/zero/negative DP sign-boundary test, tied to Manual `specialability.htm` §27 and DB29 card `10010624563`.
 - Follow-up test commit `98f5678291aad551c865aae32339d5662b5723c7` passed Actions #337 / run `42204718679`: petrify independently respects AP `▲` and DP `▼` markers; weakening applies AP/DP −1 after a positive 2-HP-damage attack as well as when initial DP blocks HP damage. The run log reports both test names and `fail 0`.
 - The test source changes do not promote unverified card mappings or alter DB29. They add boundary assertions around existing Manual-backed handler behavior only.
+
+
+## 2026-11-06 — fixed-seed battle and game-end integration tests
+
+- APK PR #28 code HEAD `be42ec585f6b124ceb310b875f7f08ae0d12b155`, Actions #341 / run `42206456060`: fixed-seed preparation/AI/slot attack+counter/round-2 handoff test passed; 233 JS tests, 0 failures; Python converter 13 passed.
+- APK PR #28 test commit `3837301571449a17e28a09d08911cd5ce87f3336`, Actions #342 / run `42214419550`: added a real `FM.resolveBattle()` terminal scenario. A two-soul unit hits an empty enemy slot and removes the last two cards in the enemy deck. The test verifies match finishes with player victory and no round increment, attacker rotation, or further phase. 234 JS tests, 0 failures; Python converter 13 passed.
+- DB29 pack/APK/emulator steps were skipped on both runs; they are not substitutes for #325's prior full DB29 import gate. The new tests use deterministic fixture decks and do not certify all original effect semantics or a complete seeded match with the production card dataset.
