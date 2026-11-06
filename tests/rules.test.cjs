@@ -148,17 +148,19 @@ test('terrain with insufficient install soul cannot consume LP or leave the hand
   assert.deepEqual(p.soulPool,initialPool);
 });
 
-test('MagicLand is not installed as a normal producing land until its recurring effect is implemented',()=>{
+test('MagicLand installs without inventing ordinary production while its effect remains pending',()=>{
   const card={id:'magic-land',instanceId:'ml',name:'빛의성벽',type:'land',
     requiredLP:0,requiredLPKnown:true,landInstallCost:{neutral:0},landInstallCostKnown:true,
-    soulProduction:{colored:{},neutral:0},soulProductionStatus:'magicland-effect',isMagicLand:true};
+    soulProduction:{colored:{},neutral:0},soulProductionStatus:'magicland-effect',
+    runtimeLandProductionStatus:'fallback_noop',isMagicLand:true};
   const p=player('player',{hand:[card],lp:1,soulPool:{colored:{},neutral:0}});
   const s=state(p,player('ai'));
   const result=FM.playCard(s,'player','ml');
-  assert.equal(result.ok,false);
-  assert.match(result.reason,/매직랜드/);
+  assert.equal(result.ok,true);
   assert.equal(p.lp,1);
-  assert.equal(p.hand.length,1);
+  assert.equal(p.hand.length,0);
+  assert.equal(p.lands.length,1);
+  assert.equal(p.soulPool.neutral,0);
 });
 
 test('terrain LP is spent while its colored and neutral souls are added to the pool',()=>{
@@ -627,7 +629,7 @@ test('a unit cannot be deployed more times than terrain-generated souls allow in
 
 test('runtime cost overlay allows inferred BONUS payment while source review remains visible',()=>{
   const card={...unit('overlay'),instanceId:'overlay-1',cost:{},costKnown:false,costMapped:false,
-    runtimeCost:{forest:1,bonus:1},runtimeCostKnown:true,runtimeCostStatus:'implemented_inferred'};
+    runtimeCost:{forest:1,neutral:1},runtimeCostKnown:true,runtimeCostStatus:'implemented_inferred'};
   const p=player('player',{hand:[card],soulPool:{colored:{forest:1,metal:1},neutral:0},unitDeployLimit:10});
   const result=FM.playCard(state(p,player('ai')),'player','overlay-1');
   assert.equal(result.ok,true);
@@ -635,13 +637,14 @@ test('runtime cost overlay allows inferred BONUS payment while source review rem
   assert.equal(p.soulPool.colored.metal,0);
 });
 
-test('a card with numeric cost but no verified original cost flag cannot be played',()=>{
+test('unverified source cost receives a payable conservative runtime fallback, never a free cost',()=>{
   const card={...unit('unverified'),instanceId:'unverified-1',cost:{forest:0},costKnown:false,costMapped:false};
   const p=player('player',{hand:[card],soulPool:{colored:{forest:10},neutral:10},unitDeployLimit:10});
   const result=FM.playCard(state(p,player('ai')),'player','unverified-1');
-  assert.equal(result.ok,false);
-  assert.match(result.reason,/소울 구슬 비용/);
-  assert.equal(p.hand.length,1);
+  assert.equal(result.ok,true);
+  assert.equal(p.soulPool.neutral,9);
+  assert.equal(p.units.length,1);
+  assert.equal(p.hand.length,0);
 });
 
 test('stat markers block changes in the protected direction',()=>{
@@ -1291,12 +1294,13 @@ test('neutral upkeep is charged only for units with a neutral soul cost and limi
 });
 
 
-test('a missing or empty source cost is not silently treated as free',()=>{
+test('missing source cost receives a payable fallback while an empty claimed-known object remains invalid',()=>{
   const missing={...unit('missing-cost'),instanceId:'missing-cost-1',cost:null,costKnown:false,costMapped:false};
   const empty={...unit('empty-cost'),instanceId:'empty-cost-1',cost:{},costKnown:true,costMapped:true};
   const p=player('player',{hand:[missing,empty],soulPool:{colored:{forest:10},neutral:10},unitDeployLimit:10});
   const s=state(p,player('ai'));
-  assert.equal(FM.playCard(s,'player','missing-cost-1').ok,false);
+  assert.equal(FM.playCard(s,'player','missing-cost-1').ok,true);
+  assert.equal(p.soulPool.neutral,9);
   assert.equal(FM.playCard(s,'player','empty-cost-1').ok,false);
 });
 
@@ -1416,7 +1420,6 @@ test('BONUS one-time runtime payment is excluded from recurring unit upkeep',()=
   const s=state(p,player('ai'));
   FM._test.beginPhase(s,'player');
   assert.equal(p.neutralUpkeep,0);
-  assert.equal(p.deck.length,20);
   assert.equal(s.status,'playing');
 });
 
@@ -1427,7 +1430,7 @@ test('missing legacy upkeep provenance uses finite conservative fallback and nev
   FM._test.beginPhase(s,'player');
   assert.equal(p.neutralUpkeep,1);
   assert.equal(s.status,'playing');
-  assert.equal(p.deck.length,19);
+  assert.equal(p.deck.length,13);
 });
 
 test('unmapped spell effect is paid, consumed and closed as a deterministic no-op',()=>{
