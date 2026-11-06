@@ -368,7 +368,12 @@
       n.effectExecutionStatus=candidateOnly?'candidate-only':(raw.effectExecutionStatus||'unmapped');
       n.effectVerificationStatus=candidateOnly?'pattern_candidate':
         (raw.effectVerificationStatus||((raw.effectVerified===true)?'verified':'unmapped'));
-      n.effect=candidateOnly?null:(raw.effectVerified===true?raw.effect:(raw.effect||parseCardTextEffect(cardText)));
+      const parsedSimpleEffect=parseCardTextEffect(cardText);
+      const declaredRuntimeEffect=String(raw.runtimeEffectDisposition||'');
+      const mayRunInferred=declaredRuntimeEffect==='implemented_inferred';
+      const mayRunVerified=raw.effectVerified===true||declaredRuntimeEffect==='implemented_verified';
+      n.effect=raw.effectVerified===true?raw.effect:
+        ((mayRunInferred||mayRunVerified)?(raw.effect||parsedSimpleEffect||null):null);
       n.rules.effectStatus=candidateOnly?'pattern_candidate':(n.effect?'simple-text-mapped':'unmapped-text-effect');
       if(type==='enchant'){
         n.slotLocation=detail['슬롯 위치']||detail['슬롯위치']||'';
@@ -377,9 +382,20 @@
         n.rules.status=n.slotLocation?'condition-text':'incomplete';
         if(!n.slotLocation)n.rules.unsupportedReason='인챈트 슬롯 위치 조건이 없습니다.';
       }else{
-        n.rules.status=n.effect?'simple-effect-mapped':'text-effect-only';
+        n.rules.status=candidateOnly?'pattern_candidate':(n.effect?'simple-effect-mapped':'text-effect-only');
         if(!n.effect)n.rules.unsupportedReason='원본 설명은 보존했으나 효과 실행 규칙으로 매핑되지 않았습니다.';
       }
+      const supportedEffectTypes=['damage','heal','buff','draw','mill','drain'];
+      const effectTargetValid=!n.effect||!['damage','heal','buff','drain'].includes(n.effect.type)||['ownUnit','enemyUnit'].includes(n.effect.target);
+      const slotMatchesEffect=type!=='enchant'||!n.effect||!['ownUnit','enemyUnit'].includes(n.effect.target)||
+        (n.effect.target==='ownUnit'&&n.slotOwner==='own')||(n.effect.target==='enemyUnit'&&n.slotOwner==='enemy');
+      const timingOrSlotReady=type==='spell'?!!n.triggerTiming:
+        (Number.isInteger(Number(n.slotIndex))&&Number(n.slotIndex)>0&&['own','enemy'].includes(n.slotOwner));
+      const runtimeEffectReady=!!n.effect&&supportedEffectTypes.includes(n.effect.type)&&effectTargetValid&&slotMatchesEffect&&timingOrSlotReady;
+      n.runtimeEffectDisposition=raw.effectVerified===true?'implemented_verified':
+        (runtimeEffectReady&&mayRunInferred?'implemented_inferred':'fallback_noop');
+      n.runtimeEffectFallbackReason=n.runtimeEffectDisposition==='fallback_noop'?
+        (raw.runtimeEffectFallbackReason||'source-effect-clause-not-yet-mapped'):null;
     }else{n.rules.status='incomplete';n.rules.unsupportedReason='원본 카드 종류를 판별하지 못했습니다.';}
     if(type!=='land')n.rules.costStatus=costKnown?'mapped':'missing-from-card-image';
     return n;
