@@ -340,6 +340,9 @@ for (const card of cards) {
         errors.push(card.id + ': effect clause has no terminal runtime disposition');
       } else {
         effectAudit.runtimeDispositions[disposition]=(effectAudit.runtimeDispositions[disposition]||0)+1;
+        if (disposition==='implemented_inferred' && card.runtimeEffectDisposition!=='implemented_inferred') {
+          errors.push(card.id + ': inferred clause disposition does not match card runtime handler');
+        }
       }
     }
     if (candidate.spanIntegrityStatus === 'exact') {
@@ -354,9 +357,12 @@ for (const card of cards) {
     }
   }
   if (card.effectExecutionStatus === 'candidate-only') effectAudit.candidateOnlyCards++;
-  if (card.effectExecutionStatus === 'candidate-only' && card.effect) {
+  if (card.effectExecutionStatus === 'candidate-only' && card.effect && card.runtimeEffectDisposition !== 'implemented_inferred') {
     effectAudit.unexpectedExecutableEffects++;
-    errors.push(card.id + ': candidate-only effect is incorrectly executable');
+    errors.push(card.id + ': candidate-only source effect has no explicit tested inferred runtime disposition');
+  }
+  if (card.runtimeEffectDisposition === 'implemented_inferred' && !card.effect) {
+    errors.push(card.id + ': inferred runtime effect disposition has no parsed handler');
   }
   if (effectCandidates.length && card.effectVerificationStatus !== 'pattern_candidate') {
     errors.push(card.id + ': compact effect verification status does not match candidate file');
