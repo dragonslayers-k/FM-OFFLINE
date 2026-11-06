@@ -1377,7 +1377,11 @@ if (card.type === 'unit') {
     else if(skill.includes('관통공격')){
       const dpBefore=Number(defenseRoll.value||0),requested=Math.min(Math.max(0,dpBefore),Math.max(0,attackPower));
       const applied=requested>0&&change(defender,defenderStats,'dp',-requested)?requested:0;
-      damage=Math.max(0,attackPower-applied);
+      // AP overflows to HP only after positive DP is actually reduced to zero.
+      // A Manual no-decrease marker leaves positive DP intact and absorbs the
+      // attempted piercing step; it must not turn the blocked DP damage into HP damage.
+      const dpBroken=dpBefore<=0||(applied>0&&applied>=dpBefore);
+      damage=dpBroken?Math.max(0,attackPower-applied):0;
     }else if(skill.includes('치명공격')&&canAffectDefender)damage=Math.max(0,Number(defender.hp||0)-1);
     else if(skill.includes('돌진공격'))damage=Math.max(0,attackPower+Number(attackerStats.dp?.value||0)-Number(defenseRoll.value||0));
     else if(skill.includes('광분공격'))damage=Math.max(0,attackPower+frenzyBonus-Number(defenseRoll.value||0));
