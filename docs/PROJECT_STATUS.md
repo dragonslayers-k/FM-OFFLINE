@@ -149,3 +149,12 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - The engine uses runtime cost before source verification flags, keeps unit upkeep finite, allows MagicLand installation with zero invented ordinary production, and provides deterministic item-target fallback. Exact simple spell text with supported attack/defend/battle-start timing can use tested inferred handlers; unsupported spells and all enchants (until event-duration slot handling exists) close as paid terminal no-ops.
 - The pack carries a terminal runtime disposition for every source effect clause. Candidate/source text remains non-verified; fallback no-op is not a claim of original effect implementation.
 - Current branch work remains unmerged. The full DB29 pack validator and emulator smoke must still pass on the same final combined SHA before claiming 15,350-card runtime readiness.
+
+## 2026-11-06 — CI 실행량 절감 및 최종 런타임 행동 검증
+
+- 일반 PR synchronize는 JS rule tests와 Python converter tests만 실행한다. JDK/Android SDK/Gradle 설치와 Debug APK 빌드는 일반 PR에서 생략한다.
+- PR 제목 `[build-apk]`는 APK 빌드, `[build-card-pack]`는 DB29 pack과 APK 빌드, `[build-card-pack] [run-emulator]`는 DB29 pack + APK + emulator install/launch smoke를 요청한다.
+- main push는 APK 빌드를 자동 수행한다. workflow_dispatch의 build_apk/build_card_pack/run_emulator 기본값은 false이며, emulator는 DB29 pack을 함께 요청해야 한다.
+- 최종 pack validator는 단순 validateCardForPlay 검사 외에 15,350장 각각에 대해 synthetic resource/target 상태로 실제 FM.playCard()를 호출하고 hand removal, terminal zone/queue, playedAnyCardThisPhase를 확인한다. runtimeActionAudit 목표는 15,350 attempted / 15,350 completed / 0 blocked다.
+- Item fallback은 미해석 clause만 무시하고 이미 해석된 owner/race/affiliation/allowed ability 조건은 계속 강제한다.
+- 단순 마법 문구는 단일 정확한 clause와 지원되는 공격/방어/전투시작 발동 시점이 모두 확인될 때만 inferred handler를 사용한다. Enchant는 event/duration slot engine이 구현될 때까지 effect-only fallback을 유지한다.
