@@ -16,7 +16,7 @@ The current branch has multiple hard gates that treat missing source verificatio
 | Unit stats | rules.js:559-560 | Missing/non-positive HP or missing AP/DP rejects unit | Provide card-specific stat overlay from same-family/DB analysis; fallback only if no defensible estimate |
 | Land LP/install/production | rules.js:561-580 | Missing LP, install cost, EarnSoul decode, or zero production rejects land | Populate inferred runtime LP/install/production; special MagicLand gets deterministic playable fallback, not ordinary fake production |
 | Item equip conditions | rules.js:581-584 and itemMatchesUnit() | Missing or unmapped condition rejects item or every target | Infer the narrowest safe legal target profile; if still unresolved, allow a deterministic conservative fallback target rule and log it |
-| Enchant | rules.js:585-590, playCard() around 972-977, app.js:479-482 | Candidate-only enchant is rejected; UI unconditionally alerts and exits; engine returns false | Use inferred handler when defensible; otherwise consume cost, resolve only that effect as no-op, and complete the action |
+| Enchant | rules.js playCard() and app.js playSelectedCard() | No event/duration-bound enchant slot handler exists; card-wide rejection is removed | Consume cost and complete action with effect-only fallback until a correct event/duration slot engine exists |
 | Spell | rules.js:591-600, applyEffect() | Missing timing/effect/target rejects play | Infer timing/target/effect where supported; otherwise queue/resolve deterministic no-op without blocking card use or turn |
 | Skill2 | card-schema.js:301-302, rules.js:533-542 | Non-source-verified mapping is disabled and never dispatched | Keep provenance separate; apply tested inferred mapping or a non-blocking deterministic fallback |
 | Unknown upkeep cost | rules.js:836-858 | unitNeutralUpkeep() returns Infinity; payNeutralUpkeep() can end the match because a prior unit has unknown cost | Runtime overlay must always provide finite upkeep cost. A missing provenance flag must never manufacture Infinity or auto-lose a match |
@@ -25,7 +25,7 @@ The current branch has multiple hard gates that treat missing source verificatio
 
 The existing tests explicitly expect:
 - missing/empty source cost makes FM.playCard() fail (tests/rules.test.cjs, test near line 1284);
-- candidate-only enchant fails validation (tests/rules.test.cjs, test near line 1374);
+- candidate-only enchant receives a terminal fallback disposition and no longer blocks card use;
 - unknown Skill2 does not fall through to Skill1 handler (this safety property must remain).
 
 Do not delete these tests without replacement. Rewrite them around the new contract:
@@ -77,7 +77,7 @@ Resolver order: source-verified -> accepted/tested inferred overlay -> determini
 The original audit above is a historical snapshot at HEAD `1bf65ab2...`. The following implementation commits are now on the same PR branch; this section supersedes the earlier statement that no fixes were implemented.
 
 - Runtime payment converter: `scripts/fm1-offline/build-firestore-card-pack.py` now preserves source cost fields and emits `runtimeCost`, `runtimeCostStatus`, `runtimeCostInference`, and unit-only `runtimeUpkeepCost`. BONUS is converted to generic neutral one-time payment; its source token identity remains preserved and it is excluded from upkeep. NCS remains generic payment and contributes recurring upkeep only for units.
-- Engine: `rules.js` resolves runtime costs before provenance flags, uses finite upkeep fallback, allows MagicLand installation without inventing ordinary production, and completes unsupported spell/enchant effects through paid deterministic no-op terminal actions.
+- Engine: `rules.js` resolves runtime costs before provenance flags, uses finite upkeep fallback, allows MagicLand installation without inventing ordinary production, executes exact simple spells with supported attack/defend/battle-start timing through tested inferred handlers, and completes unsupported spells plus all enchants (until event/duration slot handling exists) through paid deterministic no-op terminal actions.
 - Item targeting: `card-schema.js` assigns `fallback_any_unit` when source condition wording cannot be mapped; the UI and rules engine use the same deterministic fallback while preserving a parsed own/enemy owner restriction.
 - Effect clauses: the data-pack converter now preserves source clause text/spans and adds `runtimeDisposition=fallback_noop` for each of the 48,281 clauses that does not yet have a verified/inferred handler. This is a terminal fallback, not a claim that the original effect is implemented.
 - Validator: source cost review counts remain intact and separate from runtime coverage. It now requires valid payable runtime costs for all 15,350 cards, finite upkeep profiles for all 8,633 units, and a terminal disposition for every effect clause.
