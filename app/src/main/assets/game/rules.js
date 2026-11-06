@@ -1596,7 +1596,7 @@ if (card.type === 'unit') {
     if (!ai || !ai.isAI || state.activeId !== ownerId || state.status !== 'playing') return;
     addLog(state, `${ai.name}이(가) 카드를 검토하고 있습니다.`);
     const land=ai.hand.filter(c=>c.type==='land'&&validateCardForPlay(c).ok&&
-      Number(c.requiredLP)<=Number(ai.lp||0))
+      Number(c.requiredLP)<=Number(ai.lp||0)&&canPay(ai,c.landInstallCost))
       .sort((a,b)=>Number(a.requiredLP||0)-Number(b.requiredLP||0))[0];
     if(land)playCard(state,ownerId,land.instanceId);
 

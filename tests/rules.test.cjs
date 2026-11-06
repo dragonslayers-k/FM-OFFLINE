@@ -3697,3 +3697,19 @@ test('deck editor exposes an explicit clear action that persists zero cards',()=
   assert.match(htmlSource,/id="clear-deck"/);
   assert.match(appSource,/el\('clear-deck'\)\.addEventListener\('click', \(\) => \{ data\.deckCounts = \{\}; safeWrite\(\); renderDeck\(\); \}\)/);
 });
+
+test('AI skips an unaffordable land and installs the next payable land',()=>{
+  const blockedLand={...land('ai-expensive-land','metal'),instanceId:'ai-land-expensive',
+    landInstallCost:{metal:1}};
+  const payableLand={...land('ai-payable-land','forest'),instanceId:'ai-land-payable',
+    landInstallCost:{forest:1}};
+  const p=player('player');
+  const ai=player('ai',{hand:[blockedLand,payableLand],
+    lp:2,soulPool:{colored:{forest:1},neutral:0}});
+  const s=state(p,ai,{activeId:'ai',settings:{difficulty:'normal'}});
+  FM.runAIPhase(s,'ai');
+  assert.equal(ai.lands.length,1);
+  assert.equal(ai.lands[0].id,'ai-payable-land');
+  assert.equal(ai.hand.length,1);
+  assert.equal(ai.hand[0].id,'ai-expensive-land');
+});
