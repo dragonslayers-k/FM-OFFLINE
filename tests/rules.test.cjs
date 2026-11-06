@@ -1390,7 +1390,7 @@ test('explicit LP 0 terrain remains free to install at zero current LP',()=>{
 
 test('candidate source status is preserved while a simple timed spell gets an inferred runtime handler',()=>{
   const card=CardSchema.normalize({id:'simple-spell',name:'간단한 피해 마법',type:'spell',faction:'forest',
-    text:'적군 유닛에게 2의 피해',triggerTiming:'상대 턴',cost:{},runtimeCost:{neutral:1},runtimeCostKnown:true,
+    text:'적군 유닛에게 2의 피해',triggerTiming:'공격 턴',cost:{},runtimeCost:{neutral:1},runtimeCostKnown:true,
     runtimeEffectDisposition:'implemented_inferred',effectExecutionStatus:'candidate-only',
     effectVerificationStatus:'pattern_candidate',effectCandidates:[{verificationStatus:'pattern_candidate'}]});
   assert.equal(card.effectExecutionStatus,'candidate-only');
@@ -1418,25 +1418,23 @@ test('complex source effect remains a terminal no-op when the simple parser cann
   assert.equal(card.effect,null);
 });
 
-test('enchant simple-text inferred handler requires a matching decoded slot owner',()=>{
+test('enchant simple text remains a terminal fallback until event-duration slot handling exists',()=>{
   const base={id:'simple-enchant',name:'간단한 인챈트',type:'enchant',faction:'forest',
     text:'아군 유닛의 AP를 +2만큼 증가',triggerTiming:'자신 턴',cost:{},runtimeCost:{neutral:1},
-    runtimeCostKnown:true,runtimeEffectDisposition:'implemented_inferred',effectExecutionStatus:'candidate-only',
+    runtimeCostKnown:true,runtimeEffectDisposition:'fallback_noop',effectExecutionStatus:'candidate-only',
     effectVerificationStatus:'pattern_candidate',effectCandidates:[{verificationStatus:'pattern_candidate'}],
     tabs:{'분류별':[{label:'슬롯 위치',text:'아군 슬롯 1'}]}};
-  const matched=CardSchema.normalize(base);
-  assert.equal(matched.runtimeEffectDisposition,'implemented_inferred');
-  assert.equal(matched.effect.type,'buff');
-  assert.equal(FM.validateCardForPlay(matched).ok,true);
-  matched.instanceId='simple-enchant-1';
-  const target=unit('enchant-target',{instanceId:'enchant-target-1',slotIndex:1,ap:3});
-  const p=player('player',{hand:[matched],units:[target],soulPool:{colored:{},neutral:1}});
-  const played=FM.playCard(state(p,player('ai')),'player','simple-enchant-1','enchant-target-1');
+  const card=CardSchema.normalize(base);
+  assert.equal(card.runtimeEffectDisposition,'fallback_noop');
+  assert.equal(card.effect,null);
+  assert.equal(FM.validateCardForPlay(card).ok,true);
+  card.instanceId='simple-enchant-1';
+  const p=player('player',{hand:[card],soulPool:{colored:{},neutral:1}});
+  const played=FM.playCard(state(p,player('ai')),'player','simple-enchant-1');
   assert.equal(played.ok,true);
-  assert.equal(target.ap,5);
-  const mismatched=CardSchema.normalize({...base,id:'wrong-slot',tabs:{'분류별':[{label:'슬롯 위치',text:'적군 슬롯 1'}]}});
-  assert.equal(mismatched.runtimeEffectDisposition,'fallback_noop');
-  assert.equal(mismatched.effect,null);
+  assert.equal(p.hand.length,0);
+  assert.equal(p.graveyard.length,1);
+  assert.equal(p.soulPool.neutral,0);
 });
 
 test('candidate-only enchant resolves as a paid deterministic no-op instead of blocking the card',()=>{
