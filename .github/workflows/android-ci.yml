@@ -8,7 +8,7 @@ on:
   pull_request:
     branches:
       - main
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
       build_apk:
@@ -34,7 +34,7 @@ on:
 
 concurrency:
   group: fm-offline-android-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -92,7 +92,7 @@ jobs:
           python scripts/fm1-offline/audit-enchant-cards.py --self-test
 
       - name: Download the audited T SQLite DB release and build Android data ZIP
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.build_card_pack == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[build-card-pack]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[build-card-pack]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.build_card_pack == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[build-card-pack]')) }}
         env:
           CARD_DB_RELEASE: https://github.com/dragonslayers-k/T/releases/download/${{ env.CARD_DB_RELEASE_TAG }}
           SOURCE_DIR: ${{ runner.temp }}/fm1-source
@@ -235,7 +235,7 @@ jobs:
           echo "FM1_DATA_PACK_STATUS=built-from-$CARD_DB_RELEASE_TAG" >> "$GITHUB_ENV"
 
       - name: Set up JDK 17
-        if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.build_apk == true || inputs.build_card_pack == true || inputs.run_emulator == true)) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-apk]') || contains(github.event.head_commit.message, '[build-card-pack]'))) || (github.event_name == 'pull_request' && (contains(github.event.pull_request.title, '[build-apk]') || contains(github.event.pull_request.title, '[build-card-pack]'))) }}
+        if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.build_apk == true || inputs.build_card_pack == true || inputs.run_emulator == true)) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-apk]') || contains(github.event.head_commit.message, '[build-card-pack]'))) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[build-apk]')) }}
         uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -261,7 +261,7 @@ jobs:
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Install Android emulator components
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]') && contains(github.event.head_commit.message, '[build-card-pack]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]') && contains(github.event.pull_request.title, '[build-card-pack]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]') && contains(github.event.head_commit.message, '[build-card-pack]')) }}
         run: |
           set -euo pipefail
           # Hosted SDK downloads can occasionally arrive truncated (sdkmanager reports
