@@ -9,7 +9,7 @@ const path = require('node:path');
 const FMCardSchema = require('../../app/src/main/assets/game/card-schema.js');
 
 const EXPECTED = {
-  '10020341112': { name: '은룡의검', ruleId: 'normal_attack', sourceLabel: '일반공격' },
+  '10020341112': { name: '은룡의검', ruleId: 'normal_attack', sourceLabel: null },
   '10091525214': { name: '블랙유니콘', ruleId: 'piercing_attack', sourceLabel: '관통공격' },
   '10091525190': { name: '이블크로우', ruleId: 'weaken_attack', sourceLabel: '약화공격' },
   '10010624589': { name: '파프니르', ruleId: 'petrify_attack', sourceLabel: '석화공격' },
