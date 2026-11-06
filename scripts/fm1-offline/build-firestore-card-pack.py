@@ -209,6 +209,17 @@ def db_cost_to_app(cost_row):
             "semanticReview": False, "soulKnown": False, "review": ["database-cost-row-missing"],
             "tokens": [], "sourceStatus": "missing"
         }
+    # load_normalized_database supplies sqlite3.Row objects, while focused
+    # tests and callers may supply dicts. Normalize both to one accessor shape.
+    if not hasattr(cost_row,"get"):
+        try:
+            cost_row={key:cost_row[key] for key in cost_row.keys()}
+        except (AttributeError,KeyError,TypeError):
+            return {
+                "cost": {}, "candidateCost": {}, "known": False, "mappingReview": False,
+                "semanticReview": False, "soulKnown": False, "review": ["invalid-database-cost-row"],
+                "tokens": [], "sourceStatus": "invalid"
+            }
     review=[]
     source_status=str(cost_row.get("verification_status") or "unknown").strip().lower()
     invalid_soul_json=False
