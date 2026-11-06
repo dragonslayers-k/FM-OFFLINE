@@ -69,3 +69,30 @@ Resolver order: source-verified -> accepted/tested inferred overlay -> determini
 - No Actions workflow was manually dispatched or rerun.
 - DB29 and Release 29 remain immutable; DB30 remains unpublished.
 - PR #28 remains Open/Draft and unmerged.
+
+---
+
+## Implementation follow-up — 2026-11-06 (current PR #28 branch)
+
+The original audit above is a historical snapshot at HEAD `1bf65ab2...`. The following implementation commits are now on the same PR branch; this section supersedes the earlier statement that no fixes were implemented.
+
+- Runtime payment converter: `scripts/fm1-offline/build-firestore-card-pack.py` now preserves source cost fields and emits `runtimeCost`, `runtimeCostStatus`, `runtimeCostInference`, and unit-only `runtimeUpkeepCost`. BONUS is converted to generic neutral one-time payment; its source token identity remains preserved and it is excluded from upkeep. NCS remains generic payment and contributes recurring upkeep only for units.
+- Engine: `rules.js` resolves runtime costs before provenance flags, uses finite upkeep fallback, allows MagicLand installation without inventing ordinary production, and completes unsupported spell/enchant effects through paid deterministic no-op terminal actions.
+- Item targeting: `card-schema.js` assigns `fallback_any_unit` when source condition wording cannot be mapped; the UI and rules engine use the same deterministic fallback while preserving a parsed own/enemy owner restriction.
+- Effect clauses: the data-pack converter now preserves source clause text/spans and adds `runtimeDisposition=fallback_noop` for each of the 48,281 clauses that does not yet have a verified/inferred handler. This is a terminal fallback, not a claim that the original effect is implemented.
+- Validator: source cost review counts remain intact and separate from runtime coverage. It now requires valid payable runtime costs for all 15,350 cards, finite upkeep profiles for all 8,633 units, and a terminal disposition for every effect clause.
+
+### Relevant commits
+
+- Converter runtime-cost and card profile: `988c45282f0c5ae87851c0e2d74a3eb285e69f0f`, `f27569b270d4a0125a4211205647945c957c217f`
+- Runtime engine and UI: `2883564108552cb68ceb1fca9ebc34d59634154c`, `d293e26658dbeb026f6950f5a7abb931f017ae8a`, `9e4519e9324fc0bfa74d2e345b6fe87f04eaba3e`
+- Regression tests and item schema: `86e51666a92b319e84d723606f4e34cad8e8cbd5`, `fda2c67bb1e206cc214040da6ea9780775f5f26d`, `eea19bd50c26c068b4ce920a5f1e46606bbe7e98`
+- Workflow gating and effect-clause dispositions: `38d00c0de0838bc1547c9083a7526e2f72687d6b`, `a35835bf281d3407005aec51fc9298a53346d17e`, validator `8a4def7ad294a0790d44f48db90659b6dcbc3801`
+
+### Validation state
+
+- Actions #270 failed in the old pack validator with 40 item cards whose source target conditions were unmapped. The follow-up schema/runtime fallback and validator changes address that exact class; a new full DB29 pack run is still required.
+- Actions #276 / run `42189332608` is a lightweight build run on the preceding HEAD. JavaScript tests and Python converter checks passed; DB29 pack was intentionally skipped. Do not treat it as the full 15,350-card pack validation or emulator smoke.
+- Final full pack validation must confirm runtime-ready 15,350/15,350, finite unit upkeep 8,633/8,633, effect-clause disposition 48,281/48,281, and zero card-wide runtime blockers. Only then proceed to one emulator smoke on the same final SHA.
+
+DB29 remains untouched; DB30 remains unpublished; PR #28 remains Open/Draft/unmerged. This section does not certify original semantic accuracy for the fallback clauses or real-device match completion.
