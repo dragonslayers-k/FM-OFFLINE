@@ -4056,3 +4056,19 @@ test('mobile deck catalogue exposes decrement-to-zero controls and responsive de
   assert.match(styleSource,/\.deck-actions \.button\{flex:1 1 105px;min-width:0;/,
     'action buttons must wrap instead of overflowing mobile width');
 });
+
+
+test('malformed explicit upkeep overlay falls back conservatively while verified zero upkeep stays free',()=>{
+  const malformed=unit('malformed-upkeep',{runtimeUpkeepCost:{neutral:-1},
+    runtimeCost:{neutral:2},runtimeCostKnown:true,cost:{neutral:1},costKnown:true,costMapped:true});
+  const explicitZero=unit('explicit-zero-upkeep',{runtimeUpkeepCost:{neutral:0},
+    runtimeCost:{neutral:2},runtimeCostKnown:true,cost:{neutral:1},costKnown:true,costMapped:true});
+  const p=player('player',{units:[malformed,explicitZero],
+    lands:[land('upkeep-neutral-source','forest',1,3)],
+    deck:Array.from({length:6},(_,i)=>({id:'upkeep-draw-'+i}))});
+  const s=state(p,player('ai'));
+  FM._test.beginPhase(s,'player');
+  assert.equal(p.neutralUpkeep,2,'invalid overlay must fall back to verified runtimeCost neutral upkeep');
+  assert.equal(p.soulPool.neutral,1,'only the conservative two-soul upkeep is consumed');
+  assert.equal(p.deck.length,0,'the phase draw occurs after upkeep');
+});

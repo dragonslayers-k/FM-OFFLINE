@@ -896,7 +896,9 @@
     if (!unit) return 0;
     if (unit.runtimeUpkeepCost && typeof unit.runtimeUpkeepCost === 'object') {
       const parsed = readCost(unit.runtimeUpkeepCost);
-      return parsed.ok ? Number(parsed.cost.neutral || 0) : 0;
+      // An explicitly present but malformed upkeep overlay is not evidence of
+      // zero upkeep. Continue to the verified runtime/source cost fallback.
+      if (parsed.ok) return Number(parsed.cost.neutral || 0);
     }
     if (unit.runtimeCostKnown === true) {
       const explicit = Number(unit.runtimeUpkeepNeutral);
