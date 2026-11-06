@@ -69,6 +69,59 @@
     return state.combatEventQueue.enqueue(createCombatEvent(type, details));
   }
 
+  // Data-only status records. Duration ticking, stacking, action locks, and status effects
+  // remain intentionally unresolved until source rules define their exact semantics.
+  function createUnitStatusRecord(statusName, durationTurns, source) {
+    const name = String(statusName || '').trim();
+    if (!name) return {ok:false,reason:'status_name_required',record:null};
+    const duration = Number(durationTurns);
+    if (!Number.isSafeInteger(duration) || duration <= 0) {
+      return {ok:false,reason:'invalid_duration',record:null};
+    }
+    const origin = source && typeof source === 'object' ? source : {};
+    const nestedSource = origin.source && typeof origin.source === 'object' ? origin.source : {};
+    return {
+      ok:true,
+      record:{
+        statusName:name,
+        durationTurns:duration,
+        durationTickPolicy:'unresolved',
+        sourceInstanceId:origin.sourceInstanceId ?? nestedSource.instanceId ?? null,
+        sourceCardId:origin.sourceCardId ?? nestedSource.cardId ?? null,
+        sourceRuleId:origin.sourceRuleId ?? null,
+        metadata:origin.metadata && typeof origin.metadata === 'object' ? clone(origin.metadata) : {}
+      }
+    };
+  }
+
+  function addUnitStatusRecord(unit, statusName, durationTurns, source) {
+    if (!unit || typeof unit !== 'object') return {ok:false,reason:'unit_required',record:null};
+    const created = createUnitStatusRecord(statusName,durationTurns,source);
+    if (!created.ok) return created;
+    if (!Array.isArray(unit.statusRecords)) unit.statusRecords = [];
+    // Keep repeated applications as separate source records; do not infer stack/refresh rules.
+    unit.statusRecords.push(clone(created.record));
+    return {ok:true,record:clone(created.record),recordCount:unit.statusRecords.length};
+  }
+
+  function removeUnitStatusRecords(unit, statusName) {
+    if (!unit || typeof unit !== 'object') return {ok:false,reason:'unit_required',removedCount:0};
+    const name = String(statusName || '').trim();
+    if (!name) return {ok:false,reason:'status_name_required',removedCount:0};
+    if (!Array.isArray(unit.statusRecords)) unit.statusRecords = [];
+    const before = unit.statusRecords.length;
+    unit.statusRecords = unit.statusRecords.filter(record => String(record.statusName || '') !== name);
+    return {ok:true,removedCount:before-unit.statusRecords.length};
+  }
+
+  function clearUnitStatusRecords(unit) {
+    if (!unit || typeof unit !== 'object') return {ok:false,reason:'unit_required',removedCount:0};
+    if (!Array.isArray(unit.statusRecords)) unit.statusRecords = [];
+    const removedCount = unit.statusRecords.length;
+    unit.statusRecords = [];
+    return {ok:true,removedCount};
+  }
+
   function snapshotCombatUnit(unit) {
     if (!unit || typeof unit !== 'object') return null;
     return {
@@ -87,7 +140,8 @@
       specialSkill2RuleAuthority: unit.specialSkill2RuleAuthority || null,
       specialSkill2ExecutionStatus: unit.specialSkill2ExecutionStatus || null,
       affiliation: unit.affiliation || null,
-      race: unit.race || null
+      race: unit.race || null,
+      statusRecords: Array.isArray(unit.statusRecords) ? clone(unit.statusRecords) : []
     };
   }
 
@@ -830,6 +884,7 @@
       hp: card.hp, maxHp: card.hp,
       itemAP: 0, itemDP: 0, itemHP: 0,
       tempAP: 0, tempDP: 0, tempHP: 0,
+      statusRecords: [],
       equipment: [], canAttack: true
     };
   }
@@ -1536,7 +1591,7 @@ if (card.type === 'unit') {
     COLORS, COLOR_NAMES, TYPE_NAMES, clone, uid, sumCost, costText, colorName,
     newGame, buildStarterDeck, drawToSix, concede, canPay, spendSoul, totalPower, validateCardForPlay,
     playCard, discardCard, reshuffleHand, endPhase, resolveBattle, runAIPhase, checkWinner, cardArtClass,
-    _test: { makePlayer, beginPhase, rollStat, coinProfile, chooseBlocker, createUnit, applyEffect, resolveUnitAttack, destroyUnit, productionOf, readCost, validateCardForPlay, itemMatchesUnit, resolveSpellSlot, statMarker, canChangeStat, changeUnitStat, setUnitStat, normalizeSpecialSkillForEngine, normalizeSpecialSkill2ForEngine, transferCardBetweenZones, createCombatEvent, createCombatEventQueue, createCombatEventDispatcher, createCoreCombatEventDispatcher, attachCombatEventDispatcher, dispatchPendingCombatEvents, SPECIAL_SKILL_RULE_KEYWORDS, SKILL2_SOURCE_RULE_NAMES }
+    _test: { makePlayer, beginPhase, rollStat, coinProfile, chooseBlocker, createUnit, createUnitStatusRecord, addUnitStatusRecord, removeUnitStatusRecords, clearUnitStatusRecords, snapshotCombatUnit, applyEffect, resolveUnitAttack, destroyUnit, productionOf, readCost, validateCardForPlay, itemMatchesUnit, resolveSpellSlot, statMarker, canChangeStat, changeUnitStat, setUnitStat, normalizeSpecialSkillForEngine, normalizeSpecialSkill2ForEngine, transferCardBetweenZones, createCombatEvent, createCombatEventQueue, createCombatEventDispatcher, createCoreCombatEventDispatcher, attachCombatEventDispatcher, dispatchPendingCombatEvents, SPECIAL_SKILL_RULE_KEYWORDS, SKILL2_SOURCE_RULE_NAMES }
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.FM = api;

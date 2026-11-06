@@ -2934,3 +2934,55 @@ test('production Racial Defense gives no reduction when the defender has no race
   assert.equal(defender.hp,4);
 });
 
+
+
+test('new units start with an empty data-only status record collection',()=>{
+  const template=unit('status-template',{statusRecords:[{statusName:'데스',durationTurns:2}]});
+  const created=FM._test.createUnit(template);
+  assert.deepEqual(created.statusRecords,[]);
+  assert.equal(created.canAttack,true);
+});
+
+test('unit status records preserve exact duration and source without merging or applying effects',()=>{
+  const target=unit('status-target',{instanceId:'status-target-1',hp:5,maxHp:5,canAttack:true});
+  const first=FM._test.addUnitStatusRecord(target,'데스',2,{
+    sourceInstanceId:'death-memory-source',sourceCardId:'11112425427',sourceRuleId:'skill1_death_memory'
+  });
+  const second=FM._test.addUnitStatusRecord(target,'데스',1,{
+    sourceInstanceId:'other-status-source',sourceCardId:'spell-death-source'
+  });
+  assert.equal(first.ok,true);
+  assert.equal(second.ok,true);
+  assert.equal(target.statusRecords.length,2,'reapplications remain separate until stacking rules are verified');
+  assert.deepEqual(target.statusRecords.map(record=>record.durationTurns),[2,1]);
+  assert.equal(target.statusRecords[0].durationTickPolicy,'unresolved');
+  assert.equal(target.statusRecords[0].sourceCardId,'11112425427');
+  assert.equal(target.statusRecords[0].sourceRuleId,'skill1_death_memory');
+  assert.equal(target.hp,5,'record storage does not damage or kill the unit');
+  assert.equal(target.canAttack,true,'record storage does not impose an action lock');
+});
+
+test('status record validation and explicit removal do not infer duration semantics',()=>{
+  const target=unit('status-remove-target');
+  assert.equal(FM._test.addUnitStatusRecord(target,'',2).reason,'status_name_required');
+  assert.equal(FM._test.addUnitStatusRecord(target,'데스',0).reason,'invalid_duration');
+  assert.equal(FM._test.addUnitStatusRecord(target,'데스',2.5).reason,'invalid_duration');
+  FM._test.addUnitStatusRecord(target,'데스',2);
+  FM._test.addUnitStatusRecord(target,'빙결',3);
+  FM._test.addUnitStatusRecord(target,'데스',1);
+  assert.deepEqual(FM._test.removeUnitStatusRecords(target,'데스'),{ok:true,removedCount:2});
+  assert.deepEqual(target.statusRecords.map(record=>record.statusName),['빙결']);
+  assert.deepEqual(FM._test.clearUnitStatusRecords(target),{ok:true,removedCount:1});
+  assert.deepEqual(target.statusRecords,[]);
+});
+
+test('combat unit snapshots preserve isolated status record evidence',()=>{
+  const target=unit('status-snapshot-target',{instanceId:'status-snapshot-1'});
+  FM._test.addUnitStatusRecord(target,'데스',2,{sourceCardId:'11112425427'});
+  const snapshot=FM._test.snapshotCombatUnit(target);
+  const event=FM._test.createCombatEvent('unit_destroyed',{snapshot:{unit:snapshot}});
+  target.statusRecords[0].durationTurns=99;
+  assert.equal(event.snapshot.unit.statusRecords[0].durationTurns,2);
+  assert.equal(event.snapshot.unit.statusRecords[0].sourceCardId,'11112425427');
+  assert.equal(Object.isFrozen(event.snapshot.unit.statusRecords),true);
+});
