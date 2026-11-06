@@ -649,16 +649,18 @@
     }
   }
   function adjustDeck(id, delta) {
-    const counts = Object.assign({}, currentDeckCounts());
-    const next = (counts[id] || 0) + delta;
-    if (next < 0) return;
+    currentDeckCounts();
     const card = cards.find(c => c.id === id);
-    const rawLimit = Number(card && card.deckLimit);
+    if (!card) return;
+    const rawLimit = Number(card.deckLimit);
     const limit = Number.isInteger(rawLimit) ? Math.max(0, Math.min(4, rawLimit)) : 4;
-    if (delta > 0 && countDeck(counts) >= DEMO_DECK_SIZE) { alert(`덱은 ${DEMO_DECK_SIZE}장까지 편성할 수 있습니다.`); return; }
-    if (delta > 0 && next > limit) { alert(`이 카드는 최대 ${limit}장까지 넣을 수 있습니다.`); return; }
-    if (next === 0) delete counts[id]; else counts[id] = next;
-    data.deckCounts = counts; safeWrite(); renderDeck();
+    const result = FM.DeckState.adjustDeckCounts(data, id, delta, limit, DEMO_DECK_SIZE);
+    if (!result.ok) {
+      if (result.reason === 'deck_full') alert(`덱은 ${DEMO_DECK_SIZE}장까지 편성할 수 있습니다.`);
+      else if (result.reason === 'card_limit') alert(`이 카드는 최대 ${limit}장까지 넣을 수 있습니다.`);
+      return;
+    }
+    safeWrite(); renderDeck();
   }
   function renderLibrary(reset = true) {
     if (reset) libraryVisibleCount = 60;
