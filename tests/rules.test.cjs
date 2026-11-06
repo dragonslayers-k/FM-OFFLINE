@@ -1065,22 +1065,37 @@ test('DB29 Manual charm attack disables AP only when DP prevents all HP damage',
   assert.equal(FM.totalPower(x.defender,'ap'),4,'successful HP damage does not trigger charm AP suppression');
 });
 
-test('DB29 Manual defense-convert attack makes positive target DP negative',()=>{
-  const attacker=unit('10010624563',{
-    instanceId:'manual-defense-convert-attacker',name:'리듬포이',skill:'방어전환공격',
-    ap:1,dp:0,hp:5,maxHp:5,specialSkillRuleId:'defense_convert',
-    specialSkillMappingStatus:'manual_verified',specialSkillRuleAuthority:'manual'
-  });
-  const defender=unit('manual-defense-convert-defender',{
-    instanceId:'manual-defense-convert-defender',ap:3,dp:4,hp:10,maxHp:10
-  });
-  const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
-  const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
-    attacker:{ap:{value:1},dp:{value:0},hp:{value:5}},
-    defender:{ap:{value:3},dp:{value:4},hp:{value:10}}
-  });
-  assert.equal(result.damage,0,'positive DP blocks the one-point attack before DP sign conversion');
-  assert.equal(FM.totalPower(defender,'dp'),-4,'Manual rule changes DP to a negative value');
+test('DB29 Manual defense-convert applies the negative DP marker only when target DP is positive',()=>{
+  const run=(defenderDP)=>{
+    const attacker=unit('10010624563',{
+      instanceId:'manual-defense-convert-attacker',name:'리듬포이',skill:'방어전환공격',
+      ap:1,dp:0,hp:5,maxHp:5,specialSkillRuleId:'defense_convert',
+      specialSkillMappingStatus:'manual_verified',specialSkillRuleAuthority:'manual'
+    });
+    const defender=unit('manual-defense-convert-defender',{
+      instanceId:'manual-defense-convert-defender',ap:3,dp:defenderDP,hp:10,maxHp:10
+    });
+    const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+    const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+      attacker:{ap:{value:1},dp:{value:0},hp:{value:5}},
+      defender:{ap:{value:3},dp:{value:defenderDP},hp:{value:10}}
+    });
+    return {defender,result};
+  };
+
+  // Manual.zip / specialability.htm / 27. 방어전환기술:
+  // "공격당한 상대는 DP에 - 가 붙게 됩니다."
+  let x=run(4);
+  assert.equal(x.result.damage,0,'positive DP blocks the one-point attack before the sign conversion');
+  assert.equal(FM.totalPower(x.defender,'dp'),-4,'positive DP receives the negative sign');
+
+  x=run(0);
+  assert.equal(x.result.damage,1,'zero DP does not block the one-point attack');
+  assert.equal(FM.totalPower(x.defender,'dp'),0,'negative sign applied to zero remains zero');
+
+  x=run(-2);
+  assert.equal(x.result.damage,3,'already-negative DP increases the incoming damage by two');
+  assert.equal(FM.totalPower(x.defender,'dp'),-2,'already-negative DP stays negative');
 });
 
 test('DB29 Manual beast tamer, spell suppression and weapon suppression require the exact target ability',()=>{
