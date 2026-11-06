@@ -1186,16 +1186,31 @@ def convert(a):
     }
     skill_mapping_bytes=json.dumps(skill_mapping_data,ensure_ascii=False,separators=(",",":")).encode("utf-8")
     skill_mapping_sha256=hashlib.sha256(skill_mapping_bytes).hexdigest()
-    effect_candidate_records=[
-        {"cardId":row["card_id"],**candidate}
-        for row in source_records for candidate in row.get("effect_candidates",[])
-    ]
+    effect_candidate_records=[]
+    runtime_clause_dispositions=Counter()
+    for row in source_records:
+        for candidate in row.get("effect_candidates",[]):
+            candidate_out=dict(candidate)
+            clause_out=[]
+            for clause_index,clause in enumerate(candidate.get("clauses") or []):
+                resolved=dict(clause)
+                # Source clause text/spans remain immutable. Until a card-specific
+                # verified/inferred handler exists, close this clause with a
+                # deterministic no-op rather than blocking the whole card/action.
+                resolved["runtimeDisposition"]="fallback_noop"
+                resolved["runtimeDispositionReason"]="source-effect-clause-not-yet-mapped"
+                resolved["runtimeClauseIndex"]=clause_index
+                runtime_clause_dispositions["fallback_noop"]+=1
+                clause_out.append(resolved)
+            candidate_out["clauses"]=clause_out
+            effect_candidate_records.append({"cardId":row["card_id"],**candidate_out})
     effect_candidate_data={
-        "schemaVersion":1,
+        "schemaVersion":2,
         "sourceDatabaseRelease":a.db_release_tag,
-        "description":"Non-executable effect text pattern candidates and exact source clause spans. These records are references for later manual review and rule-handler implementation, not executable card effects.",
+        "description":"Original source effect candidates and exact clause spans, with a separate deterministic runtime disposition for every clause. Candidate text is never treated as a verified executable rule.",
         "candidateCount":len(effect_candidate_records),
         "clauseCount":sum(len(x.get("clauses",[])) for x in effect_candidate_records),
+        "runtimeClauseDispositionCounts":dict(runtime_clause_dispositions),
         "records":effect_candidate_records,
     }
     effect_candidate_bytes=json.dumps(effect_candidate_data,ensure_ascii=False,separators=(",",":")).encode("utf-8")
@@ -1322,7 +1337,8 @@ def convert(a):
           "candidateFileSha256":effect_candidate_sha256,
           "verificationStatus":"pattern_candidate",
           "executableEffectMappings":0,
-          "policy":"Candidate extraction is reference data only. No candidate is treated as an executable game rule."
+          "runtimeClauseDispositionCounts":dict(runtime_clause_dispositions),
+          "policy":"Original candidate text remains non-executable. Every candidate clause receives a separate deterministic fallback_noop disposition so card use and turn progression can complete."
         },
         "specialSkillReview":{
           **skill_db_counts,
