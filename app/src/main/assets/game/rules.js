@@ -553,6 +553,7 @@
         card.runtimeItemConditionStatus !== 'fallback_any_unit') return false;
     if (condition.owner === 'own' && targetOwnerId !== ownerId) return false;
     if (condition.owner === 'enemy' && targetOwnerId === ownerId) return false;
+    if (card.runtimeItemConditionStatus === 'fallback_any_unit') return true;
     if (condition.race && String(unit.race || '') !== condition.race) return false;
     if (condition.affiliation && String(unit.affiliation || '') !== condition.affiliation) return false;
     return true;
