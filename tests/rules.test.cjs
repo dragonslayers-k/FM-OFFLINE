@@ -1415,6 +1415,20 @@ test('pending source-cost status does not block a card with an inferred payable 
   assert.equal(p.units.length,1);
 });
 
+test('Manual NCS runtime cost pays from the pool and applies unit-only recurring upkeep',()=>{
+  const ncs=unit('ncs-runtime',{runtimeCost:{neutral:1},runtimeCostKnown:true,
+    runtimeUpkeepCost:{neutral:1},costKnown:false,costMapped:false});
+  const p=player('player',{hand:[ncs],soulPool:{colored:{},neutral:2},unitDeployLimit:1});
+  const s=state(p,player('ai'));
+  const result=FM.playCard(s,'player','ncs-runtime-1');
+  assert.equal(result.ok,true);
+  assert.equal(p.soulPool.neutral,1);
+  FM._test.beginPhase(s,'player');
+  assert.equal(p.neutralUpkeep,1);
+  assert.equal(p.soulPool.neutral,0);
+  assert.equal(s.status,'playing');
+});
+
 test('BONUS one-time runtime payment is excluded from recurring unit upkeep',()=>{
   const bonus=unit('bonus-runtime',{runtimeCost:{neutral:2},runtimeCostKnown:true,
     runtimeUpkeepCost:{neutral:0},costKnown:false,costMapped:false});
