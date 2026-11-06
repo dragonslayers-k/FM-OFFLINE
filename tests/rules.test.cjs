@@ -236,6 +236,44 @@ test('AI preparation stops immediately when an empty deck cannot refill its hand
   assert.ok(s.log.some(entry=>entry.text.includes(ai.name+'의 서고가 소진되었습니다.')));
 });
 
+test('AI preparation stops when neutral upkeep destroys its final deck card',()=>{
+  const p=player('player',{
+    hand:Array.from({length:6},(_,i)=>({id:'upkeep-player-'+i})),
+    deck:Array.from({length:10},(_,i)=>({id:'upkeep-player-deck-'+i}))
+  });
+  const ai=player('ai',{
+    hand:Array.from({length:5},(_,i)=>({id:'upkeep-ai-'+i})),
+    deck:[{id:'upkeep-ai-final-deck-card'}],
+    units:[unit('neutral-upkeep-unit',{
+      name:'무속성 유지비 유닛',
+      cost:{forest:1,neutral:1},
+      costKnown:true,
+      costMapped:true
+    })],
+    lands:[]
+  });
+  const s=state(p,ai,{
+    round:4,
+    attackerId:'player',
+    activeId:'player',
+    prepared:{player:false,ai:false}
+  });
+
+  const result=FM.endPhase(s,'player');
+
+  assert.equal(result.ok,true);
+  assert.equal(ai.neutralUpkeep,1,'the unit requires one neutral upkeep soul each preparation phase');
+  assert.equal(ai.deck.length,0,'the unpaid upkeep destroys the final card in the AI deck');
+  assert.equal(s.status,'finished');
+  assert.equal(s.result,'player','the player wins when the AI upkeep exhausts its deck');
+  assert.equal(ai.hand.length,5,'AI hand refill is skipped after upkeep already finished the match');
+  assert.equal(s.round,4,'the upkeep terminal result does not advance the round');
+  assert.ok(!s.log.some(entry=>entry.text.includes('카드를 검토하고 있습니다.')),
+    'AI auto-play must not begin after upkeep has ended the match');
+  assert.ok(s.log.some(entry=>entry.text.includes('무속성 소울 유지비 1')));
+  assert.ok(s.log.some(entry=>entry.text.includes(ai.name+'의 서고가 소진되었습니다.')));
+});
+
 test('LP accumulates each turn and a land placement consumes LP only',()=>{
   const p=player('player',{hand:[{...land('high-lp','light',2,2),instanceId:'l1'}],
     lp:2,soulPool:{colored:{forest:1},neutral:0}});
