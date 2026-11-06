@@ -3995,3 +3995,20 @@ test('AI resolves a lethal spell before spending shared preparation souls on a u
   assert.ok(spellLog>=0);
   assert.ok(unitLog<spellLog,'logs are newest-first: the later unit deployment must appear before the earlier spell in the log array');
 });
+
+test('AI preserves a targeted spell when no legal enemy target exists and spends shared souls on a unit',()=>{
+  const summon=unit('ai-no-target-summon',{instanceId:'ai-no-target-summon',cost:{forest:1},
+    costKnown:true,costMapped:true,ap:3,dp:2,hp:5,maxHp:5});
+  const damageSpell={id:'ai-no-target-spell',instanceId:'ai-no-target-spell',name:'대상 지정 마법',type:'spell',
+    cost:{forest:1},costKnown:true,costMapped:true,triggerTiming:'공격턴',
+    effect:{type:'damage',amount:3,target:'enemyUnit'}};
+  const p=player('player',{units:[]});
+  const ai=player('ai',{hand:[summon,damageSpell],unitDeployLimit:1,
+    soulPool:{colored:{forest:1},neutral:0}});
+  const s=state(p,ai,{activeId:'ai',settings:{difficulty:'normal',deckSize:20}});
+  FM.runAIPhase(s,'ai');
+  assert.equal(ai.units.length,1,'AI uses the available soul to deploy a legal unit');
+  assert.equal(ai.hand.some(card=>card.instanceId==='ai-no-target-spell'),true,
+    'the targeted spell remains in hand because no enemy target is legal');
+  assert.equal(ai.spells.length,0,'AI does not queue an invalid-target spell');
+});
