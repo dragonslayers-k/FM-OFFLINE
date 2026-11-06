@@ -389,15 +389,22 @@
       const effectTargetValid=!n.effect||!['damage','heal','buff','drain'].includes(n.effect.type)||['ownUnit','enemyUnit'].includes(n.effect.target);
       const slotMatchesEffect=type!=='enchant'||!n.effect||!['ownUnit','enemyUnit'].includes(n.effect.target)||
         (n.effect.target==='ownUnit'&&n.slotOwner==='own')||(n.effect.target==='enemyUnit'&&n.slotOwner==='enemy');
-      const timingOrSlotReady=type==='spell'?!!n.triggerTiming:
-        (Number.isInteger(Number(n.slotIndex))&&Number(n.slotIndex)>0&&['own','enemy'].includes(n.slotOwner));
+      const timingOrSlotReady=type==='spell'?
+        /전투시작|전투개시|공격|공격턴|방어|방어턴/.test(String(n.triggerTiming||'').replace(/\s/g,'')):
+        false;
       const runtimeEffectReady=!!n.effect&&supportedEffectTypes.includes(n.effect.type)&&effectTargetValid&&slotMatchesEffect&&timingOrSlotReady;
       n.runtimeEffectDisposition=runtimeEffectReady?
         (raw.effectVerified===true?'implemented_verified':(mayRunInferred?'implemented_inferred':'fallback_noop')):
         'fallback_noop';
       if(n.runtimeEffectDisposition==='fallback_noop')n.effect=null;
-      n.runtimeEffectFallbackReason=n.runtimeEffectDisposition==='fallback_noop'?
-        (raw.runtimeEffectFallbackReason||'source-effect-clause-not-yet-mapped'):null;
+      if(type==='enchant'){
+        n.runtimeEffectDisposition='fallback_noop';
+        n.effect=null;
+        n.runtimeEffectFallbackReason='enchant-event-duration-handler-not-implemented';
+      }else{
+        n.runtimeEffectFallbackReason=n.runtimeEffectDisposition==='fallback_noop'?
+          (raw.runtimeEffectFallbackReason||'source-effect-clause-not-yet-mapped'):null;
+      }
     }else{n.rules.status='incomplete';n.rules.unsupportedReason='원본 카드 종류를 판별하지 못했습니다.';}
     if(type!=='land')n.rules.costStatus=costKnown?'mapped':'missing-from-card-image';
     return n;
