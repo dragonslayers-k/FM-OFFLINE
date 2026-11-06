@@ -1024,6 +1024,21 @@ test('DB29 Manual Vampiric Attack uses actual HP damage, rounds half up, and res
   assert.equal(x.result.damage,3);
   assert.equal(x.attacker.hp,2,'HP-increase marker prevents vampiric healing');
   assert.equal(x.attacker.tempHP||0,0);
+
+  // Manual cardability.htm §6-(b): △ permits increases; ▽ forbids increases.
+  x=run({attackerHp:2,defenderDP:0,attackAP:3,attackerHpMarker:'△'});
+  assert.equal(x.result.damage,3);
+  assert.equal(x.attacker.hp,4,'HP △ permits the Manual half-up vampiric heal of 2');
+
+  x=run({attackerHp:2,defenderDP:0,attackAP:3,attackerHpMarker:'▽'});
+  assert.equal(x.result.damage,3);
+  assert.equal(x.attacker.hp,2,'HP ▽ prohibits the positive vampiric healing delta');
+  assert.equal(x.attacker.tempHP||0,0);
+
+  x=run({attackerHp:2,defenderDP:0,attackAP:3,attackerHpMarker:'*'});
+  assert.equal(x.result.damage,3);
+  assert.equal(x.attacker.hp,2,'HP * blocks all stat changes including vampiric healing');
+  assert.equal(x.attacker.tempHP||0,0);
 });
 
 test('DB29 Manual Regeneration restores one HP on attack even when defender DP blocks all damage',()=>{
