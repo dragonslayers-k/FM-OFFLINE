@@ -1407,6 +1407,9 @@ def convert(a):
           "verificationStatus":"pattern_candidate",
           "executableEffectMappings":0,
           "runtimeClauseDispositionCounts":dict(runtime_clause_dispositions),
+          "runtimeInferredClauseCount":runtime_clause_dispositions.get("implemented_inferred",0),
+          "runtimeFallbackClauseCount":runtime_clause_dispositions.get("fallback_noop",0),
+          "runtimeCardEffectDispositionCounts":dict(Counter(c.get("runtimeEffectDisposition","missing") for c in cards)),
           "policy":"Original candidate text remains non-verified. A single exact simple-text pattern with required timing/slot metadata may use a tested inferred handler; all other clauses receive deterministic fallback_noop so card use and turn progression complete."
         },
         "specialSkillReview":{
