@@ -3108,6 +3108,43 @@ test('compact DB29 Manual fatal attack preserves the one-HP floor at lethal boun
   }
 });
 
+test('DB29 Manual Fatal Attack source card respects HP decrease markers',()=>{
+  const run=(hpMarker='')=>{
+    const attacker=db29ManualSkill1('10012024612','선더골렘','치명공격','fatal_attack',{
+      ap:3,dp:0,hp:5,maxHp:5
+    });
+    const defender=unit('fatal-marker-target',{
+      instanceId:'fatal-marker-target-'+(hpMarker||'none'),
+      ap:0,dp:9,hp:5,maxHp:5,
+      statMarkers:hpMarker?{hp:hpMarker}:{}
+    });
+    const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
+    const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
+      attacker:{ap:{value:3},dp:{value:0},hp:{value:5}},
+      defender:{ap:{value:0},dp:{value:9},hp:{value:5}}
+    });
+    return {defender,result};
+  };
+
+  // Manual specialability.htm §3 sets the target to 1 HP; cardability.htm
+  // stat markers govern whether that HP decrease can be applied.
+  let x=run();
+  assert.equal(x.result.damage,4);
+  assert.equal(x.defender.hp,1);
+
+  x=run('▽');
+  assert.equal(x.result.damage,4,'HP ▽ permits the decrease to one HP');
+  assert.equal(x.defender.hp,1);
+
+  x=run('△');
+  assert.equal(x.result.damage,0,'HP △ prohibits the decrease');
+  assert.equal(x.defender.hp,5);
+
+  x=run('*');
+  assert.equal(x.result.damage,0,'HP * blocks all stat changes');
+  assert.equal(x.defender.hp,5);
+});
+
 test('unit destruction transfers the unit before ordered equipment and preserves neighboring field slots',()=>{
   const first=unit('field-first',{instanceId:'field-first'});
   const target=unit('equipment-bearing-unit',{instanceId:'equipment-bearing-1',hp:0,maxHp:5,
