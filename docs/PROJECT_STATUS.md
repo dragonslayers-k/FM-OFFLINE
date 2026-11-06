@@ -158,3 +158,31 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - 최종 pack validator는 단순 validateCardForPlay 검사 외에 15,350장 각각에 대해 synthetic resource/target 상태로 실제 FM.playCard()를 호출하고 hand removal, terminal zone/queue, playedAnyCardThisPhase를 확인한다. runtimeActionAudit 목표는 15,350 attempted / 15,350 completed / 0 blocked다.
 - Item fallback은 미해석 clause만 무시하고 이미 해석된 owner/race/affiliation/allowed ability 조건은 계속 강제한다.
 - 단순 마법 문구는 단일 정확한 clause와 지원되는 공격/방어/전투시작 발동 시점이 모두 확인될 때만 inferred handler를 사용한다. Enchant는 event/duration slot engine이 구현될 때까지 effect-only fallback을 유지한다.
+
+
+## 2026-11-06 — 최신 재개 상태 OPS-014 (PR #28)
+
+### 검증 이력 정정 및 범위
+
+- APK PR #28 Actions #322 / run `42192589114`는 DB29 SQLite 다운로드, 변환 및 데이터 ZIP 생성까지 성공한 뒤 `validate-app-card-pack.cjs:551`의 `ReferenceError: manifest is not defined`로 실패했다. DB29 원본/SQLite 손상이 아니라 validator의 manifest 입력 연결 오류였다.
+- 수정된 코드 SHA `60681acc02974f6f6e8721def63b24f0823a6d6e`의 Actions #325 / run `42192845020`는 DB29 SQLite 무결성/원본 확인, 15,350장 데이터팩 생성 및 manifest 검증, Debug APK build/package/signature/ZIP 검사, emulator install, DB import 및 WebView 15,350/15,350 로드를 모두 통과했다.
+- #325 validator 수치: runtime cost profile 15,350 ready / 0 blocked; runtime action probe 15,350 attempted / 15,350 completed / 0 blocked. 카드별 terminal action은 Unit 8,633 소환, Magic 3,857 terminal action(3,839 paid fallback + 18 queued), Item 1,748 장착, Enchant 823 paid fallback, Land 289 설치였다.
+- 효과 의미 검증은 별도 미완료다. 48,281 clauses 중 48,263 fallback_noop, 18 implemented_inferred이며, 716 normalized text patterns 및 1,249 low-confidence rows는 카드/절 단위 의미 검토 대상이다. 15,350 action probe는 원작 효과 구현 완성이나 seeded full-match 검증을 의미하지 않는다.
+- CI 비용 gate commit `0be807b9dd3b67e5555ea9140e9083d698301bf5`의 Actions #327 / run `42197420334`는 JS/Python 성공, DB29 pack/JDK/SDK/Gradle/APK/emulator skip으로 gate 정책만 검증했다.
+- UI 비용 label/MagicLand 설명 및 workflow header 수정이 포함된 SHA `77e1ee9723d6c10263498c68e8b65342fa28646f`의 Actions #328 / run `42199670675`도 JS/Python 성공, expensive stage skip이었다.
+- 카드 상세 화면이 실제 동작과 다르게 미지원 spell/enchant 효과 때문에 전체 발동을 차단한다고 표시하고, runtimeCost 이용 가능 여부를 알리지 않는 문제를 발견했다. Commit `6dbdcf7ecabd645f20dd0073435999468409ff4a`에서 수정했다. Source cost review는 provenance 안내로 표시하며, `runtimeCost`가 있으면 실제 결제에 사용하는 값을 설명한다. 미지원 개별 clause는 no-op fallback으로 끝나지만 결제·카드 사용·턴 진행은 완료된다고 표시한다.
+- PR 제목의 임시 `[build-apk]` 요청으로 Actions #329 / run `42202046670`가 실행되어 JS/Python 검사, JDK/SDK/Gradle setup, Debug APK build, package/application ID/signature/ZIP integrity 검사가 성공했다. DB29 pack 및 emulator 단계는 skip됐다. #329는 UI 수정 SHA의 APK-only 검증이며 full DB29/emulator 검증은 #325 범위다.
+
+### CI 실행 조건 (실제 workflow 기준)
+
+- PR synchronize는 JS/Python 경량 검사를 유지한다. PR title `[build-apk]`는 APK-only build를 요청할 수 있다.
+- PR title `[build-card-pack]` / `[run-emulator]`는 대형 작업을 실행하지 않는다.
+- DB29 pack은 workflow_dispatch의 `build_card_pack=true` 또는 승인된 main push commit marker로 실행한다. Emulator는 workflow_dispatch에서 `run_emulator=true`와 `build_card_pack=true`를 함께 선택하거나 승인된 main push에 두 marker가 함께 있을 때 실행한다.
+- PR synchronize는 최신 실행만 유지하도록 cancel-in-progress를 적용한다. main push와 수동 실행은 취소하지 않는다.
+
+### 현재 상태와 남은 게이트
+
+- 현재 APK PR #28 HEAD는 문서 갱신 후 다시 확인한다. PR은 Open/Draft, 미병합으로 유지한다.
+- Core runtime action/cost gate는 #325에서 통과했고, UI fix는 #329에서 APK build 및 integrity 검사를 통과했다. 최신 UI/doc-only 변경까지 포함한 APK build가 필요할 때는 별도 필요한 범위만 실행한다.
+- 남은 핵심은 48,263 fallback clauses와 1,249 low-confidence source rows의 evidence-linked 의미 검토/handler promotion, Skill1/Skill2 crosswalk coverage, 고정 seed의 실제 전투·턴 전체 시나리오다.
+- DB29 보존, DB30 미발행, T PR #9/#12/#13 및 APK PR #28/#26/#25/#9 미병합 승인 경계 유지.
