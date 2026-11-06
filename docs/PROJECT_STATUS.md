@@ -265,3 +265,12 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - Exact DB29 Manual Skill1 label fixture: 해적전투원 / `10010624551` / `방패파괴`. Manual.zip `specialability.htm` §21 says after the attack, target DP becomes 0; if target DP is negative, the rule has no effect. The spec row records 96 exact label rows but the card-local effect excerpt remains pending; do not overstate this as a recovered card-local quote.
 - Added checks: AP0 does not trigger the effect; DP0 permits ordinary AP damage and stays 0; positive DP is set to 0 after the attack; negative DP remains unchanged; DP `△` blocks the reduction and prevents any HP overflow; DP `▽` permits the reduction. The effect is post-attack and does not itself add damage to HP.
 - Runtime handler unchanged; test-only. This is fixture-level rule coverage, not DB29 SQLite→converter→APK pack lineage proof. DB29 remains preserved, DB30 unpublished.
+
+
+## 2026-11-06 — Manual Skill1 shield-break and curse marker regression (#361/#363)
+
+- APK PR #28 test commit `74ce501d4b97081ad4223b9868eb9bb26711ea68`, Actions #361 / run `42223636601`: success; JS 236 / 0 failures; Python converter passed. It adds Pirate Combatant / `10010624551` Shield Break: AP0 no-trigger, DP0 baseline, negative DP no-effect, positive DP set-to-zero, DP `△` decrease blocked and `▽` decrease allowed. The rule is post-attack; it creates no extra HP overflow.
+- Follow-up test commit `51222519ffa6f22b015bf0cea9ef16829b92ea73`, Actions #363 / run `42224203597`: success; JS 236 / 0 failures; Python converter passed. It adds Dark Joker / `10030324708` Curse Attack: AP0 no-trigger; AP `△` protects AP while DP `▽` permits DP−2; AP `▽` permits AP−2 while DP `△` protects DP.
+- Manual source: Dropbox `/판마/Manual.zip`, `specialability.htm` §21 Shield Break (DP becomes 0 after attack; no effect if DP is negative) and §22 Curse Attack (target AP/DP −2); common stat-marker directions from `cardability.htm`.
+- T machine-readable Skill1 spec currently still says `implementation_status=pending_engine_test` for shield_break and keeps `exact_db29_source_text=null`; these focused fixture tests exist but card-local packet/runtime pack lineage is not completed. Do not invent an accepted status enum or treat label match as card-local source evidence.
+- Both runs are lightweight JS/Python only. DB29 pack/APK/emulator skipped. No runtime source mapping or DB29 data was changed.
