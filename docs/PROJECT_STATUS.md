@@ -229,3 +229,12 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - Manual.zip `soulcost.htm` states that a unit with a neutral bead pays the neutral upkeep every turn and, if unable to pay, destroys that many deck cards. This test covers the terminal boundary where the last card is destroyed.
 - Prior adjacent path: #346 / run `42215917221` verified empty-deck draw-to-six loss, after fixing the test to compare the actual lowercase fixture name (`ai.name`). Initial #345 / `42215759449` failed only that hardcoded log-text assertion (234/235 passed); runtime code was not changed. #346 passed 235/235.
 - #348 is lightweight JS/Python only. DB29 pack/APK/emulator skipped. No runtime rules code or DB29 data changed.
+
+
+## 2026-11-06 — Skill1 secondary cluster DP boundaries (#350)
+
+- Manual source: Dropbox `/판마/Manual.zip`, `specialability.htm` §9 (Charge uses AP + own DP; DP can still attack when AP is 0 or *0) and §13 (Frenzy sets own HP to 1 and adds sacrificed HP to attack damage).
+- Test commit `9575dcd77738daacd0d57ede0baa6e6f9fc928c2`, Actions #350 / run `42217090860`: success; 236 JS tests / 0 failures; Python converter 13 / OK.
+- Pathfinder / `10010624588` charge boundaries at AP0: own DP3 vs defender DP2 yields 1 damage; own DP1 vs defender DP3 is fully absorbed (0 damage).
+- Dark Familiar / `10010624538` frenzy boundary at AP0: HP4 falls to 1 (3 sacrificed) and defender DP2 reduces the final damage to 1. Existing one-HP no-sacrifice boundary remains.
+- This was test-only. No runtime handler, source mapping or DB29 data changed; DB29 pack/APK/emulator were skipped.
