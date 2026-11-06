@@ -1653,12 +1653,13 @@ if (card.type === 'unit') {
 
     if (effect.type === 'buff' && ownTarget) {
       const ap = Number(effect.ap || 0), dp = Number(effect.dp || 0), hp = Number(effect.hp || 0);
-      return units.slice().sort((a, b) => {
-        const value = unit => (ap && canChangeStat(unit, 'ap', Math.sign(ap)) ? Math.abs(ap) : 0) +
-          (dp && canChangeStat(unit, 'dp', Math.sign(dp)) ? Math.abs(dp) : 0) +
-          (hp && canChangeStat(unit, 'hp', Math.sign(hp)) ? Math.abs(hp) : 0);
-        return value(b) - value(a) || totalPower(b, 'ap') - totalPower(a, 'ap');
-      })[0] || null;
+      const value = unit => (ap && canChangeStat(unit, 'ap', Math.sign(ap)) ? Math.abs(ap) : 0) +
+        (dp && canChangeStat(unit, 'dp', Math.sign(dp)) ? Math.abs(dp) : 0) +
+        (hp && canChangeStat(unit, 'hp', Math.sign(hp)) ? Math.abs(hp) : 0);
+      // Do not select a friendly unit when every requested stat change is
+      // blocked by its Manual marker. That would spend the spell for no effect.
+      return units.filter(unit => value(unit) > 0)
+        .sort((a, b) => value(b) - value(a) || totalPower(b, 'ap') - totalPower(a, 'ap'))[0] || null;
     }
 
     if (ownTarget) return units.slice().sort((a, b) => totalPower(b, 'ap') - totalPower(a, 'ap'))[0];
