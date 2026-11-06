@@ -75,7 +75,7 @@ jobs:
       - name: Check Firestore-to-Android converter
         run: |
           set -euo pipefail
-          python -m py_compile scripts/fm1-offline/build-firestore-card-pack.py scripts/fm1-offline/audit-enchant-cards.py scripts/fm1-offline/verify-db29-skill1-pack-lineage.py
+          python -m py_compile scripts/fm1-offline/build-firestore-card-pack.py scripts/fm1-offline/audit-enchant-cards.py scripts/fm1-offline/verify-db29-skill1-pack-lineage.py scripts/fm1-offline/verify-db29-skill-mapping-pack-lineage.py
           python scripts/fm1-offline/build-firestore-card-pack.py --self-test
           python -m unittest tests/test_sqlite_card_pack.py
           python scripts/fm1-offline/audit-enchant-cards.py --self-test
@@ -208,6 +208,11 @@ jobs:
           python scripts/fm1-offline/verify-db29-skill1-pack-lineage.py \
             --db "$RUNNER_TEMP/fm1-source/fm1_cards.sqlite" \
             --cards-json "$RUNNER_TEMP/fm1-app-cards.json" \
+            --release-tag "$CARD_DB_RELEASE_TAG" 
+          python scripts/fm1-offline/verify-db29-skill-mapping-pack-lineage.py \
+            --db "$RUNNER_TEMP/fm1-source/fm1_cards.sqlite" \
+            --cards-json "$RUNNER_TEMP/fm1-app-cards.json" \
+            --skill-mappings-json "$RUNNER_TEMP/fm1-app-skill-mappings.json" \
             --release-tag "$CARD_DB_RELEASE_TAG"
           node scripts/fm1-offline/verify-db29-skill1-runtime-normalization.cjs \
             --cards-json "$RUNNER_TEMP/fm1-app-cards.json" \
