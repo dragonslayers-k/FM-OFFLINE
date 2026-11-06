@@ -647,6 +647,9 @@ def runtime_effect_mapping_for_row(row, enums):
         # The current engine has no event/duration-bound enchant runtime slot.
         # Even simple text is not safe to apply immediately as an enchant.
         return None
+    extra_text = html.unescape(re.sub(r"<[^>]*>", "", str(payload.get("TextExtra") or ""))).strip()
+    if extra_text:
+        return None
     mapping = simple_effect_mapping(payload.get("TextBase"))
     if not mapping:
         return None
