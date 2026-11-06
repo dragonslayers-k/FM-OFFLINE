@@ -1645,22 +1645,33 @@ if (card.type === 'unit') {
         const result = playCard(state, ownerId, enchantCard.instanceId);
         if (result.ok) { progressed = true; continue; }
       }
-      const equip = candidates.filter(c => c.type === 'item' &&
-        (!Array.isArray(c.allowedUnitAbilities) || !c.allowedUnitAbilities.length ||
-         c.allowedUnitAbilities.includes('만능') ||
-         ai.units.some(u => (u.unitAbilityTags || [u.unitAbility || '']).some(tag => c.allowedUnitAbilities.includes(tag)))))
-        .sort((a, b) => ((b.apBonus || 0) + (b.dpBonus || 0) + (b.hpBonus || 0)) - ((a.apBonus || 0) + (a.dpBonus || 0) + (a.hpBonus || 0)))[0];
-      if (equip && ai.units.length) {
-        const allowed = ai.units.filter(u =>
-          (!equip.allowedUnitAbilities?.length ||
-           equip.allowedUnitAbilities.includes('만능') ||
-           (u.unitAbilityTags || [u.unitAbility || '']).some(tag => equip.allowedUnitAbilities.includes(tag))) &&
-          itemMatchesUnit(equip,u,ownerId,ownerId));
-        const target = allowed.slice().sort((a, b) => totalPower(b, 'ap') - totalPower(a, 'ap'))[0];
-        if (target && playCard(state, ownerId, equip.instanceId, target.instanceId).ok) {
-          progressed = true;
+      const itemCards = candidates.filter(c => c.type === 'item')
+        .sort((a,b) =>
+          (Math.abs(Number(b.apBonus||0))+Math.abs(Number(b.dpBonus||0))+Math.abs(Number(b.hpBonus||0))) -
+          (Math.abs(Number(a.apBonus||0))+Math.abs(Number(a.dpBonus||0))+Math.abs(Number(a.hpBonus||0))));
+      for (const itemCard of itemCards) {
+        const targetOwnerId = itemCard.itemConditions && itemCard.itemConditions.owner === 'enemy'
+          ? opponentId(ownerId) : ownerId;
+        const targetOwner = player(state,targetOwnerId);
+        const allowedAbilities = Array.isArray(itemCard.allowedUnitAbilities) ? itemCard.allowedUnitAbilities
+          : Array.isArray(itemCard.allowedUnitTypes) ? itemCard.allowedUnitTypes : [];
+        const condition = itemCard.itemConditions || {};
+        const hasKnownTargetRestriction = !!(condition.owner || condition.race || condition.affiliation ||
+          (allowedAbilities.length && !allowedAbilities.includes('만능')));
+        const targets = targetOwner.units.filter(unit =>
+          (!allowedAbilities.length || allowedAbilities.includes('만능') ||
+           (unit.unitAbilityTags || [unit.unitAbility || unit.unitType || unit.subtype || ''].filter(Boolean))
+             .some(tag => allowedAbilities.includes(tag))) &&
+          itemMatchesUnit(itemCard,unit,ownerId,targetOwnerId));
+        const target = targets.slice().sort((a,b) => totalPower(b,'ap')-totalPower(a,'ap'))[0];
+        const noTargetFallback = itemCard.runtimeItemConditionStatus === 'fallback_any_unit' &&
+          !hasKnownTargetRestriction && !target;
+        if (target || noTargetFallback) {
+          const result = playCard(state,ownerId,itemCard.instanceId,target ? target.instanceId : null);
+          if (result.ok) { progressed = true; break; }
         }
       }
+      if (progressed) continue;
     }
     if (state.status === 'playing' && state.activeId === ownerId) endPhase(state, ownerId);
   }

@@ -3747,3 +3747,23 @@ test('AI uses paid terminal fallback enchants rather than leaving them stranded 
   assert.equal(ai.playedAnyCardThisPhase,true);
   assert.equal(s.prepared.ai,true);
 });
+
+test('AI skips an item with no legal target and plays the next compatible item',()=>{
+  const unitOnField=unit('ai-item-target',{instanceId:'ai-item-target-1',race:'human',affiliation:'guild'});
+  const impossible={id:'ai-item-impossible',name:'Unusable race item',type:'item',
+    instanceId:'ai-item-impossible-1',faction:'forest',cost:{forest:1},costKnown:true,costMapped:true,
+    runtimeCost:{forest:1},runtimeCostKnown:true,runtimeItemConditionStatus:'source_verified',
+    itemConditions:{race:'elf'},allowedUnitAbilities:['장비'],apBonus:5,dpBonus:0,hpBonus:0};
+  const payable={...impossible,id:'ai-item-payable',name:'Compatible item',instanceId:'ai-item-payable-1',
+    itemConditions:{race:'human'},apBonus:1};
+  const p=player('player');
+  const ai=player('ai',{hand:[impossible,payable],units:[unitOnField],
+    soulPool:{colored:{forest:2},neutral:0},unitDeployLimit:0});
+  const s=state(p,ai,{activeId:'ai',settings:{difficulty:'normal'}});
+  FM.runAIPhase(s,'ai');
+  assert.equal(ai.hand.length,1);
+  assert.equal(ai.hand[0].id,'ai-item-impossible');
+  assert.equal(unitOnField.equipmentCards.length,1);
+  assert.equal(unitOnField.equipmentCards[0].id,'ai-item-payable');
+  assert.equal(ai.soulPool.colored.forest,1);
+});
