@@ -135,10 +135,19 @@ def main():
             fail(f"{card_id}: raw Skill1 enum value changed in the pack")
         if source_fields.get("Skill2") != raw_source.get("Skill2"):
             fail(f"{card_id}: raw Skill2 enum value changed in the pack")
-        if card.get("specialSkill1EnumValue") != raw_source.get("Skill1"):
-            fail(f"{card_id}: Skill1 enum metadata differs from SQLite")
-        if card.get("specialSkill2EnumValue") != raw_source.get("Skill2"):
-            fail(f"{card_id}: Skill2 enum metadata differs from SQLite")
+        # Runtime enum metadata is intentionally unit-only. For non-unit cards,
+        # preserve the raw enum values in sourceFields and card-skill-mappings.json
+        # without projecting them into unit-specific runtime fields.
+        if card.get("type") == "unit":
+            if card.get("specialSkill1EnumValue") != raw_source.get("Skill1"):
+                fail(f"{card_id}: unit Skill1 enum metadata differs from SQLite")
+            if card.get("specialSkill2EnumValue") != raw_source.get("Skill2"):
+                fail(f"{card_id}: unit Skill2 enum metadata differs from SQLite")
+        else:
+            if card.get("specialSkill1EnumValue") is not None:
+                fail(f"{card_id}: non-unit Skill1 enum leaked into unit runtime metadata")
+            if card.get("specialSkill2EnumValue") is not None:
+                fail(f"{card_id}: non-unit Skill2 enum leaked into unit runtime metadata")
 
         verified.append({
             "cardId": card_id,
