@@ -104,3 +104,13 @@ DB29 remains untouched; DB30 remains unpublished; PR #28 remains Open/Draft/unme
 - Item fallback ignores only unsupported source clauses. Any known owner/race/affiliation/allowed-ability restriction is retained in both the engine and target-selection UI; if such a known restriction has no matching unit, the item is not falsely treated as usable on an arbitrary target.
 - Simple spell inference is restricted to one exact simple-text clause and a supported attack/defend/battle-start timing. All enchants remain paid terminal no-op until a real event/duration slot engine exists.
 - CI cost control: ordinary PR updates run JS/Python checks only. Gradle/APK is opt-in via `[build-apk]` or `[build-card-pack]`; full DB29 pack requires `[build-card-pack]`; emulator install/launch requires both `[build-card-pack]` and `[run-emulator]`. Main pushes continue to build APKs automatically; manual dispatch expensive gates default false.
+
+
+## 2026-11-06 — 관통공격 DP marker/overflow 회귀 수정 (#355~#357)
+
+- DB29 Manual Skill1 대표 fixture: 블랙유니콘 / `10091525214` / `관통공격`. Manual.zip `specialability.htm` §4: 공격자 AP로 상대 DP를 파괴하고 DP가 0이 된 뒤 남은 AP만 HP 피해로 전달한다.
+- Manual의 공통 능력치 표식 설명: `△`는 하락 방지, `▽`는 상승 방지. 따라서 `△`가 양수 DP 감소를 막으면 DP가 깨지지 않았으므로 관통 잔여 AP가 HP로 전달되지 않아야 한다. `▽`는 하락을 막지 않으므로 DP 감소가 가능하다.
+- Actions #355 / run `42221259328`, test HEAD `cce73a83702daa9ab5ee114350497b560f2acda6`: success; 236 JS tests / 0 failures; Python converter 13 / OK. Added AP=DP exact boundary and negative DP conservative case. Negative DP is treated as already exhausted; its magnitude is not added as extra damage. Manual §4 does not explicitly resolve negative DP, so this remains an explicit conservative runtime interpretation.
+- Actions #356 / run `42221573459`, test HEAD `c665a105de796bb4eb10a60bdf1650990e52f2bd`: failed one new marker assertion (236 tests, 1 failure). The `△` case expected HP damage 0 but old engine returned 4, revealing that a blocked DP decrease was incorrectly treated as available HP overflow.
+- Runtime fix commit `6d736aa9e56c677aa7f2dcbfe94571b9a54d818b`; Actions #357 / run `42221699683`: success; 236 JS tests / 0 failures; Python converter 13 / OK. HP overflow now occurs only if positive DP is actually reduced to zero, or the defender DP was already zero/negative. `△` blocks DP reduction and HP overflow; `▽` permits DP reduction and normal overflow.
+- #355~#357 are lightweight PR tests only. DB29 pack, Gradle/APK, package/signature/ZIP and emulator were skipped. No DB29 SQLite/source mapping or release asset was changed. The Manual Skill1 T spec still records 172 exact label rows and representative card ID, but its card-local effect excerpt/runtime status remains pending; this APK fixture is not an SQLite→pack→Android lineage proof.
