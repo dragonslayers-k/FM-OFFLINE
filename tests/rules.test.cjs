@@ -3991,7 +3991,7 @@ test('AI resolves a lethal spell before spending shared preparation souls on a u
   assert.equal(ai.spells[0].selectedTargetId,'ai-priority-enemy');
   assert.equal(ai.units.length,1,'AI still summons its unit with the remaining soul');
   const spellLog=s.log.findIndex(entry=>entry.text.includes('마법 마무리 마법'));
-  const unitLog=s.log.findIndex(entry=>entry.text.includes('마무리 마법')===false&&entry.text.includes('ai-priority-summon'));
+  const unitLog=s.log.findIndex(entry=>entry.text.includes('1번 슬롯에 소환했습니다.'));
   assert.ok(spellLog>=0);
   assert.ok(unitLog>spellLog,'high-value spell is played before unit deployment');
 });
