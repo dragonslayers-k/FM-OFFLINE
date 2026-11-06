@@ -224,11 +224,88 @@ const effectAudit = { candidates:0, clauses:0, candidateOnlyCards:0, unexpectedE
 const skillAudit = { mappingRows:0, manualVerifiedMappings:0, communityCandidates:0, unmapped:0,
   noSkill:0, communityRuleExecution:0, manualRuleCards:0 };
 const errors = [];
+const runtimeActionAudit = { attempted:0, completed:0, blocked:0, terminalStates:Object.create(null), byType:Object.create(null) };
+function makeProbePlayer(id) {
+  return {
+    id, name:id, isAI:id==='ai',
+    deck:Array.from({length:30},(_,i)=>({id:id+'-probe-deck-'+i})),
+    hand:[], lands:[], units:[], spells:[], graveyard:[],
+    lp:999999, soulSpent:0, playedLand:false,
+    soulPool:{colored:{dark:999,fire:999,water:999,forest:999,metal:999,earth:999,light:999},neutral:999},
+    neutralUpkeep:0, unitDeployLimit:9999, unitDeployedThisPhase:0,
+    playedAnyCardThisPhase:false, reshuffleUsedRound:0
+  };
+}
+function makeProbeUnit(instanceId, ownerId, race, affiliation) {
+  return {
+    id:instanceId, instanceId, ownerId, name:'Runtime probe unit', type:'unit',
+    ap:5, dp:5, hp:10, maxHp:10, slotIndex:1,
+    race:String(race||'버드'), affiliation:String(affiliation||'일반'),
+    specialSkill1Name:'', specialSkill2Name:'', abilities:[], equipment:[]
+  };
+}
+function probeRuntimeAction(sourceCard) {
+  const card=JSON.parse(JSON.stringify(sourceCard));
+  const instanceId=String(card.id)+'-runtime-probe';
+  card.instanceId=instanceId;
+  const owner=makeProbePlayer('player');
+  const opponent=makeProbePlayer('ai');
+  const condition=card.itemConditions||{};
+  const race=condition.race||'버드';
+  const affiliation=condition.affiliation||'일반';
+  const ownTarget=makeProbeUnit('runtime-own-target','player',race,affiliation);
+  const enemyTarget=makeProbeUnit('runtime-enemy-target','ai',race,affiliation);
+  owner.units.push(ownTarget);
+  opponent.units.push(enemyTarget);
+  const state={
+    status:'playing',round:1,attackerId:'player',activeId:'player',
+    prepared:{player:false,ai:false},players:{player:owner,ai:opponent},
+    log:[],rng:()=>0.1
+  };
+  owner.hand.push(card);
+  let targetId=null;
+  if(card.type==='item') {
+    targetId=condition.owner==='enemy'?enemyTarget.instanceId:ownTarget.instanceId;
+  } else if(card.type==='spell' && card.runtimeEffectDisposition!=='fallback_noop' && card.effect) {
+    if(card.effect.target==='ownUnit')targetId=ownTarget.instanceId;
+    else if(card.effect.target==='enemyUnit')targetId=enemyTarget.instanceId;
+  }
+  const result=FM.playCard(state,'player',instanceId,targetId);
+  const remainsInHand=owner.hand.some(x=>x.instanceId===instanceId);
+  let terminalState=false, terminalLabel='';
+  if(card.type==='land') { terminalState=owner.lands.some(x=>x.instanceId===instanceId); terminalLabel='land_installed'; }
+  else if(card.type==='unit') { terminalState=owner.units.some(x=>x.instanceId===instanceId); terminalLabel='unit_summoned'; }
+  else if(card.type==='spell') {
+    terminalState=owner.spells.some(x=>x.instanceId===instanceId)||owner.graveyard.some(x=>x.instanceId===instanceId);
+    terminalLabel=owner.spells.some(x=>x.instanceId===instanceId)?'spell_queued':'spell_fallback_terminal';
+  } else if(card.type==='item') {
+    terminalState=owner.graveyard.some(x=>x.instanceId===instanceId)||
+      ownTarget.equipment.includes(card.name)||enemyTarget.equipment.includes(card.name);
+    terminalLabel=owner.graveyard.some(x=>x.instanceId===instanceId)?'item_fallback_terminal':'item_equipped';
+  } else if(card.type==='enchant') {
+    terminalState=owner.graveyard.some(x=>x.instanceId===instanceId);
+    terminalLabel='enchant_fallback_terminal';
+  }
+  return {ok:!!(result&&result.ok)&&!remainsInHand&&terminalState,reason:result&&result.reason||'action did not reach a terminal state',
+    terminalLabel,remainsInHand,playedAnyCardThisPhase:owner.playedAnyCardThisPhase};
+}
 
 for (const card of cards) {
   types[card.type] = (types[card.type] || 0) + 1;
   const validation = FM.validateCardForPlay(card);
   playable[card.type] = playable[card.type] || { ok:0, blocked:0 };
+  runtimeActionAudit.attempted++;
+  runtimeActionAudit.byType[card.type]=runtimeActionAudit.byType[card.type]||{completed:0,blocked:0};
+  const actionProbe=probeRuntimeAction(card);
+  if(actionProbe.ok){
+    runtimeActionAudit.completed++;
+    runtimeActionAudit.byType[card.type].completed++;
+    runtimeActionAudit.terminalStates[actionProbe.terminalLabel]=(runtimeActionAudit.terminalStates[actionProbe.terminalLabel]||0)+1;
+  }else{
+    runtimeActionAudit.blocked++;
+    runtimeActionAudit.byType[card.type].blocked++;
+    errors.push(card.id+': runtime action did not complete: '+String(actionProbe.reason)+'; handRemains='+actionProbe.remainsInHand+'; terminal='+actionProbe.terminalLabel);
+  }
   if (validation.ok) playable[card.type].ok++;
   else {
     playable[card.type].blocked++;
@@ -475,7 +552,7 @@ if (skillAudit.mappingRows < 15000 || skillAudit.manualVerifiedMappings < 1000 |
   errors.push('Special-skill mapping validation mismatch: ' + JSON.stringify(skillAudit));
 }
 if (errors.length) {
-  console.error(JSON.stringify({errors:errors.slice(0,50),errorCount:errors.length,types,landStatus,landInstallCost,runtimeCostStatus,runtimePlayable,runtimeEffectDisposition,costKnown,playable,effectAudit,skillAudit},null,2));
+  console.error(JSON.stringify({errors:errors.slice(0,50),errorCount:errors.length,types,landStatus,landInstallCost,runtimeCostStatus,runtimePlayable,runtimeEffectDisposition,runtimeActionAudit,costKnown,playable,effectAudit,skillAudit},null,2));
   process.exit(1);
 }
 console.log(JSON.stringify({
@@ -493,6 +570,7 @@ console.log(JSON.stringify({
   runtimeCostStatus,
   runtimeCostCoverage:runtimePlayable,
   runtimeEffectDisposition,
+  runtimeActionAudit,
   playableByType:playable,
   blockedReasons:blocked,
   effectAudit,
