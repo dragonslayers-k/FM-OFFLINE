@@ -639,7 +639,7 @@
     const page = visible.slice(0, catalogueVisibleCount);
     el('deck-catalogue').innerHTML = page.map(c => {
       const art = cardArtUrl(c.artImage);
-      return `<div class="catalogue-item" data-card-detail="${escapeAttr(c.id)}"><div class="mini-art ${FM.cardArtClass(c)}">${art ? `<img src="${escapeAttr(art)}" alt="" loading="lazy" onerror="this.remove();">` : ART[c.type]}</div><div class="catalogue-main"><strong>${escapeHtml(c.name)}</strong><small>${escapeHtml(cardMeta(c))} · ${escapeHtml(statsText(c))}</small></div><div class="qty-controls"><b>${counts[c.id] || 0}</b><button data-deck-plus="${escapeAttr(c.id)}">+</button></div></div>`;
+      return `<div class="catalogue-item" data-card-detail="${escapeAttr(c.id)}"><div class="mini-art ${FM.cardArtClass(c)}">${art ? `<img src="${escapeAttr(art)}" alt="" loading="lazy" onerror="this.remove();">` : ART[c.type]}</div><div class="catalogue-main"><strong>${escapeHtml(c.name)}</strong><small>${escapeHtml(cardMeta(c))} · ${escapeHtml(statsText(c))}</small></div><div class="qty-controls"><button data-deck-minus="${escapeAttr(c.id)}" ${(counts[c.id] || 0) <= 0 ? 'disabled' : ''} aria-label="덱에서 ${escapeAttr(c.name)} 1장 빼기">−</button><b>${counts[c.id] || 0}</b><button data-deck-plus="${escapeAttr(c.id)}">+</button></div></div>`;
     }).join('') || '<div class="empty-state">검색 결과가 없습니다.</div>';
     if (visible.length > catalogueVisibleCount) {
       el('deck-catalogue').insertAdjacentHTML('beforeend', `<button id="catalogue-more" class="library-more" type="button">카드 더 보기 · ${catalogueVisibleCount.toLocaleString()} / ${visible.length.toLocaleString()}</button>`);
@@ -723,7 +723,7 @@
       if (minus) adjustDeck(minus.dataset.deckMinus, -1); else if (plus) adjustDeck(plus.dataset.deckPlus, 1);
       else { const item=e.target.closest('[data-card-detail]'); if(item) openCardDetail(item.dataset.cardDetail); }
     });
-    el('deck-catalogue').addEventListener('click', e => { const plus = e.target.closest('[data-deck-plus]'); if (plus) adjustDeck(plus.dataset.deckPlus, 1); else { const item=e.target.closest('[data-card-detail]'); if(item) openCardDetail(item.dataset.cardDetail); } });
+    el('deck-catalogue').addEventListener('click', e => { const minus = e.target.closest('[data-deck-minus]'), plus = e.target.closest('[data-deck-plus]'); if (minus) { if (!minus.disabled) adjustDeck(minus.dataset.deckMinus, -1); } else if (plus) adjustDeck(plus.dataset.deckPlus, 1); else { const item=e.target.closest('[data-card-detail]'); if(item) openCardDetail(item.dataset.cardDetail); } });
     el('library-grid').addEventListener('click', e => { const item=e.target.closest('[data-card-detail]'); if(item) openCardDetail(item.dataset.cardDetail); });
     el('close-card-modal').addEventListener('click', closeCardDetail);
     el('card-modal').addEventListener('click', e => { if(e.target.id==='card-modal' || e.target.classList.contains('detail-art-image')) closeCardDetail(); });

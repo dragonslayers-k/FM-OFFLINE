@@ -228,3 +228,14 @@
 .battle-divider{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;}
 .battle-divider small{font-size:9px;color:var(--muted,#999);text-align:center;}
 @media(min-width:720px){.unit-art{height:132px;}.action-row{grid-template-columns:repeat(4,minmax(0,1fr));}.land-token{flex-basis:94px;width:94px;min-width:94px;}}
+
+/* Mobile deck editor: keep all deck actions reachable and quantity controls tappable. */
+@media(max-width:619px){
+  .deck-summary{align-items:stretch;flex-direction:column;gap:10px;}
+  .deck-actions{width:100%;display:flex;flex-wrap:wrap;gap:6px;}
+  .deck-actions select{flex:1 1 70px;min-width:0;width:auto;}
+  .deck-actions .button{flex:1 1 105px;min-width:0;padding:10px 7px;white-space:normal;}
+  .qty-controls{gap:5px;flex:0 0 auto;}
+  .qty-controls button{width:34px;height:34px;min-width:34px;font-size:16px;touch-action:manipulation;}
+  .qty-controls button:disabled{opacity:.35;}
+}

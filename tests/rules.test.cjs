@@ -4041,3 +4041,18 @@ test('AI keeps a buff spell when every friendly target blocks its requested stat
   assert.equal(ai.spells.length,0,'AI must not spend a spell that cannot change any target');
   assert.equal(ai.hand.some(card=>card.instanceId==='ai-buff-only-spell'),true);
 });
+
+
+test('mobile deck catalogue exposes decrement-to-zero controls and responsive deck action layout',()=>{
+  const fs=require('node:fs');
+  const appSource=fs.readFileSync(require.resolve('../app/src/main/assets/game/app.js'),'utf8');
+  const styleSource=fs.readFileSync(require.resolve('../app/src/main/assets/game/style.css'),'utf8');
+  assert.match(appSource,/data-deck-minus="\\$\{escapeAttr\(c\.id\)\}"/,
+    'catalogue items must expose a minus button for directly editing quantity');
+  assert.match(appSource,/if \(!minus\.disabled\) adjustDeck\(minus\.dataset\.deckMinus, -1\)/,
+    'catalogue decrement must call the same shared adjustment path');
+  assert.match(styleSource,/\.deck-summary\{align-items:stretch;flex-direction:column;gap:10px;\}/,
+    'deck actions should stack on narrow screens');
+  assert.match(styleSource,/\.deck-actions \.button\{flex:1 1 105px;min-width:0;/,
+    'action buttons must wrap instead of overflowing mobile width');
+});
