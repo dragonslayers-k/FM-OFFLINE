@@ -1114,6 +1114,17 @@ test('DB29 Manual source-backed Skill1 cards preserve petrify, aging and charge 
     attackerAP:2,attackerDP:3,defenderDP:1});
   assert.equal(x.result.damage,4,'charge uses AP plus DP before the defender DP is applied');
   assert.equal(x.defender.hp,6);
+
+  // Manual specialability.htm §9: "AP가 0이거나 *0인 경우라도 DP 수치만큼 공격".
+  x=run({id:'10010624588',name:'패스파인더',skill:'돌진공격',ruleId:'charge_attack',
+    attackerAP:0,attackerDP:3,defenderDP:2});
+  assert.equal(x.result.damage,1,'zero AP still attacks with own DP minus defender DP');
+  assert.equal(x.defender.hp,9);
+
+  x=run({id:'10010624588',name:'패스파인더',skill:'돌진공격',ruleId:'charge_attack',
+    attackerAP:0,attackerDP:1,defenderDP:3});
+  assert.equal(x.result.damage,0,'defender DP can fully absorb a charge attack powered only by own DP');
+  assert.equal(x.defender.hp,10);
 });
 
 test('DB29 Manual bravery and fear attacks apply level-gated bonus damage at zero AP',()=>{
@@ -3102,6 +3113,19 @@ test('DB29 source card 다크퍼밀리어 uses Manual frenzy attack and leaves t
   assert.equal(attacker.hp,1,'frenzy sacrifices HP but never below one');
   assert.equal(result.damage,3,'the three sacrificed HP are added to the attack');
   assert.equal(defender.hp,7);
+
+  // Manual specialability.htm §13 adds lost HP to AP before defender DP is applied.
+  const reduced=db29ManualSkill1('10010624538','다크퍼밀리어','광분공격','frenzy_attack',{ap:0,dp:0,hp:4,maxHp:4});
+  const reducedTarget=unit('frenzy-dp-target',{instanceId:'frenzy-dp-target',dp:2,hp:10,maxHp:10});
+  const rp=player('player',{units:[reduced]}),rai=player('ai',{units:[reducedTarget]});
+  const rr=FM._test.resolveUnitAttack(state(rp,rai),rp,rai,reduced,reducedTarget,{
+    attacker:{ap:{value:0},dp:{value:0},hp:{value:4}},
+    defender:{ap:{value:1},dp:{value:2},hp:{value:10}}
+  });
+  assert.equal(reduced.hp,1,'frenzy still sacrifices to one HP at zero AP');
+  assert.equal(rr.damage,1,'the three sacrificed HP are reduced by defender DP 2');
+  assert.equal(reducedTarget.hp,9);
+
   const boundary=db29ManualSkill1('10010624538','다크퍼밀리어','광분공격','frenzy_attack',{ap:1,dp:0,hp:1,maxHp:4});
   const target=unit('frenzy-one-hp-target',{instanceId:'frenzy-one-hp-target',dp:0,hp:5,maxHp:5});
   const bp=player('player',{units:[boundary]}),bai=player('ai',{units:[target]});
