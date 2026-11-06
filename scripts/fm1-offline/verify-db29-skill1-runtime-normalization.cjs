@@ -72,8 +72,10 @@ function main() {
         card.sourceFields.Skill2 !== sourceFields.Skill2) {
       fail(id + ': raw Skill1/Skill2 source fields were changed or conflated');
     }
-    if (card.specialSkill1EnumValue !== raw.specialSkill1EnumValue ||
-        card.specialSkill2EnumValue !== raw.specialSkill2EnumValue) {
+    const expectedSkill1Enum = raw.specialSkill1EnumValue == null ? null : String(raw.specialSkill1EnumValue);
+    const expectedSkill2Enum = raw.specialSkill2EnumValue == null ? null : String(raw.specialSkill2EnumValue);
+    if (card.specialSkill1EnumValue !== expectedSkill1Enum ||
+        card.specialSkill2EnumValue !== expectedSkill2Enum) {
       fail(id + ': separate Skill1/Skill2 enum values were not preserved');
     }
     if (card.specialSkill1 !== raw.specialSkill1 || card.specialSkill2 !== raw.specialSkill2) {
