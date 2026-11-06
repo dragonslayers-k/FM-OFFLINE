@@ -315,3 +315,11 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - JS rule tests: 253 passed / 0 failed. Python converter self-test passed; SQLite pack tests: 13 passed; enchant audit self-test passed.
 - The new deck quantity 1 → 0/underflow/limit/50-card-ceiling cases and Skill1 mapping authorization tuple matrix are included in the passing JS run.
 - This remains lightweight CI. DB29 pack build, JDK/SDK/Gradle, APK verification and emulator launch were skipped by the PR policy. DB29 is unchanged; no DB30; main/release unchanged; PR #28 remains Draft/Open/unmerged.
+
+## 2026-11-07 — Effect-aware AI spell targeting (#402)
+
+- AI target selection now scores healing spells by missing HP and excludes allies whose HP cannot be increased; it no longer defaults to the highest-AP ally for healing.
+- Damage/drain spells prefer a legal lethal target, then lower remaining HP and higher AP. Buff spells rank units by eligible stat gains while respecting stat markers.
+- Regression tests exercise the real AI preparation path for wounded-ally healing and lethal enemy selection.
+- Actions #402 / run 42305382686 succeeded on test commit 846e2105346a4da4bd1c47b4104887bf7ab6916a: 255 JS tests passed / 0 failed; Python converter self-test, 13 SQLite tests, and enchant audit self-test passed.
+- Lightweight PR CI only; card pack, APK build and emulator remain skipped. DB29/DB30/main/release unchanged; PR #28 remains Draft/Open/unmerged.
