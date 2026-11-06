@@ -1203,14 +1203,14 @@ test('DB29 Manual shield-break and curse attacks apply their source-defined stat
 });
 
 test('DB29 Manual piercing and weakening attacks follow their exact AP and DP effects',()=>{
-  const run=({id,name,skill,ruleId,attackerAP,defenderDP,defenderAP=4}={})=>{
+  const run=({id,name,skill,ruleId,attackerAP,defenderDP,defenderAP=4,defenderStatMarkers={}}={})=>{
     const attacker=unit(id,{
       instanceId:'manual-pierce-attacker',name,skill,ap:attackerAP,dp:0,hp:5,maxHp:5,
       specialSkillRuleId:ruleId,specialSkillMappingStatus:'manual_verified',
       specialSkillRuleAuthority:'manual'
     });
     const defender=unit('manual-pierce-defender',{
-      instanceId:'manual-pierce-defender',ap:defenderAP,dp:defenderDP,hp:10,maxHp:10
+      instanceId:'manual-pierce-defender',ap:defenderAP,dp:defenderDP,hp:10,maxHp:10,statMarkers:defenderStatMarkers
     });
     const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
     const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
@@ -1254,6 +1254,19 @@ test('DB29 Manual piercing and weakening attacks follow their exact AP and DP ef
   assert.equal(x.result.damage,4,'negative DP does not create damage beyond the printed AP');
   assert.equal(FM.totalPower(x.defender,'dp'),-2,'piercing does not rewrite an already-negative DP value');
   assert.equal(x.defender.hp,6,'the attack deals its four AP, not six damage from AP minus negative DP');
+
+  // Manual specialability.htm §4 + stat marker rule: △ prevents DP decrease.
+  x=run({id:'10091525214',name:'블랙유니콘',skill:'관통공격',ruleId:'piercing_attack',
+    attackerAP:4,defenderDP:2,defenderStatMarkers:{dp:'△'}});
+  assert.equal(x.result.damage,0,'protected positive DP does not break, so there is no overflow to HP');
+  assert.equal(FM.totalPower(x.defender,'dp'),2,'△ prevents the DP decrease');
+  assert.equal(x.defender.hp,10,'AP cannot spill into HP until DP is actually reduced to zero');
+
+  x=run({id:'10091525214',name:'블랙유니콘',skill:'관통공격',ruleId:'piercing_attack',
+    attackerAP:4,defenderDP:2,defenderStatMarkers:{dp:'▽'}});
+  assert.equal(x.result.damage,2,'▽ only blocks increases, so a legal DP decrease still breaks DP and overflows');
+  assert.equal(FM.totalPower(x.defender,'dp'),0);
+  assert.equal(x.defender.hp,8);
   x=run({id:'10091525190',name:'이블크로우',skill:'약화공격',ruleId:'weaken_attack',
     attackerAP:1,defenderDP:3});
   assert.equal(x.result.damage,0,'the defender DP blocks the initial attack');
