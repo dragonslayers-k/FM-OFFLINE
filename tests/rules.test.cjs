@@ -1,6 +1,7 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const FM=require('../app/src/main/assets/game/rules.js');
+const CardSchema=require('../app/src/main/assets/game/card-schema.js');
 
 function land(id,color,requiredLP=1,neutral=0){
   return {id,name:id,type:'land',faction:color,souls:[color],soulValue:1,requiredLP,requiredLPKnown:true,
@@ -1385,6 +1386,44 @@ test('explicit LP 0 terrain remains free to install at zero current LP',()=>{
   assert.equal(p.lp,0);
   assert.equal(p.lands.length,1);
   assert.equal(p.lands[0].id,'explicit-lp-zero');
+});
+
+test('candidate source status is preserved while a simple timed spell gets an inferred runtime handler',()=>{
+  const card=CardSchema.normalize({id:'simple-spell',name:'간단한 피해 마법',type:'spell',faction:'forest',
+    text:'적군 유닛에게 2의 피해',triggerTiming:'상대 턴',cost:{},runtimeCost:{neutral:1},runtimeCostKnown:true,
+    runtimeEffectDisposition:'implemented_inferred',effectExecutionStatus:'candidate-only',
+    effectVerificationStatus:'pattern_candidate',effectCandidates:[{verificationStatus:'pattern_candidate'}]});
+  assert.equal(card.effectExecutionStatus,'candidate-only');
+  assert.equal(card.effectVerificationStatus,'pattern_candidate');
+  assert.equal(card.runtimeEffectDisposition,'implemented_inferred');
+  assert.equal(card.effect.type,'damage');
+  assert.equal(card.effect.target,'enemyUnit');
+  assert.equal(card.effect.amount,2);
+});
+
+test('complex source effect remains a terminal no-op when the simple parser cannot map it',()=>{
+  const card=CardSchema.normalize({id:'complex-spell',name:'복합 마법',type:'spell',faction:'forest',
+    text:'각각 무작위 유닛의 레벨에 맞게 효과를 적용한다',triggerTiming:'상대 턴',cost:{},
+    runtimeCost:{neutral:1},runtimeCostKnown:true,runtimeEffectDisposition:'fallback_noop',
+    effectExecutionStatus:'candidate-only',effectVerificationStatus:'pattern_candidate',
+    effectCandidates:[{verificationStatus:'pattern_candidate'}]});
+  assert.equal(card.effectExecutionStatus,'candidate-only');
+  assert.equal(card.runtimeEffectDisposition,'fallback_noop');
+  assert.equal(card.effect,null);
+});
+
+test('enchant simple-text inferred handler requires a matching decoded slot owner',()=>{
+  const base={id:'simple-enchant',name:'간단한 인챈트',type:'enchant',faction:'forest',
+    text:'아군 유닛의 AP를 +2만큼 증가',triggerTiming:'자신 턴',cost:{},runtimeCost:{neutral:1},
+    runtimeCostKnown:true,runtimeEffectDisposition:'implemented_inferred',effectExecutionStatus:'candidate-only',
+    effectVerificationStatus:'pattern_candidate',effectCandidates:[{verificationStatus:'pattern_candidate'}],
+    tabs:{'분류별':[{label:'슬롯 위치',text:'아군 슬롯 1'}]}};
+  const matched=CardSchema.normalize(base);
+  assert.equal(matched.runtimeEffectDisposition,'implemented_inferred');
+  assert.equal(matched.effect.type,'buff');
+  const mismatched=CardSchema.normalize({...base,id:'wrong-slot',tabs:{'분류별':[{label:'슬롯 위치',text:'적군 슬롯 1'}]}});
+  assert.equal(mismatched.runtimeEffectDisposition,'fallback_noop');
+  assert.equal(mismatched.effect,null);
 });
 
 test('candidate-only enchant resolves as a paid deterministic no-op instead of blocking the card',()=>{
