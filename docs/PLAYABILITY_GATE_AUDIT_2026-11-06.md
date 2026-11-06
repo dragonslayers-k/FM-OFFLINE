@@ -96,3 +96,11 @@ The original audit above is a historical snapshot at HEAD `1bf65ab2...`. The fol
 - Final full pack validation must confirm runtime-ready 15,350/15,350, finite unit upkeep 8,633/8,633, effect-clause disposition 48,281/48,281, and zero card-wide runtime blockers. Only then proceed to one emulator smoke on the same final SHA.
 
 DB29 remains untouched; DB30 remains unpublished; PR #28 remains Open/Draft/unmerged. This section does not certify original semantic accuracy for the fallback clauses or real-device match completion.
+
+## 2026-11-06 follow-up — terminal action probe and CI gates
+
+- The final pack validator now calls the real `FM.playCard()` path once for each of the 15,350 normalized cards using a synthetic player state with sufficient LP/souls/deploy capacity and an appropriate own/enemy target. It checks successful result, hand removal, a type-appropriate terminal zone/queue, and `playedAnyCardThisPhase` completion.
+- `runtimeActionAudit` reports attempted/completed/blocked and terminal-state counts by card type. Required final result: 15,350 attempted, 15,350 completed, 0 blocked. This action probe is distinct from the existing cost/stat/target/clause structural checks.
+- Item fallback ignores only unsupported source clauses. Any known owner/race/affiliation/allowed-ability restriction is retained in both the engine and target-selection UI; if such a known restriction has no matching unit, the item is not falsely treated as usable on an arbitrary target.
+- Simple spell inference is restricted to one exact simple-text clause and a supported attack/defend/battle-start timing. All enchants remain paid terminal no-op until a real event/duration slot engine exists.
+- CI cost control: ordinary PR updates run JS/Python checks only. Gradle/APK is opt-in via `[build-apk]` or `[build-card-pack]`; full DB29 pack requires `[build-card-pack]`; emulator install/launch requires both `[build-card-pack]` and `[run-emulator]`. Main pushes continue to build APKs automatically; manual dispatch expensive gates default false.
