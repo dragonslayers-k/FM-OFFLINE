@@ -3713,3 +3713,16 @@ test('AI skips an unaffordable land and installs the next payable land',()=>{
   assert.equal(ai.hand.length,1);
   assert.equal(ai.hand[0].id,'ai-expensive-land');
 });
+
+test('starter deck prioritizes affordable terrain and runtime-cost cards over source order',()=>{
+  const expensiveLands=Array.from({length:10},(_,i)=>land('exp-land-'+i,'forest',4,0)).map(c=>({...c,deckLimit:4,landInstallCost:{forest:3}}));
+  const affordableLands=Array.from({length:10},(_,i)=>land('cheap-land-'+i,'forest',1,0)).map(c=>({...c,deckLimit:4,landInstallCost:{neutral:0}}));
+  const costlyUnits=Array.from({length:8},(_,i)=>unit('costly-unit-'+i,{deckLimit:4,cost:{forest:3},runtimeCost:{forest:3},runtimeCostKnown:true}));
+  const affordableUnits=Array.from({length:8},(_,i)=>unit('cheap-unit-'+i,{deckLimit:4,cost:{forest:2},runtimeCost:{forest:1},runtimeCostKnown:true}));
+  const otherCards=Array.from({length:8},(_,i)=>({id:'other-'+i,name:'other-'+i,type:'spell',faction:'forest',deckLimit:4,cost:{forest:2},runtimeCost:{forest:1},runtimeCostKnown:true,effect:{type:'draw',amount:1}}));
+  const deck=FM.buildStarterDeck(expensiveLands.concat(affordableLands,costlyUnits,affordableUnits,otherCards),'forest');
+  assert.equal(deck.length,50);
+  assert.ok(deck.slice(0,10).every(c=>c.id.startsWith('cheap-land-')));
+  assert.ok(deck.slice(10,34).every(c=>c.id.startsWith('cheap-unit-')));
+  assert.ok(deck.slice(34).every(c=>c.id.startsWith('other-')));
+});

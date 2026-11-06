@@ -663,9 +663,18 @@
   function buildStarterDeck(cards, faction) {
     const pool = cards.filter(c => c.faction === faction || c.faction === 'neutral');
     const source = pool.length >= 20 ? pool : cards;
-    const lands = source.filter(c => c.type === 'land');
-    const units = source.filter(c => c.type === 'unit');
-    const others = source.filter(c => c.type === 'item' || c.type === 'spell' || c.type === 'enchant');
+    // The starter profile is intended to be playable immediately, not merely
+    // a 50-card sample in database order. Prioritize low-LP/low-install-cost
+    // lands and affordable cards so both human and AI can establish resources.
+    const lands = source.filter(c => c.type === 'land').sort((a,b) =>
+      (Number(a.requiredLP || 0) - Number(b.requiredLP || 0)) ||
+      (sumCost(a.landInstallCost) - sumCost(b.landInstallCost)));
+    const units = source.filter(c => c.type === 'unit').sort((a,b) =>
+      (sumCost(runtimeCostFor(a)) - sumCost(runtimeCostFor(b))) ||
+      ((Number(b.ap || 0) + Number(b.dp || 0) + Number(b.hp || 0)) -
+       (Number(a.ap || 0) + Number(a.dp || 0) + Number(a.hp || 0))));
+    const others = source.filter(c => c.type === 'item' || c.type === 'spell' || c.type === 'enchant')
+      .sort((a,b) => sumCost(runtimeCostFor(a)) - sumCost(runtimeCostFor(b)));
     const result = [];
     const used = new Map();
     function addRepeated(list, wanted) {
