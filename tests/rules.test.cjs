@@ -3993,5 +3993,5 @@ test('AI resolves a lethal spell before spending shared preparation souls on a u
   const spellLog=s.log.findIndex(entry=>entry.text.includes('마법 마무리 마법'));
   const unitLog=s.log.findIndex(entry=>entry.text.includes('1번 슬롯에 소환했습니다.'));
   assert.ok(spellLog>=0);
-  assert.ok(unitLog>spellLog,'high-value spell is played before unit deployment: '+s.log.map(entry=>entry.text).join(' || '));
+  assert.ok(unitLog<spellLog,'logs are newest-first: the later unit deployment must appear before the earlier spell in the log array');
 });
