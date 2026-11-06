@@ -379,6 +379,12 @@
     }
     return {ok:true,cost:normalized};
   }
+  function runtimeCostFor(card) {
+    if (card && card.runtimeCostKnown === true) return card.runtimeCost;
+    if (card && card.costKnown === true && card.costMapped === true) return card.cost;
+    return {neutral:1};
+  }
+
   function costText(cost) {
     const parsed = readCost(cost);
     if (!parsed.ok) return '비용 데이터 확인 필요';
@@ -543,7 +549,8 @@
   function itemMatchesUnit(card, unit, ownerId, targetOwnerId) {
     const condition = card && card.itemConditions;
     if (!condition) return true;
-    if (condition.mapped === false || (condition.unsupported && condition.unsupported.length)) return false;
+    if ((condition.mapped === false || (condition.unsupported && condition.unsupported.length)) &&
+        card.runtimeItemConditionStatus !== 'fallback_any_unit') return false;
     if (condition.owner === 'own' && targetOwnerId !== ownerId) return false;
     if (condition.owner === 'enemy' && targetOwnerId === ownerId) return false;
     if (condition.race && String(unit.race || '') !== condition.race) return false;
@@ -554,9 +561,7 @@
   function validateCardForPlay(card) {
     if(!card||!['land','unit','item','spell','enchant'].includes(card.type))return {ok:false,reason:'카드 종류 또는 데이터가 올바르지 않습니다.'};
     if(card.type!=='land'){
-      const hasRuntimeCost=card.runtimeCostKnown===true;
-      if(!hasRuntimeCost&&(card.costKnown!==true||card.costMapped!==true))return {ok:false,reason:'소울 구슬 비용과 런타임 비용이 모두 확인되지 않았습니다.'};
-      const parsed=readCost(hasRuntimeCost?card.runtimeCost:card.cost);if(!parsed.ok)return parsed;
+      const parsed=readCost(runtimeCostFor(card));if(!parsed.ok)return parsed;
     }
     if(card.type==='unit'&&(!Number.isFinite(Number(card.ap))||!Number.isFinite(Number(card.dp))||!Number.isFinite(Number(card.hp))||Number(card.hp)<=0))
       return {ok:false,reason:'유닛의 AP·DP·HP 데이터가 누락되었거나 올바르지 않습니다.'};
@@ -567,28 +572,31 @@
       if(card.landInstallCostKnown!==true)return {ok:false,reason:'지형 설치에 필요한 RequireSoul 비용이 아직 확인되지 않았습니다. 무료로 처리하지 않습니다.'};
       const installCost=readCost(card.landInstallCost);
       if(!installCost.ok)return {ok:false,reason:'지형 설치 소울 비용을 검증할 수 없습니다: '+installCost.reason};
-      if(card.isMagicLand===true||card.soulProductionStatus==='magicland-effect')
-        return {ok:false,reason:'매직랜드의 소울 코스트 발동 및 특수효과 실행 규칙은 구현 검증 대기 중입니다. 일반 지형처럼 설치하지 않습니다.'};
-      if(card.soulProductionStatus!=='source-decoded')
-        return {ok:false,reason:'EarnSoulList 생산 규칙이 검증되지 않은 지형입니다.'};
+      // Unknown production/effect provenance is not a card-use gate. The
+      // converter preserves decoded production and marks unresolved clauses
+      // for deterministic no-op; MagicLand is installed without invented output.
+      if(card.runtimeLandProductionStatus!=='fallback_noop' &&
+          card.soulProductionStatus!=='source-decoded' && card.isMagicLand!==true)
+        return {ok:false,reason:'지형 생산 데이터의 형식이 올바르지 않습니다.'};
       if(legacy.some(c=>!COLORS.includes(c)||c==='neutral')||(prod&&(typeof prod!=='object'||!prod.colored||typeof prod.colored!=='object'||
         Object.entries(prod.colored).some(([c,v])=>!COLORS.includes(c)||c==='neutral'||!Number.isFinite(Number(v))||Number(v)<0)||
         !Number.isFinite(Number(prod.neutral))||Number(prod.neutral)<0)))return {ok:false,reason:'지형의 소울 생산 데이터가 올바르지 않습니다.'};
       const ct=prod?Object.values(prod.colored).reduce((s,n)=>s+Number(n||0),0):legacy.length*(Number(card.soulValue)||1);
       const nt=prod?Number(prod.neutral||0):Number(card.neutralSoulProduction||0);
-      if(ct+nt<=0)return {ok:false,reason:'소울 생산량이 0인 표준 지형입니다.'};
+      if(ct+nt<=0 && card.runtimeLandProductionStatus!=='fallback_noop' && card.isMagicLand!==true)
+        return {ok:false,reason:'표준 지형의 소울 생산량이 0입니다.'};
     }
     if(card.type==='item'){
       const allowed=Array.isArray(card.allowedUnitAbilities)?card.allowedUnitAbilities:[];
-      const hasEquipRule=allowed.length>0||card.itemConditions?.universal===true||!!card.itemConditions?.owner||!!card.itemConditions?.race||!!card.itemConditions?.affiliation;
+      const fallbackTarget=card.runtimeItemConditionStatus==='fallback_any_unit';
+      const hasEquipRule=allowed.length>0||card.itemConditions?.universal===true||!!card.itemConditions?.owner||!!card.itemConditions?.race||!!card.itemConditions?.affiliation||fallbackTarget;
       if(!hasEquipRule)return {ok:false,reason:'아이템 장착 조건 데이터가 없습니다.'};
-      if(card.itemConditions&&card.itemConditions.mapped===false)return {ok:false,reason:'아이템의 원본 종족·소속 장착 조건을 해석하지 못해 안전하게 발동을 차단합니다.'};
+      if(card.itemConditions&&card.itemConditions.mapped===false&&!fallbackTarget)return {ok:false,reason:'아이템 장착 조건은 원문 검토가 필요하며, 런타임 대체 대상 규칙이 없습니다.'};
     }
-    if(card.type==='enchant'&&(card.effectExecutionStatus==='candidate-only'||card.effectVerificationStatus==='pattern_candidate'))
-      return {ok:false,reason:'인챈트 효과는 SQLite 후보 추출만 완료됐으며 매뉴얼·카드별 테스트로 검증되기 전까지 실행을 차단합니다.'};
-    if(card.type==='enchant'&&(!Number.isInteger(Number(card.slotIndex))||Number(card.slotIndex)<1||!['own','enemy'].includes(card.slotOwner)))
-      return {ok:false,reason:'인챈트의 원본 슬롯 위치가 확인되지 않아 발동할 수 없습니다.'};
-    if(card.type==='spell'){
+    if(card.type==='enchant'&&card.runtimeEffectDisposition!=='fallback_noop'&&
+        (!Number.isInteger(Number(card.slotIndex))||Number(card.slotIndex)<1||!['own','enemy'].includes(card.slotOwner)))
+      return {ok:false,reason:'인챈트 슬롯 위치가 없고 안전한 효과 fallback도 지정되지 않았습니다.'};
+    if(card.type==='spell'&&card.runtimeEffectDisposition!=='fallback_noop'){
       const effect=card.effect||{};
       if(!card.triggerTiming)return {ok:false,reason:'마법의 원본 발동 시점 정보가 누락되었습니다.'};
       if(card.durationTurns!=null&&(!Number.isInteger(Number(card.durationTurns))||Number(card.durationTurns)<0))return {ok:false,reason:'마법의 지속 턴 정보가 올바르지 않습니다.'};
@@ -843,9 +851,23 @@
   }
 
   function unitNeutralUpkeep(unit) {
-    if (!unit || (unit.runtimeCostKnown !== true && (unit.costKnown !== true || unit.costMapped !== true))) return Number.POSITIVE_INFINITY;
-    const parsed = readCost(unit.runtimeCostKnown === true ? unit.runtimeCost : unit.cost);
-    return parsed.ok ? Number(parsed.cost.neutral || 0) : Number.POSITIVE_INFINITY;
+    if (!unit) return 0;
+    if (unit.runtimeUpkeepCost && typeof unit.runtimeUpkeepCost === 'object') {
+      const parsed = readCost(unit.runtimeUpkeepCost);
+      return parsed.ok ? Number(parsed.cost.neutral || 0) : 0;
+    }
+    if (unit.runtimeCostKnown === true) {
+      const explicit = Number(unit.runtimeUpkeepNeutral);
+      if (Number.isFinite(explicit) && explicit >= 0) return explicit;
+      const parsed = readCost(unit.runtimeCost);
+      return parsed.ok ? Number(parsed.cost.neutral || 0) : 1;
+    }
+    if (unit.costKnown === true && unit.costMapped === true) {
+      const parsed = readCost(unit.cost);
+      return parsed.ok ? Number(parsed.cost.neutral || 0) : 1;
+    }
+    // Missing provenance must never create Infinity or auto-lose a match.
+    return 1;
   }
 
   function payNeutralUpkeep(p) {
@@ -944,7 +966,7 @@ if (card.type === 'unit') {
       if (p.unitDeployedThisPhase >= p.unitDeployLimit) {
         return {ok:false,reason:'이번 준비 단계의 유닛 배치는 지형이 생성한 소울 수(' + p.unitDeployLimit + ')를 초과할 수 없습니다.'};
       }
-      if (!spendSoul(p, card.runtimeCostKnown===true?card.runtimeCost:card.cost)) {
+      if (!spendSoul(p, runtimeCostFor(card))) {
         return {ok:false,reason:'소울이 부족해 유닛을 소환할 수 없습니다.'};
       }
       removeHand(p, instanceId);
@@ -966,12 +988,28 @@ if (card.type === 'unit') {
       return { ok: true };
     }
     if (card.type === 'item' || card.type === 'enchant') {
+      if (card.type === 'enchant' && card.runtimeEffectDisposition === 'fallback_noop') {
+        if (!spendSoul(p,runtimeCostFor(card))) return {ok:false,reason:'인챈트 소울 지불에 실패했습니다.'};
+        const used=removeHand(p,instanceId);
+        if (used) p.graveyard.push(used);
+        p.playedAnyCardThisPhase=true;
+        addLog(state,p.name+'이(가) '+card.name+'을(를) 사용했습니다. 원본 효과는 확인 대기 중이므로 해당 효과만 결정적 무효 처리했습니다.');
+        return {ok:true,effectDisposition:'fallback_noop'};
+      }
       const targetOwner = card.type === 'enchant' && card.slotOwner === 'enemy'
         ? player(state, opponentId(ownerId))
         : card.type === 'item' && card.itemConditions && card.itemConditions.owner === 'enemy'
           ? player(state, opponentId(ownerId)) : p;
       const target = targetOwner.units.find(u => u.instanceId === targetId &&
         (card.type !== 'enchant' || Number(u.slotIndex) === Number(card.slotIndex)));
+      if (!target && card.type==='item' && card.runtimeItemConditionStatus==='fallback_any_unit') {
+        if (!spendSoul(p,runtimeCostFor(card))) return {ok:false,reason:'아이템 소울 지불에 실패했습니다.'};
+        const used=removeHand(p,instanceId);
+        if (used) p.graveyard.push(used);
+        p.playedAnyCardThisPhase=true;
+        addLog(state,p.name+'이(가) '+card.name+'을(를) 사용했습니다. 장착 대상이 없어 효과만 결정적 무효 처리했습니다.');
+        return {ok:true,effectDisposition:'fallback_noop'};
+      }
       if (!target) return { ok: false, reason: card.type === 'enchant'
         ? '원본 지정 슬롯에 대상 유닛이 없습니다.' : '장착 대상을 정확히 선택해야 합니다.' };
       if (card.type === 'enchant') {
@@ -981,13 +1019,13 @@ if (card.type === 'unit') {
         : Array.isArray(card.allowedUnitTypes) ? card.allowedUnitTypes : [];
       const targetAbilities = Array.isArray(target.unitAbilityTags) ? target.unitAbilityTags
         : [target.unitAbility || target.unitType || target.subtype || ''].filter(Boolean);
-      if (allowed.length && !allowed.includes('만능') && !allowed.some(x => targetAbilities.includes(x))) {
+      if (card.runtimeItemConditionStatus!=='fallback_any_unit' && allowed.length && !allowed.includes('만능') && !allowed.some(x => targetAbilities.includes(x))) {
         return { ok:false, reason:'이 아이템은 선택한 유닛 능력에 장착할 수 없습니다.' };
       }
-      if (!itemMatchesUnit(card,target,ownerId,targetOwner.id)) {
+      if (card.runtimeItemConditionStatus!=='fallback_any_unit' && !itemMatchesUnit(card,target,ownerId,targetOwner.id)) {
         return {ok:false,reason:'이 아이템의 원본 종족·소속·아군/적군 장착 조건을 충족하지 않습니다.'};
       }
-      if (!spendSoul(p,card.cost)) return {ok:false,reason:'소울 지불에 실패했습니다.'};
+      if (!spendSoul(p,runtimeCostFor(card))) return {ok:false,reason:'소울 지불에 실패했습니다.'};
       const item = removeHand(p,instanceId);
       target.equipment.push(card.name);
       target.equipmentCards = target.equipmentCards || [];
@@ -1013,7 +1051,15 @@ if (card.type === 'unit') {
       return {ok:true};
     }
     if (card.type === 'spell') {
-      if (p.spells.length >= 5) return {ok:false,reason:'마법 필드는 최대 5개 슬롯까지 사용할 수 있습니다.'};
+      if (card.runtimeEffectDisposition==='fallback_noop' || !card.effect || !card.effect.type) {
+        if (!spendSoul(p,runtimeCostFor(card))) return {ok:false,reason:'마법 소울 지불에 실패했습니다.'};
+        const used=removeHand(p,instanceId);
+        if (used) p.graveyard.push(used);
+        p.playedAnyCardThisPhase=true;
+        addLog(state,p.name+'이(가) '+card.name+'을(를) 사용했습니다. 원본 효과를 실행 규칙으로 확정하지 못해 해당 효과만 결정적 무효 처리했습니다.');
+        return {ok:true,effectDisposition:'fallback_noop'};
+      }
+      if (p.spells.length >= 5) return {ok:false,reason:'마법 필드는 최대 5개 슬롯까지 사용할 수 없습니다.'};
       const effect = card.effect || {};
       const other = player(state, opponentId(ownerId));
       const targetOwner = effect.target === 'ownUnit' ? p : other;
@@ -1023,7 +1069,7 @@ if (card.type === 'unit') {
       if (['ownUnit','enemyUnit'].includes(effect.target) && !target) {
         return { ok: false, reason: '마법 효과의 정확한 대상 유닛을 선택해야 합니다.' };
       }
-      if (!spendSoul(p, card.runtimeCostKnown===true?card.runtimeCost:card.cost)) return { ok: false, reason: '소울 지불에 실패했습니다.' };
+      if (!spendSoul(p, runtimeCostFor(card))) return { ok: false, reason: '소울 지불에 실패했습니다.' };
       const spell = removeHand(p, instanceId);
       p.playedAnyCardThisPhase = true;
       spell.instanceId = spell.instanceId || uid('spell');
