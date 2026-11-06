@@ -102,6 +102,69 @@ test('opening hand is six cards and contains at least one land for both sides',(
   assert.equal(game.activeId,'player');
 });
 
+test('fixed-seed full preparation and battle cycle installs land, summons units and hands back the next turn',()=>{
+  const makeDeck=()=>Array.from({length:20},(_,i)=>({id:'cycle-filler-'+i,name:'검증용 여분 카드'}));
+  const playerLand={...land('player-new-land','light',1,0),instanceId:'player-new-land',
+    landInstallCost:{forest:1},landInstallCostKnown:true};
+  const playerUnit={...unit('player-attacker',{
+    instanceId:'player-attacker-card',name:'고정 시드 공격 유닛',faction:'light',
+    cost:{light:1},costKnown:true,costMapped:true,ap:4,dp:0,hp:10,maxHp:10
+  })};
+  const aiLand={...land('ai-new-land','fire',1,0),instanceId:'ai-new-land'};
+  const aiUnit={...unit('ai-defender',{
+    instanceId:'ai-defender-card',name:'고정 시드 방어 유닛',faction:'fire',
+    cost:{fire:1},costKnown:true,costMapped:true,ap:2,dp:0,hp:10,maxHp:10
+  })};
+  const p=player('player',{
+    lands:[land('player-base-land','forest',1,0)],
+    hand:[playerLand,playerUnit],
+    deck:makeDeck()
+  });
+  const ai=player('ai',{
+    lands:[land('ai-base-land','fire',1,0)],
+    hand:[aiLand,aiUnit],
+    deck:makeDeck()
+  });
+  const s=state(p,ai,{round:1,attackerId:'player',activeId:'player',rng:()=>0.23});
+  FM._test.beginPhase(s,'player');
+
+  assert.equal(s.activeId,'player');
+  assert.equal(p.lp,1);
+  assert.equal(p.unitDeployLimit,1);
+
+  const landResult=FM.playCard(s,'player','player-new-land');
+  assert.equal(landResult.ok,true,'player installs the paid land');
+  assert.equal(p.lands.length,2);
+  assert.equal(p.lp,0);
+  assert.equal(p.soulPool.colored.light,1);
+  assert.equal(p.unitDeployLimit,1);
+
+  const summonResult=FM.playCard(s,'player','player-attacker-card');
+  assert.equal(summonResult.ok,true,'player summons the unit using newly generated light soul');
+  assert.equal(p.hand.length,0);
+  assert.equal(p.units.length,1);
+  assert.equal(p.unitDeployedThisPhase,1);
+  assert.equal(p.playedAnyCardThisPhase,true);
+
+  const roundOneLogStart=s.log.length;
+  const finishPreparation=FM.endPhase(s,'player');
+  assert.equal(finishPreparation.ok,true);
+  assert.equal(ai.lands.length,2,'AI installs its land during its preparation phase');
+  assert.equal(ai.units.length,1,'AI summons its unit during its preparation phase');
+  assert.equal(s.round,2,'both preparations resolve the first slot battle and advance the round');
+  assert.equal(s.attackerId,'ai','attacker alternates after the battle');
+  assert.equal(s.activeId,'player','AI completes its next preparation before returning control');
+  assert.equal(s.prepared.player,false);
+  assert.equal(s.prepared.ai,true);
+  assert.equal(p.units.length,1);
+  assert.equal(ai.units.length,1);
+  const roundOneLogs=s.log.slice(0,roundOneLogStart).concat(s.log.slice(roundOneLogStart));
+  assert.ok(roundOneLogs.some(entry=>entry.text.includes('라운드 슬롯 전투가 시작됩니다.')));
+  assert.ok(roundOneLogs.some(entry=>entry.text.includes('고정 시드 공격 유닛')&&entry.text.includes('피해')));
+  assert.ok(roundOneLogs.some(entry=>entry.text.includes('고정 시드 방어 유닛')&&entry.text.includes('피해')));
+  assert.equal(p.playedAnyCardThisPhase,false,'the next player phase starts with a clean action flag');
+});
+
 test('LP accumulates each turn and a land placement consumes LP only',()=>{
   const p=player('player',{hand:[{...land('high-lp','light',2,2),instanceId:'l1'}],
     lp:2,soulPool:{colored:{forest:1},neutral:0}});
