@@ -209,7 +209,7 @@ jobs:
             --db "$RUNNER_TEMP/fm1-source/fm1_cards.sqlite" \
             --cards-json "$RUNNER_TEMP/fm1-app-cards.json" \
             --release-tag "$CARD_DB_RELEASE_TAG"
-          node scripts/fm1-offline/verify-db29-skill1-runtime-normalization.cjs \\
+          node scripts/fm1-offline/verify-db29-skill1-runtime-normalization.cjs \
             --cards-json "$RUNNER_TEMP/fm1-app-cards.json" \\
             --release-tag "$CARD_DB_RELEASE_TAG"
           rm -f "$RUNNER_TEMP/fm1-app-cards.json" "$RUNNER_TEMP/fm1-app-skill-mappings.json" "$RUNNER_TEMP/fm1-app-effect-candidates.json" "$RUNNER_TEMP/fm1-app-skill2-catalogue.json"
