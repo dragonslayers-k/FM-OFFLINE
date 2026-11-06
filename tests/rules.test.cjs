@@ -1168,18 +1168,19 @@ test('DB29 Manual bravery and fear attacks apply level-gated bonus damage at zer
 });
 
 test('DB29 Manual shield-break and curse attacks apply their source-defined stat changes',()=>{
-  const run=({id,name,skill,ruleId,defenderAP=4,defenderDP=3}={})=>{
+  const run=({id,name,skill,ruleId,attackerAP=1,defenderAP=4,defenderDP=3,defenderStatMarkers={}}={})=>{
     const attacker=unit(id,{
-      instanceId:'debuff-skill-attacker',name,skill,ap:1,dp:0,hp:5,maxHp:5,
+      instanceId:'debuff-skill-attacker',name,skill,ap:attackerAP,dp:0,hp:5,maxHp:5,
       specialSkillRuleId:ruleId,specialSkillMappingStatus:'manual_verified',
       specialSkillRuleAuthority:'manual'
     });
     const defender=unit('debuff-skill-defender',{
-      instanceId:'debuff-skill-defender',ap:defenderAP,dp:defenderDP,hp:10,maxHp:10
+      instanceId:'debuff-skill-defender',ap:defenderAP,dp:defenderDP,hp:10,maxHp:10,
+      statMarkers:defenderStatMarkers
     });
     const p=player('player',{units:[attacker]}),ai=player('ai',{units:[defender]}),s=state(p,ai);
     const result=FM._test.resolveUnitAttack(s,p,ai,attacker,defender,{
-      attacker:{ap:{value:1},dp:{value:0},hp:{value:5}},
+      attacker:{ap:{value:attackerAP},dp:{value:0},hp:{value:5}},
       defender:{ap:{value:defenderAP},dp:{value:defenderDP},hp:{value:10}}
     });
     return {attacker,defender,result};
@@ -1194,6 +1195,32 @@ test('DB29 Manual shield-break and curse attacks apply their source-defined stat
   x=run({id:'10010624551',name:'해적전투원',skill:'방패파괴',ruleId:'shield_break',
     defenderDP:-2});
   assert.equal(FM.totalPower(x.defender,'dp'),-2,'shield break does not affect negative DP');
+
+  x=run({id:'10010624551',name:'해적전투원',skill:'방패파괴',ruleId:'shield_break',
+    defenderDP:0});
+  assert.equal(x.result.damage,1,'an already-zero DP does not block the ordinary attack');
+  assert.equal(FM.totalPower(x.defender,'dp'),0);
+  assert.equal(x.defender.hp,9);
+
+  // The mapped Skill1 requires an actual attack; zero rolled AP does not trigger it.
+  x=run({id:'10010624551',name:'해적전투원',skill:'방패파괴',ruleId:'shield_break',
+    attackerAP:0,defenderDP:3});
+  assert.equal(x.result.damage,0);
+  assert.equal(FM.totalPower(x.defender,'dp'),3,'zero AP leaves positive DP unchanged');
+  assert.equal(x.defender.hp,10);
+
+  // Manual common stat markers: △ blocks decreases, while ▽ only blocks increases.
+  x=run({id:'10010624551',name:'해적전투원',skill:'방패파괴',ruleId:'shield_break',
+    defenderDP:3,defenderStatMarkers:{dp:'△'}});
+  assert.equal(x.result.damage,0);
+  assert.equal(FM.totalPower(x.defender,'dp'),3,'△ protects the positive DP from being set to zero');
+  assert.equal(x.defender.hp,10,'a protected DP is not broken and does not spill into HP');
+
+  x=run({id:'10010624551',name:'해적전투원',skill:'방패파괴',ruleId:'shield_break',
+    defenderDP:3,defenderStatMarkers:{dp:'▽'}});
+  assert.equal(x.result.damage,0);
+  assert.equal(FM.totalPower(x.defender,'dp'),0,'▽ does not block a decrease to zero');
+  assert.equal(x.defender.hp,10,'shield break is a post-attack DP effect, not extra HP overflow');
 
   // DB29 exact Manual Skill1: 다크조커 / 10030324708 / 저주공격.
   x=run({id:'10030324708',name:'다크조커',skill:'저주공격',ruleId:'curse_attack',
