@@ -1004,12 +1004,17 @@ if (card.type === 'unit') {
           ? player(state, opponentId(ownerId)) : p;
       const target = targetOwner.units.find(u => u.instanceId === targetId &&
         (card.type !== 'enchant' || Number(u.slotIndex) === Number(card.slotIndex)));
-      if (!target && card.type==='item' && card.runtimeItemConditionStatus==='fallback_any_unit') {
+      const allowed = Array.isArray(card.allowedUnitAbilities) ? card.allowedUnitAbilities
+        : Array.isArray(card.allowedUnitTypes) ? card.allowedUnitTypes : [];
+      const condition = card.itemConditions || {};
+      const hasKnownTargetRestriction = !!(condition.owner || condition.race || condition.affiliation ||
+        (allowed.length && !allowed.includes('만능')));
+      if (!target && card.type==='item' && card.runtimeItemConditionStatus==='fallback_any_unit' && !hasKnownTargetRestriction) {
         if (!spendSoul(p,runtimeCostFor(card))) return {ok:false,reason:'아이템 소울 지불에 실패했습니다.'};
         const used=removeHand(p,instanceId);
         if (used) p.graveyard.push(used);
         p.playedAnyCardThisPhase=true;
-        addLog(state,p.name+'이(가) '+card.name+'을(를) 사용했습니다. 장착 대상이 없어 효과만 결정적 무효 처리했습니다.');
+        addLog(state,p.name+'이(가) '+card.name+'을(를) 사용했습니다. 미해석 장착 조건만 결정적 무효 처리했습니다.');
         return {ok:true,effectDisposition:'fallback_noop'};
       }
       if (!target) return { ok: false, reason: card.type === 'enchant'
@@ -1017,14 +1022,12 @@ if (card.type === 'unit') {
       if (card.type === 'enchant') {
         return { ok:false, reason:'인챈트의 발동 슬롯과 지속 턴은 원본에서 읽었지만 카드별 효과 문구를 실행 규칙으로 매핑하지 못했습니다. 임의로 장비 능력치로 바꾸지 않고 사용을 차단합니다.' };
       }
-      const allowed = Array.isArray(card.allowedUnitAbilities) ? card.allowedUnitAbilities
-        : Array.isArray(card.allowedUnitTypes) ? card.allowedUnitTypes : [];
       const targetAbilities = Array.isArray(target.unitAbilityTags) ? target.unitAbilityTags
         : [target.unitAbility || target.unitType || target.subtype || ''].filter(Boolean);
-      if (card.runtimeItemConditionStatus!=='fallback_any_unit' && allowed.length && !allowed.includes('만능') && !allowed.some(x => targetAbilities.includes(x))) {
+      if (allowed.length && !allowed.includes('만능') && !allowed.some(x => targetAbilities.includes(x))) {
         return { ok:false, reason:'이 아이템은 선택한 유닛 능력에 장착할 수 없습니다.' };
       }
-      if (card.runtimeItemConditionStatus!=='fallback_any_unit' && !itemMatchesUnit(card,target,ownerId,targetOwner.id)) {
+      if (!itemMatchesUnit(card,target,ownerId,targetOwner.id)) {
         return {ok:false,reason:'이 아이템의 원본 종족·소속·아군/적군 장착 조건을 충족하지 않습니다.'};
       }
       if (!spendSoul(p,runtimeCostFor(card))) return {ok:false,reason:'소울 지불에 실패했습니다.'};
