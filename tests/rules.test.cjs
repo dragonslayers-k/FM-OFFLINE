@@ -3227,6 +3227,22 @@ test('DB29 source card 견습수도사 uses Manual confusion attack to exchange 
   });
   assert.equal(FM.totalPower(defender,'ap'),5,'the Manual rule exchanges the target AP with its HP at the hit-resolution point');
   assert.equal(defender.hp,2,'the one-point attack damage is applied after the AP/HP exchange');
+
+  // Manual cardability.htm §6: AP ▲ blocks a decrease, so an AP 5→3
+  // swap is refused and the paired HP change is not attempted.
+  const guarded=db29ManualSkill1('10040724804','견습수도사','혼란공격','confusion_attack',{
+    ap:1,dp:0,hp:5,maxHp:5
+  });
+  const guardedTarget=unit('confusion-ap-marker-target',{
+    instanceId:'confusion-ap-marker-target',ap:5,dp:0,hp:3,maxHp:5,statMarkers:{ap:'▲'}
+  });
+  const gp=player('player',{units:[guarded]}),gai=player('ai',{units:[guardedTarget]});
+  FM._test.resolveUnitAttack(state(gp,gai),gp,gai,guarded,guardedTarget,{
+    attacker:{ap:{value:1},dp:{value:0},hp:{value:5}},
+    defender:{ap:{value:5},dp:{value:0},hp:{value:3}}
+  });
+  assert.equal(FM.totalPower(guardedTarget,'ap'),5,'AP increase-only marker blocks the decrease required by the swap');
+  assert.equal(guardedTarget.hp,2,'blocked AP exchange leaves HP unchanged before the one-point attack damage');
 });
 
 test('DB29 source card 블라인드랩터 gains one DP from Manual stealth attack even when DP blocks all HP damage',()=>{
