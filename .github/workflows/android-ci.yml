@@ -22,10 +22,20 @@ on:
         type: boolean
         default: false
       run_emulator:
-        description: "Android 에뮬레이터에 APK 설치 및 실행 (카드 ZIP 생성 필요)"
+        description: "Android 에뮬레이터에 APK 설치 및 실행"
         required: false
         type: boolean
         default: false
+      reuse_existing_card_pack:
+        description: "기존 Actions 실행에서 만든 DB29 카드 데이터팩을 재사용 (새 ZIP 생성 안 함)"
+        required: false
+        type: boolean
+        default: false
+      card_pack_run_id:
+        description: "재사용할 DB29 데이터팩을 보유한 기존 Actions 실행 ID"
+        required: false
+        type: string
+        default: "42192845020"
       db_release_tag:
         description: "T 저장소의 정규화 SQLite DB Release tag"
         required: false
@@ -54,11 +64,36 @@ jobs:
       - name: Checkout this APK repository
         uses: actions/checkout@v7
       - name: Validate workflow gate combinations
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true && inputs.build_card_pack != true) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]') && !contains(github.event.pull_request.title, '[build-card-pack]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true && inputs.build_card_pack != true && inputs.reuse_existing_card_pack != true) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]') && !contains(github.event.pull_request.title, '[build-card-pack]')) }}
         run: |
-          echo "::error::run_emulator requires build_card_pack=true so the emulator receives the audited DB29 data ZIP."
+          echo "::error::run_emulator requires build_card_pack=true or reuse_existing_card_pack=true so the emulator receives the audited DB29 data ZIP."
           exit 1
 
+
+      - name: Reuse existing audited DB29 Android card data pack
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.reuse_existing_card_pack == true }}
+        uses: actions/download-artifact@v7
+        with:
+          name: FM1-CardData-v1.3.0-IMPORT-DB29
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.card_pack_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/fm1-pack
+
+      - name: Validate reused DB29 card data pack
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.reuse_existing_card_pack == true }}
+        run: |
+          set -euo pipefail
+          PACK_DIR="$RUNNER_TEMP/fm1-pack"
+          for file in cards.json manifest.json card-skill-mappings.json card-effect-candidates.json skill2-catalogue.json; do
+            test -s "$PACK_DIR/$file" || { echo "::error::Reused DB29 pack is missing $file"; exit 1; }
+          done
+          test -d "$PACK_DIR/images"
+          node scripts/fm1-offline/validate-app-card-pack.cjs \
+            "$PACK_DIR/cards.json" "$PACK_DIR/card-skill-mappings.json" \
+            "$PACK_DIR/card-effect-candidates.json" "$PACK_DIR/skill2-catalogue.json" \
+            "$PACK_DIR/manifest.json"
+          echo "FM1_DATA_PACK_STATUS=reused-existing-run-${{ inputs.card_pack_run_id }}" >> "$GITHUB_ENV"
 
       - name: Record source revision
         run: echo "FM_SOURCE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
@@ -233,6 +268,7 @@ jobs:
           # Keep the unpacked payload until upload-artifact creates a directly importable ZIP.
           rm -rf "$RUNNER_TEMP/fm1-source"
           echo "FM1_DATA_PACK_STATUS=built-from-$CARD_DB_RELEASE_TAG" >> "$GITHUB_ENV"
+          echo "FM1_DATA_PACK_UPLOAD=true" >> "$GITHUB_ENV"
 
       - name: Set up JDK 17
         if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.build_apk == true || inputs.build_card_pack == true || inputs.run_emulator == true)) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-apk]') || contains(github.event.head_commit.message, '[build-card-pack]'))) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[build-apk]')) }}
@@ -415,7 +451,7 @@ jobs:
           } > release-package/build-status.txt
 
       - name: Upload directly importable Android card data archive
-        if: always() && env.FM1_DATA_PACK_STATUS != ''
+        if: always() && env.FM1_DATA_PACK_UPLOAD == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: FM1-CardData-v1.3.0-IMPORT-DB29
