@@ -221,14 +221,11 @@
     return counts;
   }
   function currentDeckCounts() {
-    if (!cards.length) return {};
-    // Initialize a starter deck only for a new profile. An intentionally empty
-    // or partially edited deck is valid editor state and must never be reset.
-    if (!data.deckCounts || typeof data.deckCounts !== 'object' || Array.isArray(data.deckCounts)) {
-      data.deckCounts = defaultDeckCounts(data.deckFaction || 'forest');
+    return FM.DeckState.currentDeckCounts(data, cards.length, () => {
+      const counts = defaultDeckCounts(data.deckFaction || 'forest');
       safeWrite();
-    }
-    return data.deckCounts;
+      return counts;
+    });
   }
   function countDeck(counts) { return Object.values(counts).reduce((a, n) => a + Number(n || 0), 0); }
   function deckArray(counts) {
@@ -747,7 +744,7 @@
       if (card) { const id = card.dataset.cardDetail; closeGraveyard(); openCardDetail(id); }
     });
     el('save-deck').addEventListener('click', () => { safeWrite(); alert('현재 덱 구성을 기기에 저장했습니다.'); });
-    el('clear-deck').addEventListener('click', () => { data.deckCounts = {}; safeWrite(); renderDeck(); });
+    el('clear-deck').addEventListener('click', () => { FM.DeckState.clearDeckCounts(data); safeWrite(); renderDeck(); });
     el('starter-deck').addEventListener('click', () => {
       const faction = el('starter-faction').value;
       const sample = FM.buildStarterDeck(cards, faction);
