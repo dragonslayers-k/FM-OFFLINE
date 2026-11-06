@@ -3779,7 +3779,7 @@ test('AI prefers the lower soul-cost land when LP requirements are equal',()=>{
   FM.runAIPhase(s,'ai');
   assert.equal(ai.lands.length,1);
   assert.equal(ai.lands[0].id,'ai-land-low-cost');
-  assert.equal(ai.soulPool.colored.forest,1);
+  assert.equal(ai.soulPool.colored.forest,2,'land production offsets the one-soul installation payment');
   assert.equal(ai.hand[0].id,'ai-land-high-cost');
 });
 
