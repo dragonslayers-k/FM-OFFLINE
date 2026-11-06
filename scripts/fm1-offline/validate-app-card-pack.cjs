@@ -31,7 +31,7 @@ if (effectData.schemaVersion !== 2 || !Array.isArray(effectData.records) ||
 }
 const skill2Data = JSON.parse(fs.readFileSync(skill2File, 'utf8'));
 const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
-if (Number(manifest.cardCount||0)!==15350 || manifest.dbReleaseTag!=='fm1-carddb-29') {
+if (Number(manifest.cardsCount||0)!==15350 || !manifest.sourceDatabase || manifest.sourceDatabase.releaseTag!=='fm1-carddb-29' || Number(manifest.sourceDatabase.cardCount||0)!==15350) {
   throw new Error('manifest.json does not describe the protected DB29 15,350-card baseline');
 }
 const SKILL2_SOURCE_VERIFIED_RULES = Object.freeze({
