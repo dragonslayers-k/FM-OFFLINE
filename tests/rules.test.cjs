@@ -125,7 +125,8 @@ test('fixed-seed full preparation and battle cycle installs land, summons units 
     hand:[aiLand,aiUnit],
     deck:makeDeck()
   });
-  const s=state(p,ai,{round:1,attackerId:'player',activeId:'player',rng:()=>0.23});
+  const s=state(p,ai,{round:1,attackerId:'player',activeId:'player',rng:()=>0.23,
+    settings:{difficulty:'easy',deckSize:20}});
   FM._test.beginPhase(s,'player');
 
   assert.equal(s.activeId,'player');
