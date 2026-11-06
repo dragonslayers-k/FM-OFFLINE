@@ -801,11 +801,6 @@
     p.soulSpent = 0;
     p.soulPool = generateSoulPool(p.lands);
     const defendingTurn = id !== state.attackerId;
-    if (defendingTurn) {
-      // Defensive preparations receive one generic soul to offset the first-player tempo advantage.
-      p.soulPool.neutral += 1;
-      addLog(state, p.name + '이(가) 방어 턴 보상으로 무속성 소울 1개를 받았습니다.');
-    }
     p._state = state;
     p.units.forEach(unit => {
       unit.canAttack = true;
@@ -815,6 +810,11 @@
       unit.hp = Math.min(unit.hp, unit.maxHp + (unit.itemHP || 0));
     });
     if (state.status !== 'finished') payNeutralUpkeep(p);
+    // Defensive bonus is available for cards/deployment, but never subsidizes existing NCS upkeep.
+    if (state.status !== 'finished' && defendingTurn) {
+      p.soulPool.neutral += 1;
+      addLog(state, p.name + '이(가) 방어 턴 보상으로 무속성 소울 1개를 받았습니다.');
+    }
     if (state.status !== 'finished') p.unitDeployLimit = Math.floor(poolTotal(p.soulPool) + 1e-9);
     if (state.status !== 'finished') drawToSix(state, id);
     if (state.status !== 'finished') {
