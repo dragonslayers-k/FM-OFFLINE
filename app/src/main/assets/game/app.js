@@ -213,12 +213,10 @@
       showDataMessage(message, true);
     }
   };
-  function defaultDeckCounts(faction) {
-    if (!cards.length) return {};
-    const sample = FM.buildStarterDeck(cards, faction || 'forest');
-    const counts = {};
-    sample.forEach(c => counts[c.id] = (counts[c.id] || 0) + 1);
-    return counts;
+  function defaultDeckCounts() {
+    // A fresh profile starts with an intentionally empty editable deck.
+    // Starter lists remain an explicit user action through the faction button.
+    return {};
   }
   function currentDeckCounts() {
     return FM.DeckState.currentDeckCounts(data, cards.length, () => {

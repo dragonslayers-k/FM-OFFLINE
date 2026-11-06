@@ -3687,20 +3687,22 @@ test('AI uses the same runtime cost profile as actual card payment',()=>{
   assert.equal(s.prepared.ai,true);
 });
 
-test('deck editor state initializes starter counts only for a new profile and preserves zero/partial edits',()=>{
+test('deck editor starts a fresh profile empty and preserves zero/partial edits; starter is explicit',()=>{
   let created=0;
   const starter=()=>{created++;return {starterCard:50};};
   const fresh={deckCounts:null};
-  assert.deepEqual(DeckState.currentDeckCounts(fresh,50,starter),{starterCard:50});
-  assert.equal(created,1);
+  assert.deepEqual(DeckState.currentDeckCounts(fresh,50,()=>({})),{});
+  assert.deepEqual(fresh.deckCounts,{},'fresh profile must not silently prefill 50 cards');
   const partial={deckCounts:{cardA:3}};
   assert.deepEqual(DeckState.currentDeckCounts(partial,50,starter),{cardA:3});
-  assert.equal(created,1,'partial user edits must not be reset to a starter deck');
+  assert.equal(created,0,'partial user edits must not be reset to a starter deck');
   const empty={deckCounts:{}};
   assert.deepEqual(DeckState.currentDeckCounts(empty,50,starter),{});
-  assert.equal(created,1,'an intentionally cleared deck must remain empty');
+  assert.equal(created,0,'an intentionally cleared deck must remain empty');
   assert.deepEqual(DeckState.currentDeckCounts(fresh,0,starter),{});
-  assert.equal(created,1,'no available cards must not initialize a deck');
+  assert.equal(created,0,'no available cards must not initialize a deck');
+  assert.deepEqual(starter(),{starterCard:50},'starter deck generation is available only when explicitly requested');
+  assert.equal(created,1);
 });
 
 test('deck editor clear action resets state to an empty object and is wired to persist it',()=>{
