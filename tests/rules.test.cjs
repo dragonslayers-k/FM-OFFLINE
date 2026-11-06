@@ -3828,3 +3828,24 @@ test('AI plays a supported spell into its spell row when it can pay',()=>{
   assert.equal(ai.playedAnyCardThisPhase,true);
   assert.equal(s.prepared.ai,true);
 });
+
+test('player land and unit payments lead into an AI resource-play phase and battle progression',()=>{
+  const pLand={...land('turn-player-land','forest',1,0),instanceId:'turn-player-land-1'};
+  const pUnit=unit('turn-player-unit',{instanceId:'turn-player-unit-1'});
+  const aLand={...land('turn-ai-land','forest',1,0),instanceId:'turn-ai-land-1'};
+  const aUnit=unit('turn-ai-unit',{instanceId:'turn-ai-unit-1'});
+  const p=player('player',{hand:[pLand,pUnit],lp:1,soulPool:{colored:{},neutral:0},unitDeployLimit:0});
+  const ai=player('ai',{hand:[aLand,aUnit],lp:0,soulPool:{colored:{},neutral:0},unitDeployLimit:0});
+  const s=state(p,ai,{settings:{difficulty:'normal'}});
+  assert.equal(FM.playCard(s,'player',pLand.instanceId).ok,true);
+  assert.equal(FM.playCard(s,'player',pUnit.instanceId).ok,true);
+  assert.equal(p.lands.length,1);
+  assert.equal(p.units.length,1);
+  assert.equal(p.soulPool.colored.forest,0);
+  assert.equal(FM.endPhase(s,'player').ok,true);
+  assert.ok(ai.lands.length>=1,'AI should install its free first land during its prep phase');
+  assert.ok(ai.units.length>=1 || ai.graveyard.some(card=>card.id==='turn-ai-unit'),
+    'AI should deploy its affordable unit before battle resolution');
+  assert.ok(s.round>=2,'the preparation phases should resolve into the next battle round');
+  assert.equal(s.status,'playing');
+});
