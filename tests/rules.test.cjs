@@ -1399,6 +1399,12 @@ test('candidate source status is preserved while a simple timed spell gets an in
   assert.equal(card.effect.type,'damage');
   assert.equal(card.effect.target,'enemyUnit');
   assert.equal(card.effect.amount,2);
+  assert.equal(FM.validateCardForPlay(card).ok,true);
+  card.instanceId='simple-spell-1';
+  const p=player('player',{hand:[card],soulPool:{colored:{},neutral:1}});
+  const played=FM.playCard(state(p,player('ai')),'player','simple-spell-1');
+  assert.equal(played.ok,true);
+  assert.equal(p.spells.length,1);
 });
 
 test('complex source effect remains a terminal no-op when the simple parser cannot map it',()=>{
@@ -1421,6 +1427,13 @@ test('enchant simple-text inferred handler requires a matching decoded slot owne
   const matched=CardSchema.normalize(base);
   assert.equal(matched.runtimeEffectDisposition,'implemented_inferred');
   assert.equal(matched.effect.type,'buff');
+  assert.equal(FM.validateCardForPlay(matched).ok,true);
+  matched.instanceId='simple-enchant-1';
+  const target=unit('enchant-target',{instanceId:'enchant-target-1',slotIndex:1,ap:3});
+  const p=player('player',{hand:[matched],units:[target],soulPool:{colored:{},neutral:1}});
+  const played=FM.playCard(state(p,player('ai')),'player','simple-enchant-1','enchant-target-1');
+  assert.equal(played.ok,true);
+  assert.equal(target.ap,5);
   const mismatched=CardSchema.normalize({...base,id:'wrong-slot',tabs:{'분류별':[{label:'슬롯 위치',text:'적군 슬롯 1'}]}});
   assert.equal(mismatched.runtimeEffectDisposition,'fallback_noop');
   assert.equal(mismatched.effect,null);
