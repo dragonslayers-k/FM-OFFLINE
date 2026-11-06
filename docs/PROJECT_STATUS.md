@@ -282,3 +282,11 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - Exact DB29 Skill1 fixture: Dark Countess `10010624542` / `흡혈공격`. Manual `specialability.htm` §7: heal 50% of actual HP damage, odd damage rounds half-up (5 damage→3 heal). `cardability.htm` §6(b): `*` blocks all stat changes, `△` blocks decreases but allows increases, `▽` blocks increases.
 - Added focused checks: HP `△` allows +2 heal from actual damage 3 (HP 2→4); HP `▽` blocks positive heal; HP `*` blocks all healing. Existing test already covered actual damage, half-up for 1/2/5 damage, fully DP-blocked no-heal and `▼` blocked increase.
 - Test-only change. Runtime handler, source mapping, SQLite, DB29 pack, APK build and emulator were unchanged/skipped. Formal T spec and card-local source packet remain pending; no mapping/status promotion.
+
+
+## 2026-11-06 — Manual Skill1 aging-attack trigger and AP boundaries (#367)
+
+- Test commit `b88db5b55576854a2f8fe94ec5b72d2f078b66f6`, Actions #367 / run `42229779160`: success; 236 JS tests / 0 failures; Python converter 13 / OK.
+- Exact DB29 Skill1 label fixture: 타락자 / `13020626691` / `노화공격`; Manual.zip `specialability.htm` §8 says an attack applies AP−2 to the target.
+- Added assertions: AP0 no-trigger; AP1 against defender DP2 produces zero HP damage but still applies AP−2; target AP `△` blocks the decrease; `▽` permits it; target AP1 falls to −1 after the full −2 (no inferred zero clamp).
+- Test-only. `rules.js`, converter, source mapping, DB29 SQLite/pack, tag and Release unchanged. T formal spec remains design-only and card-local TextBase/TextExtra packet is still pending. APK #367 ran JS/Python only; pack/APK/emulator skipped.
