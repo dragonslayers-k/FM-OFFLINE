@@ -3767,3 +3767,18 @@ test('AI skips an item with no legal target and plays the next compatible item',
   assert.equal(unitOnField.equipmentCards[0].id,'ai-item-payable');
   assert.equal(ai.soulPool.colored.forest,1);
 });
+
+test('AI prefers the lower soul-cost land when LP requirements are equal',()=>{
+  const highCost={...land('ai-land-high-cost','forest',1,0),instanceId:'ai-land-high-cost-1',
+    landInstallCost:{forest:2}};
+  const lowCost={...land('ai-land-low-cost','forest',1,0),instanceId:'ai-land-low-cost-1',
+    landInstallCost:{forest:1}};
+  const p=player('player');
+  const ai=player('ai',{hand:[highCost,lowCost],lp:2,soulPool:{colored:{forest:2},neutral:0}});
+  const s=state(p,ai,{activeId:'ai',settings:{difficulty:'normal'}});
+  FM.runAIPhase(s,'ai');
+  assert.equal(ai.lands.length,1);
+  assert.equal(ai.lands[0].id,'ai-land-low-cost');
+  assert.equal(ai.soulPool.colored.forest,1);
+  assert.equal(ai.hand[0].id,'ai-land-high-cost');
+});
