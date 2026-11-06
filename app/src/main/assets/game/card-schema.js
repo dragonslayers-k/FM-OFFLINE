@@ -349,7 +349,7 @@
       // Keep the original condition parser status for diagnostics, but assign a
       // deterministic any-unit runtime target when the source wording cannot
       // be mapped. Provenance uncertainty is not an item-use gate.
-      if(!n.itemConditions.mapped)n.runtimeItemConditionStatus='fallback_any_unit';
+      if(!n.itemConditions.mapped||(n.itemConditions.unsupported&&n.itemConditions.unsupported.length))n.runtimeItemConditionStatus='fallback_any_unit';
       else if(!n.runtimeItemConditionStatus)n.runtimeItemConditionStatus='source_mapped';
       n.rules.cardText=cardText;n.rules.itemConditions=n.itemConditions;
       const hasEquipRule=allowed.length>0||n.itemConditions.universal||n.itemConditions.owner||n.itemConditions.race||n.itemConditions.affiliation;
