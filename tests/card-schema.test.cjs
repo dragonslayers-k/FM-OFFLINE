@@ -229,7 +229,7 @@ test('HTML-only source tabs and description lines are retained as readable card 
 
 test('spaced spell trigger timing and simple damage text are mapped',()=>{
   const card=Schema.normalize({id:'spell-damage',name:'피해 마법',type:'spell',
-    text:'적군 유닛에게 3 HP 데미지',
+    text:'적군 유닛에게 3 HP 데미지',runtimeEffectDisposition:'implemented_inferred',
     tabs:{'분류별':[{text:'발동 시점: 전투 시작시'}]},
     cost:{},costKnown:true});
   assert.equal(card.triggerTiming,'전투 시작시');
@@ -402,7 +402,7 @@ test('keeps DB effect candidate records visible but does not auto-execute simple
     id:'db-candidate-spell',name:'후보 검토 마법',type:'spell',faction:'fire',
     cost:{fire:1},costKnown:true,costMapped:true,
     text:'적 유닛에게 3의 피해를 준다.',
-    triggerTiming:'공격/방어',
+    triggerTiming:'공격/방어',runtimeEffectDisposition:'fallback_noop',
     effectExecutionStatus:'candidate-only',
     effectVerificationStatus:'pattern_candidate',
     effectCandidates:[{
@@ -416,7 +416,8 @@ test('keeps DB effect candidate records visible but does not auto-execute simple
   assert.equal(card.effectVerificationStatus,'pattern_candidate');
   assert.equal(card.effectCandidates.length,1);
   assert.equal(card.rules.effectStatus,'pattern_candidate');
-  assert.equal(card.rules.status,'text-effect-only');
+  assert.equal(card.rules.status,'pattern_candidate');
+  assert.equal(card.runtimeEffectDisposition,'fallback_noop');
 });
 
 test('uses only a Manual-verified Skill1 mapping for the executable special-skill rule ID',()=>{
