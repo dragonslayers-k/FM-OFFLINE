@@ -330,3 +330,10 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - Added a real preparation-phase regression with a lethal damage spell and a summon sharing the same two-soul pool. The spell must be queued first, then the unit deployed using the remaining soul.
 - CI attempts #405–#407 failed only in this new ordering assertion. Log inspection showed the runtime's log array is newest-first, so the test compared the array indices in the wrong direction; no gameplay assertion or existing test failed. The assertion was corrected to match that contract in commit 66b3a6cc6918f258a15c99db9067f1ceb2646398. Verification for this corrected HEAD is pending.
 - DB29 immutable; DB30 unpublished; main/release untouched; PR #28 remains Draft/Open/unmerged.
+
+## 2026-11-07 — Corrected AI ordering test passed (#409)
+
+- Actions #409 / run 42305975759 succeeded on source HEAD 1f6ed3d91d6ebd1fb81f513ce4f9770ea5be68fd.
+- JS tests: 256 passed / 0 failed. Python converter self-test passed; SQLite pack tests: 13 passed; enchant audit self-test passed.
+- The earlier #405–#407 failures were caused by the new test treating the reverse-chronological log array as chronological. The runtime order was already correct: lethal spell first, unit second. The corrected assertion passed; no production-code rollback was needed.
+- This is still lightweight CI: DB29 pack, APK build and emulator are skipped. DB29/DB30/main/release remain unchanged; PR #28 stays Draft/Open/unmerged.
