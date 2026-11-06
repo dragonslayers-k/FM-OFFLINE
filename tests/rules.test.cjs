@@ -1402,9 +1402,11 @@ test('candidate source status is preserved while a simple timed spell gets an in
   assert.equal(FM.validateCardForPlay(card).ok,true);
   card.instanceId='simple-spell-1';
   const p=player('player',{hand:[card],soulPool:{colored:{},neutral:1}});
-  const played=FM.playCard(state(p,player('ai')),'player','simple-spell-1');
+  const enemy=player('ai',{units:[unit('spell-target',{instanceId:'spell-target-1'})]});
+  const played=FM.playCard(state(p,enemy),'player','simple-spell-1','spell-target-1');
   assert.equal(played.ok,true);
   assert.equal(p.spells.length,1);
+  assert.equal(p.spells[0].selectedTargetId,'spell-target-1');
 });
 
 test('complex source effect remains a terminal no-op when the simple parser cannot map it',()=>{
