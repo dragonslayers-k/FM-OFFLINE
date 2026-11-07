@@ -48,3 +48,10 @@ The Firestore enumtable defines `EarnSoul` raw code 82 as `MU02` (two neutral so
 ## Additional runtime correction — unknown upkeep provenance
 
 The Manual's `soulcost.htm` ties recurring upkeep to the neutral bead on a Unit's source summon cost. The app no longer assumes a one-soul upkeep when a legacy unit has no valid `RequireSoul` provenance and no versioned upkeep overlay. Unknown summon costs are already blocked at play validation; inventing a recurring charge on an existing unit was not a Manual-defined fallback. MU(81) source-backed upkeep remains active for units only.
+
+
+## 2026-11-07 — Two additional fail-closed corrections
+
+- The app pack converter no longer treats a colors-only legacy `soul_json` summary as source proof when the original `RequireSoul` token list is absent. It preserves the old colors as `legacy-unverified` candidates and blocks payment/upkeep. This prevents a stale NCS-to-neutral summary from silently re-entering the runtime after the raw token has been lost.
+- In `card-schema.js`, a non-manual `StatType` such as FRONT/BACK/HAND/TURN/PLUS/MINUS/EQUAL can no longer inherit a marker parsed from display text and become an AP/DP/HP combat restriction. Raw type and icon remain preserved; only source codes 11/12/13 receive Manual-defined ★/▲/▼ runtime behavior.
+- Regression coverage: colors-only neutral source without RequireSoul provenance is blocked; FRONT source type clears an otherwise parsed ▲ marker while UP/DOWN remain mapped.

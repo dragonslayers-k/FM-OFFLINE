@@ -198,6 +198,7 @@
       let marker=previous.marker||'';
       if(typeCode===1)marker='';
       else if([11,12,13].includes(typeCode))marker=String(source.marker||'');
+      else if(typeCode!==null)marker='';
       result[stat]={
         ...previous,
         value:decimal(source.value)??previous.value,

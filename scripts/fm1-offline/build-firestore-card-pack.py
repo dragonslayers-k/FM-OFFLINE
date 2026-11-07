@@ -306,24 +306,17 @@ def db_cost_to_app(cost_row):
         else:
             add(candidate,"unknown:"+str(code),amount);unresolved=True
             inference.append("unknown_requiresoul_token_blocked")
-    if not source_tokens and colors:
+    if not source_tokens:
+        # A normalized color summary is not source provenance. Older DB rows
+        # can carry stale colors after a token crosswalk was corrected; never
+        # promote a colors-only summary into a playable cost or upkeep.
+        unresolved=True
+        inference.append("source-requiresoul-token-provenance-missing-blocked")
+        review.append("source-requiresoul-token-provenance-missing")
         for key,value in colors.items():
             amount=integer(value)
-            if amount is None or amount<=0: continue
-            if key in {"dark","fire","water","forest","iron","earth","light"}:
-                add(candidate,key,amount);add(runtime,"metal" if key=="iron" else key,amount)
-            elif key=="neutral":
-                add(candidate,"neutral",amount);add(runtime,"neutral",amount);mu_amount+=amount
-                inference.append("legacy_mu_neutral_crosswalk_inferred")
-            elif key=="ncs":
-                add(candidate,"ncs",amount);ncs_amount+=amount;unresolved=True
-                inference.append("ncs_requiresoul_semantics_unverified_blocked")
-            elif key=="bonus":
-                add(candidate,"bonus",amount);bonus_amount+=amount;unresolved=True
-                inference.append("bonus_requiresoul_semantics_unverified_blocked")
-            else:
-                add(candidate,"unknown:"+str(key),amount);unresolved=True
-                inference.append("legacy_unknown_cost_blocked")
+            if amount is not None and amount>0:
+                add(candidate,"legacy-unverified:"+str(key),amount)
     mapping_review=(db_flag(cost_row.get("mapping_review")) or db_flag(soul.get("mapping_review"))
         or source_status=="mapping_review" or hybrid_seen)
     semantic_review=(db_flag(cost_row.get("semantic_review")) or db_flag(soul.get("semantic_review"))
@@ -955,6 +948,11 @@ def self_test():
     decoded=db_cost_to_app(base_cost_row)
     print("DEBUG db_cost_to_app base fixture:",json.dumps(decoded,sort_keys=True))
     assert decoded["known"] and decoded["cost"]=={"metal":2}, decoded
+    colors_only=db_cost_to_app({**base_cost_row,"source_text":None,"soul_json":json.dumps({
+        "colors":{"neutral":2},"known":True,"mapping_review":False,"semantic_review":False,"tokens":[]})})
+    assert not colors_only["known"] and not colors_only["runtimeCostKnown"]
+    assert colors_only["runtimeCost"]=={} and colors_only["runtimeUpkeepNeutral"]==0
+    assert "source-requiresoul-token-provenance-missing-blocked" in colors_only["runtimeCostInference"]
     assert db_cost_to_app({**base_cost_row,"mapping_review":"0"})["known"]
     json_hybrid=db_cost_to_app({**base_cost_row,"soul_json":json.dumps({
         "colors":{"iron":2},"known":True,"mapping_review":True,"semantic_review":False})})

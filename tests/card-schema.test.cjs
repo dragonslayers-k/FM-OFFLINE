@@ -55,6 +55,24 @@ test('parses FM1 shared-coin stat notation from the unit stat tab',()=>{
   assert.equal(card.coinTech.stats.hp.coin[0].operation,'add');
 });
 
+test('source StatType markers override text parsing and unknown types never become combat restrictions',()=>{
+  const card=Schema.normalize({
+    id:'U-STAT-SOURCE',name:'원본기호검증',type:'unit',faction:'light',
+    ap:5,dp:2,hp:4,
+    tabs:{'분류별':['공\\n▲5\\n방\\n▼2\\n체\\n★4']},
+    sourceStatTech:{
+      ap:{value:5,typeCode:21,type:'FRONT',icon:'F',marker:'',status:'source_type_semantics_unverified'},
+      dp:{value:2,typeCode:12,type:'UP',icon:'▲',marker:'▲',status:'manual_marker_mapped'},
+      hp:{value:4,typeCode:13,type:'DOWN',icon:'▼',marker:'▼',status:'manual_marker_mapped'}
+    }
+  });
+  assert.equal(card.statTech.stats.ap.sourceTypeCode,21);
+  assert.equal(card.statTech.stats.ap.sourceType,'FRONT');
+  assert.equal(card.statTech.stats.ap.marker,'');
+  assert.equal(card.statTech.stats.dp.marker,'▲');
+  assert.equal(card.statTech.stats.hp.marker,'▼');
+});
+
 test('parses multiplier coin notation and stat immunity markers',()=>{
   const parsed=Schema.parseStatTech({
     tabs:{'분류별':['공\n▲6\n\nXC4\n방\n▼0\n\n-C2\n체\n★4']}
