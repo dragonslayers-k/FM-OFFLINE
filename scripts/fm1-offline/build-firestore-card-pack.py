@@ -662,7 +662,7 @@ def runtime_effect_mapping_for_row(row, enums):
     return mapping
 
 
-def build_card(row, enums, earn_soul_enum, require_soul_enum, stat_type_enum):
+def build_card(row, enums, earn_soul_enum, require_soul_enum, stat_type_enum=None):
     f=row.get("raw_payload") or {}
     cid=str(row.get("card_id") or f.get("ID") or "")
     name=str(row.get("name") or f.get("Name") or "")
@@ -707,7 +707,7 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum, stat_type_enum):
     if runtime_effect_disposition!="implemented_inferred": runtime_effect_mapping=None
     card={
         "id":cid,"name":name,"type":typ,"faction":color,
-        "sourceStatTech":parse_source_stat_tech(f,stat_type_enum),
+        "sourceStatTech":parse_source_stat_tech(f,stat_type_enum or {}),
         "cost":c["cost"] if cost_known else {},
         "runtimeCost":c.get("runtimeCost",c["cost"]),
         "runtimeCostKnown":c.get("runtimeCostKnown",c["known"]),

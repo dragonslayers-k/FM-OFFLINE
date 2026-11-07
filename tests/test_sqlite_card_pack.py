@@ -156,41 +156,41 @@ class SqliteCardPackTests(unittest.TestCase):
         names = [x[1] for x in self.db.execute("PRAGMA table_info(card_costs)")]
         values = dict(zip(names, row))
         soul = json.loads(values["soul_json"])
-        soul["colors"]["forest"] = 1
-        soul["colors"]["iron"] = 1
+        soul["colors"] = {"forest": 1, "iron": 1}
+        values["source_text"] = "4201"
         values["soul_json"] = json.dumps(soul)
         values["mapping_review"] = 1
         values["verification_status"] = "mapping_review"
         parsed = CONVERTER.db_cost_to_app(values)
         self.assertFalse(parsed["known"])
         self.assertEqual(parsed["cost"], {})
-        self.assertEqual(parsed["candidateCost"], {"forest": 1, "metal": 1})
+        self.assertEqual(parsed["candidateCost"], {"hybrid:forest+iron": 1})
         self.assertTrue(parsed["mappingReview"])
-        self.assertIn("hybrid-cost-mapping-unverified", parsed["review"])
-        self.assertEqual(parsed["runtimeCost"], {"forest": 1, "metal": 1})
-        self.assertEqual(parsed["runtimeCostStatus"], "implemented_inferred")
+        self.assertIn("hybrid-payment-semantics-unverified", parsed["review"])
+        self.assertEqual(parsed["runtimeCost"], {"neutral": 1})
+        self.assertEqual(parsed["runtimeCostStatus"], "fallback_payable")
 
     def test_ncs_and_bonus_remain_separate_and_unverified_cost_fails_closed(self):
         row = self.db.execute("SELECT * FROM card_costs").fetchone()
         names = [x[1] for x in self.db.execute("PRAGMA table_info(card_costs)")]
         values = dict(zip(names, row))
         soul = json.loads(values["soul_json"])
-        soul["colors"]["ncs"] = 1
-        soul["colors"]["bonus"] = 2
+        soul["colors"] = {"iron": 2, "ncs": 1, "bonus": 2}
+        values["source_text"] = "510282018302"
         values["soul_json"] = json.dumps(soul)
         values["semantic_review"] = 1
         values["verification_status"] = "semantic_review"
         parsed = CONVERTER.db_cost_to_app(values)
         self.assertFalse(parsed["known"])
         self.assertEqual(parsed["cost"], {})
-        self.assertEqual(parsed["candidateCost"], {"metal": 2, "neutral": 1, "bonus": 2})
+        self.assertEqual(parsed["candidateCost"], {"iron": 2, "ncs": 1, "bonus": 2})
         self.assertEqual(parsed["specialSouls"]["ncs"], 1)
         self.assertEqual(parsed["specialSouls"]["bonus"], 2)
         self.assertTrue(parsed["semanticReview"])
         self.assertIn("special-soul-semantics-unverified", parsed["review"])
         self.assertEqual(parsed["runtimeCost"], {"metal": 2, "neutral": 3})
-        self.assertEqual(parsed["runtimeUpkeepNeutral"], 1)
-        self.assertEqual(parsed["runtimeCostStatus"], "implemented_inferred")
+        self.assertEqual(parsed["runtimeUpkeepNeutral"], 0)
+        self.assertEqual(parsed["runtimeCostStatus"], "fallback_payable")
 
     def test_simple_spell_inference_requires_supported_timing_and_enchant_stays_fallback(self):
         enums = {"TurnType": {"1": "공격"}, "EnchantSlot": {"1": "아군 슬롯 1"}}
