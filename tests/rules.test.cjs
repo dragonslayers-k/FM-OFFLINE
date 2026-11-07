@@ -96,6 +96,8 @@ test('first hand guarantees a land for both sides even when every land costs sou
   const deck=Array.from({length:50},(_,i)=>unit('paid-land-deck-unit-'+i));
   deck[20]={...land('paid-only-land','forest',1,0),landInstallCost:{forest:1}};
   const game=FM.newGame({cards:deck,playerDeck:deck,aiDeck:deck,rng:()=>0.999});
+  assert.equal(game.players.player.hand.length,6);
+  assert.equal(game.players.ai.hand.length,6);
   assert.ok(game.players.player.hand.some(card=>card.type==='land'));
   assert.ok(game.players.ai.hand.some(card=>card.type==='land'));
 });
@@ -3851,15 +3853,17 @@ test('AI refuses unsupported fallback spells and preserves its resources',()=>{
   assert.equal(s.prepared.ai,true);
 });
 
-test('initial hand prefers an installable zero-soul land over an unusable paid land',()=>{
+test('initial hand accepts any land and does not require a free install-cost land',()=>{
   const deck=Array.from({length:50},(_,i)=>unit('initial-unit-'+i));
   deck[1]={...land('paid-first-land','forest',1,0),deckLimit:4,instanceId:'paid-first-land-1',
     landInstallCost:{forest:1}};
   deck[7]={...land('free-playable-land','forest',1,0),deckLimit:4,instanceId:'free-playable-land-1',
     landInstallCost:{neutral:0}};
   const game=FM.newGame({cards:deck,playerDeck:deck,aiDeck:deck,rng:()=>0});
-  assert.ok(game.players.player.hand.some(card=>card.id==='free-playable-land'));
-  assert.ok(game.players.ai.hand.some(card=>card.id==='free-playable-land'));
+  assert.ok(game.players.player.hand.some(card=>card.id==='paid-first-land'));
+  assert.ok(game.players.ai.hand.some(card=>card.id==='paid-first-land'));
+  assert.ok(!game.players.player.hand.some(card=>card.id==='free-playable-land'),
+    'the Manual requires any land, not a search for a preferred free land');
 });
 
 test('AI plays a supported spell into its spell row when it can pay',()=>{

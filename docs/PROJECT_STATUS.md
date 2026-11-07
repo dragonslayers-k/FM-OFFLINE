@@ -404,3 +404,10 @@ Do not equate those unit markers with the separate `NCS (82)` token in `RequireS
 - NCS(82), BONUS(83), and hybrid pair tokens retain their source identity and are not used for upkeep. Their payment fallbacks are documented separately in CardDB.
 - Removed the misleading test that labelled synthetic 8-AP/2-DP coin counts as an NCS(82) parser test. Added the actual Manual example +2C1 AP / -C1 DP and asserted that both stats use the same single toss.
 - User-confirmed N/C/S stat notation remains separate from Firestore RequireSoul enum NCS(82), CoinType, and StatType marker enums. Critical attack stat resolution is not claimed implemented by this patch.
+
+
+## 2026-11-07 — Manual opening-hand redraw correction
+
+Manual `gamerule.htm` states that the initial six-card deal is repeated if it contains no land. The redraw returns the dealt cards to the deck and shuffles again; it does not require a free/zero-cost land. The app previously preferred a playable free land, which was an invented condition, and its deterministic fallback could leave fewer than six cards. The updated implementation accepts any land and ensures the fallback still fills six cards. Voluntary mulligan remains separate: it burns one card and carries no land guarantee.
+
+The defender's +1 generic soul is a project balance rule requested during testing, not an official Manual rule. It remains a clearly identified house-rule bonus and must not be described as source-canonical.

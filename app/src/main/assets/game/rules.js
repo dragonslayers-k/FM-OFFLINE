@@ -747,46 +747,31 @@
     return p.hand.length;
   }
 
-  function isInitialPlayableLand(card) {
-    if (!card || card.type !== 'land' || card.requiredLPKnown !== true ||
-        !Number.isInteger(Number(card.requiredLP)) || Number(card.requiredLP) > 1 ||
-        card.landInstallCostKnown !== true) return false;
-    const parsed = readCost(card.landInstallCost);
-    return parsed.ok && sumCost(parsed.cost) === 0;
-  }
-
   function drawInitialHand(state, id) {
     const p = player(state,id);
     const rng = state.rng || Math.random;
-    // A zero-soul first preparation can install only a free land at LP <= 1.
-    // If one exists in the deck, do not stop at a merely-present but unusable land.
-    const requirePlayableLand = p.deck.some(isInitialPlayableLand);
-    const landRequirement = requirePlayableLand ? isInitialPlayableLand : card => card && card.type === 'land';
-    const hasRequiredLand = hand => hand.some(landRequirement);
+    const hasLand = hand => hand.some(card => card && card.type === 'land');
     let attempts = 0;
     do {
       p.hand = [];
       while (p.hand.length < 6 && p.deck.length) p.hand.push(p.deck.shift());
-      if (hasRequiredLand(p.hand)) break;
+      if (hasLand(p.hand)) break;
+      if (!p.deck.some(card => card && card.type === 'land')) break;
+      // Manual rule: return the six cards, shuffle the whole deck, and deal
+      // six again until the opening hand contains any land (not only a free land).
       p.deck = shuffle(p.deck.concat(p.hand),rng);
       p.hand = [];
       attempts++;
-    } while (attempts < 20 && p.deck.some(card =>
-      requirePlayableLand ? isInitialPlayableLand(card) : card.type === 'land'));
-    // Preserve the first-hand land guarantee even with a deterministic/degenerate RNG.
-    // Prefer a free LP-1 land when one exists; otherwise any legal land is better than none.
-    if (p.deck.some(landRequirement) && !hasRequiredLand(p.hand)) {
-      const index = p.deck.findIndex(landRequirement);
-      if (index >= 0) {
-        const playableLand = p.deck.splice(index,1)[0];
-        const displaced = p.hand.pop();
-        if (displaced) p.deck.push(displaced);
-        p.hand.push(playableLand);
-        p.deck = shuffle(p.deck,rng);
-      }
+    } while (attempts < 20);
+    // Deterministic fallback for a degenerate RNG: preserve the manual land
+    // guarantee and still complete a six-card opening hand.
+    if (!hasLand(p.hand) && p.deck.some(card => card && card.type === 'land')) {
+      const index = p.deck.findIndex(card => card && card.type === 'land');
+      if (index >= 0) p.hand.push(p.deck.splice(index,1)[0]);
+      while (p.hand.length < 6 && p.deck.length) p.hand.push(p.deck.shift());
     }
     if (!p.hand.length) drawToSix(state,id);
-    if (!p.hand.some(card => card.type === 'land') && p.deck.length === 0) checkWinner(state);
+    if (!hasLand(p.hand) && p.deck.length === 0) checkWinner(state);
     return p.hand.length;
   }
 
