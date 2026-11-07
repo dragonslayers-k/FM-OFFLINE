@@ -435,3 +435,6 @@ Converter validation note: the app pack builder now reparses raw RequireSoul tok
 
 
 Firestore enum raw-code audit: `Enum+StatType` row values, not outer map indexes, are the card-field codes: 1=NONE, 11=CONST(★), 12=UP(▲), 13=DOWN(▼), 21=FRONT, 22=BACK, 23=HAND, 24=TURN, 31=PLUS, 32=MINUS, 33=EQUAL. `Enum+CoinType` raw codes are 1=NONE, 2=PLUS, 3=MINUS, 4=X, 5=EQUAL. The earlier synthetic 1/2/3 StatType fixtures and 0/1/2 CoinType assumptions were incorrect and are replaced.
+
+
+Final enum regression fixture alignment: explicit zero-cost source rows use raw `RequireSoul=0100`; converter fixtures no longer pair an empty normalized soul object with a nonzero raw cost string. Current source-code mapping is StatType 1/11/12/13/... and CoinType 1/2/3/4/5 as documented above.
