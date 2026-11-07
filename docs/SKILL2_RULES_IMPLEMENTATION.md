@@ -44,3 +44,58 @@ DB29에는 189개의 Skill2 enum 항목이 있다. 이 중 1개는 미보유/없
 - Skill1 매뉴얼 규칙과 Skill2 규칙은 서로 대체하거나 상속하지 않는다.
 - 카드 스키마 테스트는 다른 Skill2 이름에 허용되지 않은 Rule ID를 주입해도 거부되는지 확인한다.
 - 전투 테스트는 기선제압, 헌신방어, 격노, 홀리오오라, 얼라이디펜스, 레이셜디펜스, 강한헌신방어, 프레셔를 각 발동 시점에서 독립적으로 확인한다.
+
+
+## DB29 full import + emulator verification and current executable gate (2026-11-05 / Actions #160)
+
+- PR #28 HEAD: `56f2cd5378de3bb528ed298d36c7487cf506e6b7`, open/draft/unmerged.
+- Actions #160: https://github.com/dragonslayers-k/FM-OFFLINE/actions/runs/41949790050 succeeded. Node tests: 138 passed / 0 failed. Converter self-test: PASS; 11 Python tests passed; SQLite integrity and audited release manifest verification passed; Debug APK build and package validation passed.
+- Emulator test is a real data-import test, not launch-only: it streamed the generated DB29 ZIP into the app-private files, invoked the guarded importer, then waited for the WebView loader to confirm all 15,350 cards. Log: `Emulator card-data import + WebView load smoke test: PASS`; loaded count 15,350/15,350. This does not claim physical-device, online login, or complete match-scenario coverage.
+- Artifacts: `FM1-CardData-v1.3.0-IMPORT-DB29` (13379674035) and `FantasyMastersOffline-build-output` (13379164984). Release signing was not configured in this run.
+
+### Distinguish handler registration from DB29 executable rules
+
+- The production dispatcher registers all eight Skill2 handlers. This is code capability, not evidence that all eight are mapped to executable DB29 cards.
+- Current DB29 pack audit: 189 Skill2 enum entries; 188 active skill names; 1,366 active cards; 10,381 source mappings/references; **7 executable rules**.
+- Holy Aura remains pending for current DB29 unit mappings. The exact floor-rounding phrase used as the executable evidence needle occurs on an item reference, not the relevant unit card's own TextExtra. Item text cannot authorize a unit combat rule. The handler remains registered and synthetic arithmetic/boundary tests remain, but no DB29 unit mapping is promoted until card-local evidence supports it.
+- Other seven rules remain subject to exact card-level source metadata and runtime gate. Inferred/community mappings remain fail-closed.
+
+### Cost review gate
+
+- DB29 source review totals (14,244 known / 817 review-required non-land costs; 38 mapping-review + 779 semantic-review) are provenance counts, not a playability gate. The Android runtime consumes separate `runtimeCost`; the #325 pack audit found 15,350/15,350 runtime costs ready (0 blocked), with 14,519 `implemented_verified` and 831 `implemented_inferred`. Original source values/review flags remain unchanged; inferred/fallback runtime amounts are not source verification. Unknown costs must never become free zero.
+
+
+## 2026-11-06 integrated runtime reconciliation — Actions #325
+
+- The production dispatcher has eight Skill2 handler implementations, but code registration must not be confused with DB29 card-mapping executability.
+- The DB29 pack audit on APK PR #28 code SHA `60681acc02974f6f6e8721def63b24f0823a6d6e`, Actions #325 / run `42192845020`, measured 189 enum entries, 188 active Skill2 names, 1,366 active cards, 10,381 source mappings/references, and **7 executable rules**.
+- Holy Aura remains the non-executable rule in the current DB29 pack. Its handler and isolated arithmetic tests exist, but card-local evidence does not yet justify promoting the DB29 mappings. The crosswalk found two source rows with different wording: only one explicitly says floor rounding; the source phrase used as a rounding needle must not be borrowed from an item card to authorize a unit defense rule. Keep the mapping review-only until exact unit-card evidence resolves the wording and damage-source boundaries.
+- The eight handler tests are not a claim that eight rules are mapped to actual DB29 cards. Only the seven validated rules counted by the actual pack audit are executable in the current DB29 runtime pack; unknown/unverified Skill2 remains non-executable while the unit itself remains playable.
+- Cost semantics are also split: the source 817 review-required records keep their provenance flags, while the 15,350-card runtime payment overlay guarantees a payable runtime cost. Runtime readiness does not change source evidence state.
+
+## 2026-11-06 regression — unmapped Skill2 must not block card use
+
+APK PR #28 adds a focused test that attempts a real `FM.playCard()` unit-summon action for a unit carrying an unverified/unmapped Skill2. The expected contract is: the unit pays its normal runtime cost, leaves the hand, enters the field, and sets `playedAnyCardThisPhase`; the unverified Skill2 remains non-executable and does not fall through to Skill1. The focused regression passed on APK PR #28 HEAD `300dd507850175e3aa19168633c6d33a1f1c6c55`, Actions #333 / run `42203252263`.
+
+
+### Verified regression result — Actions #333 (2026-11-06)
+
+- Test source commit: `9f24fe688845a0a0c67fd5d523adcb7ae0fcce7d`.
+- Documentation/current PR HEAD: `300dd507850175e3aa19168633c6d33a1f1c6c55`.
+- Actions #333 / run `42203252263`: success. JS rule tests and Python converter tests passed; DB29 pack, JDK/SDK/Gradle/APK/emulator were skipped by the lightweight-PR policy.
+- Test log explicitly reports: `a unit with an unmapped Skill2 remains playable and completes its summon action` and `fail 0`.
+- Assertions confirm payable soul cost, removal from hand, field deployment, incremented deployment count and `playedAnyCardThisPhase=true`; unverified Skill2 normalization remains empty. This protects the rule that an unknown Skill2 does not disable the entire unit.
+
+
+## 2026-11-06 — 추가 Manual Skill1 경계 테스트 결과
+
+- `tests/rules.test.cjs` commit `56f26aa9b30756c99adc0aca4a395ea8eb1403d7` passed Actions #336 / run `42203965191`: defense-convert positive/zero/negative DP sign-boundary test, tied to Manual `specialability.htm` §27 and DB29 card `10010624563`.
+- Follow-up test commit `98f5678291aad551c865aae32339d5662b5723c7` passed Actions #337 / run `42204718679`: petrify independently respects AP `▲` and DP `▼` markers; weakening applies AP/DP −1 after a positive 2-HP-damage attack as well as when initial DP blocks HP damage. The run log reports both test names and `fail 0`.
+- The test source changes do not promote unverified card mappings or alter DB29. They add boundary assertions around existing Manual-backed handler behavior only.
+
+
+## 2026-11-06 — fixed-seed battle and game-end integration tests
+
+- APK PR #28 code HEAD `be42ec585f6b124ceb310b875f7f08ae0d12b155`, Actions #341 / run `42206456060`: fixed-seed preparation/AI/slot attack+counter/round-2 handoff test passed; 233 JS tests, 0 failures; Python converter 13 passed.
+- APK PR #28 test commit `3837301571449a17e28a09d08911cd5ce87f3336`, Actions #342 / run `42214419550`: added a real `FM.resolveBattle()` terminal scenario. A two-soul unit hits an empty enemy slot and removes the last two cards in the enemy deck. The test verifies match finishes with player victory and no round increment, attacker rotation, or further phase. 234 JS tests, 0 failures; Python converter 13 passed.
+- DB29 pack/APK/emulator steps were skipped on both runs; they are not substitutes for #325's prior full DB29 import gate. The new tests use deterministic fixture decks and do not certify all original effect semantics or a complete seeded match with the production card dataset.

@@ -55,6 +55,54 @@ test('parses FM1 shared-coin stat notation from the unit stat tab',()=>{
   assert.equal(card.coinTech.stats.hp.coin[0].operation,'add');
 });
 
+test('reused DB29 pack maps StatType directly from raw sourceFields without rebuilding the ZIP',()=>{
+  const card=Schema.normalize({
+    id:'U-STAT-LEGACY-PACK',name:'기존팩 원본 StatType',type:'unit',faction:'light',
+    ap:5,dp:2,hp:4,
+    tabs:{'분류별':['공\\n▲5\\n방\\n▼2\\n체\\n★4']},
+    sourceFields:{ATK:5,ATKStatType:21,DEF:2,DEFStatType:12,HP:4,HPStatType:13}
+  });
+  assert.equal(card.statTech.stats.ap.sourceTypeCode,21);
+  assert.equal(card.statTech.stats.ap.sourceType,'FRONT');
+  assert.equal(card.statTech.stats.ap.marker,'');
+  assert.equal(card.statTech.stats.dp.marker,'▲');
+  assert.equal(card.statTech.stats.hp.marker,'▼');
+});
+
+test('source StatType markers override text parsing and unknown types never become combat restrictions',()=>{
+  const card=Schema.normalize({
+    id:'U-STAT-SOURCE',name:'원본기호검증',type:'unit',faction:'light',
+    ap:5,dp:2,hp:4,
+    tabs:{'분류별':['공\n▲5\n방\n▼2\n체\n★4']},
+    sourceStatTech:{
+      ap:{value:5,typeCode:21,type:'FRONT',icon:'F',marker:'',status:'source_type_semantics_unverified'},
+      dp:{value:2,typeCode:12,type:'UP',icon:'▲',marker:'▲',status:'manual_marker_mapped'},
+      hp:{value:4,typeCode:13,type:'DOWN',icon:'▼',marker:'▼',status:'manual_marker_mapped'}
+    }
+  });
+  assert.equal(card.statTech.stats.ap.sourceTypeCode,21);
+  assert.equal(card.statTech.stats.ap.sourceType,'FRONT');
+  assert.equal(card.statTech.stats.ap.marker,'');
+  assert.equal(card.statTech.stats.dp.marker,'▲');
+  assert.equal(card.statTech.stats.hp.marker,'▼');
+});
+
+test('source CoinType conflicts never fall back to display-text coin effects',()=>{
+  const card=Schema.normalize({
+    id:'coin-type-conflict',name:'코인 원본 충돌',type:'unit',faction:'light',
+    ap:3,dp:1,hp:4,
+    tabs:{'분류별':[{text:'공\n3\n+C1\n방\n1\n체\n4'}]},
+    sourceCoinTech:{
+      ATKCoin:'+2C1',ATKCoinType:3,ATKCoinCount:1,
+      DEFCoin:'NONE',DEFCoinType:1,DEFCoinCount:0,
+      HPCoin:'NONE',HPCoinType:1,HPCoinCount:0
+    }
+  });
+  assert.equal(card.coinTechSourceStatus,'source_review');
+  assert.ok(card.coinTechReview.includes('ap:coin-type-expression-mismatch'));
+  assert.deepEqual(card.coinTech.stats.ap.coin,[]);
+});
+
 test('parses multiplier coin notation and stat immunity markers',()=>{
   const parsed=Schema.parseStatTech({
     tabs:{'분류별':['공\n▲6\n\nXC4\n방\n▼0\n\n-C2\n체\n★4']}
@@ -229,7 +277,7 @@ test('HTML-only source tabs and description lines are retained as readable card 
 
 test('spaced spell trigger timing and simple damage text are mapped',()=>{
   const card=Schema.normalize({id:'spell-damage',name:'피해 마법',type:'spell',
-    text:'적군 유닛에게 3 HP 데미지',
+    text:'적군 유닛에게 3 HP 데미지',runtimeEffectDisposition:'implemented_inferred',
     tabs:{'분류별':[{text:'발동 시점: 전투 시작시'}]},
     cost:{},costKnown:true});
   assert.equal(card.triggerTiming,'전투 시작시');
@@ -263,6 +311,22 @@ test('dual-colour fractional land soul production and LP are preserved',()=>{
   assert.deepEqual(card.souls,['light','earth']);
 });
 
+
+test('CoinType EQUAL remains an enum-inferred replacement, not a Manual-verified operation',()=>{
+  const sourceCoinTech={
+    ATKCoin:'2C1',ATKCoinType:5,ATKCoinCount:1,
+    DEFCoin:'NONE',DEFCoinType:1,DEFCoinCount:0,
+    HPCoin:'NONE',HPCoinType:1,HPCoinCount:0
+  };
+  const parsed=Schema.parseSourceCoinTech(sourceCoinTech);
+  assert.equal(parsed.status,'source_inferred');
+  assert.equal(parsed.stats.ap.coin[0].operation,'set'); // preserved candidate only
+  const card=Schema.normalize({id:'coin-equal-inferred',name:'EQUAL 코인',type:'unit',
+    sourceFields:{RequireSoul:'1101'},sourceCoinTech,ap:3,dp:1,hp:2});
+  assert.equal(card.coinTechSourceStatus,'source_inferred');
+  assert.deepEqual(card.coinTech.stats.ap.coin,[]);
+  assert.deepEqual(card.coinTech.sourceInferredStats,['ap']);
+});
 
 test('stat tech parser reads all three FM1 coin lanes and directional markers',()=>{
   const tech=Schema.parseStatTech({tabs:{'분류별':[{text:'공\n3\nC2\n방\n2\n-C1\n체\n5\nxC2'}]}});
@@ -402,7 +466,7 @@ test('keeps DB effect candidate records visible but does not auto-execute simple
     id:'db-candidate-spell',name:'후보 검토 마법',type:'spell',faction:'fire',
     cost:{fire:1},costKnown:true,costMapped:true,
     text:'적 유닛에게 3의 피해를 준다.',
-    triggerTiming:'공격/방어',
+    triggerTiming:'공격/방어',runtimeEffectDisposition:'fallback_noop',
     effectExecutionStatus:'candidate-only',
     effectVerificationStatus:'pattern_candidate',
     effectCandidates:[{
@@ -416,7 +480,8 @@ test('keeps DB effect candidate records visible but does not auto-execute simple
   assert.equal(card.effectVerificationStatus,'pattern_candidate');
   assert.equal(card.effectCandidates.length,1);
   assert.equal(card.rules.effectStatus,'pattern_candidate');
-  assert.equal(card.rules.status,'text-effect-only');
+  assert.equal(card.rules.status,'pattern_candidate');
+  assert.equal(card.runtimeEffectDisposition,'fallback_noop');
 });
 
 test('uses only a Manual-verified Skill1 mapping for the executable special-skill rule ID',()=>{

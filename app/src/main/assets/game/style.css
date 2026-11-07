@@ -228,3 +228,59 @@
 .battle-divider{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;}
 .battle-divider small{font-size:9px;color:var(--muted,#999);text-align:center;}
 @media(min-width:720px){.unit-art{height:132px;}.action-row{grid-template-columns:repeat(4,minmax(0,1fr));}.land-token{flex-basis:94px;width:94px;min-width:94px;}}
+
+/* Mobile deck editor: keep all deck actions reachable and quantity controls tappable. */
+@media(max-width:619px){
+  .deck-summary{align-items:stretch;flex-direction:column;gap:10px;}
+  .deck-actions{width:100%;display:flex;flex-wrap:wrap;gap:6px;}
+  .deck-actions select{flex:1 1 70px;min-width:0;width:auto;}
+  .deck-actions .button{flex:1 1 105px;min-width:0;padding:10px 7px;white-space:normal;}
+  .qty-controls{gap:5px;flex:0 0 auto;}
+  .qty-controls button{width:34px;height:34px;min-width:34px;font-size:16px;touch-action:manipulation;}
+  .qty-controls button:disabled{opacity:.35;}
+}
+
+
+/* Landscape-first CCG layout: two battle boards stay visible side by side. */
+.selected-card-warning{display:block;color:#f0a39b;font-size:10px;line-height:1.4;margin-top:5px}
+.deck-filter-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(105px,.55fr) minmax(105px,.55fr);gap:7px;width:100%}
+.deck-filter-row input,.deck-filter-row select{min-width:0;width:100%}
+@media(orientation:landscape) and (min-width:620px){
+  .app-shell{max-width:none;width:100%;padding-left:14px;padding-right:14px}
+  #tab-duel.active{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:
+    "toolbar toolbar" "round feed" "enemy player" "divider divider" "hand hand" "log log";gap:7px;align-items:start}
+  #tab-duel>.match-toolbar{grid-area:toolbar}
+  #tab-duel>.round-line{grid-area:round;margin:0}
+  #tab-duel>.battle-feed-panel{grid-area:feed;margin:0}
+  #tab-duel>.enemy-board{grid-area:enemy;margin:0;min-width:0}
+  #tab-duel>.player-board-self{grid-area:player;margin:0;min-width:0}
+  #tab-duel>.battle-divider{grid-area:divider;margin:0;padding:2px 0;flex-direction:row}
+  #tab-duel>.hand-panel{grid-area:hand;margin:0}
+  #tab-duel>.log-panel{grid-area:log;margin:0}
+  .player-board{padding:7px}
+  .unit-art{height:clamp(70px,15vh,112px)}
+  .unit-slot-empty,.spell-slot-empty{min-height:clamp(76px,17vh,112px)}
+  .land-token{flex-basis:76px;width:76px;min-width:76px}
+  .land-token img{height:52px}
+  .hand-cards{display:flex;gap:7px;overflow-x:auto;padding-bottom:5px}
+  .hand-cards .card{flex:0 0 96px}
+  .hand-cards .card-art{height:92px}
+  #tab-deck.active{display:grid;grid-template-columns:minmax(270px,.8fr) minmax(390px,1.2fr);grid-template-areas:
+    "heading heading" "summary cataloguehead" "progress cataloguehead" "decklist catalogue";gap:8px;align-items:start}
+  #tab-deck>.page-heading{grid-area:heading}
+  #tab-deck>.deck-summary{grid-area:summary;align-items:flex-start;flex-direction:column;gap:10px}
+  #tab-deck>.deck-progress{grid-area:progress}
+  #tab-deck>.deck-list{grid-area:decklist;max-height:68vh;overflow:auto;padding-right:4px}
+  #tab-deck>.section-subhead{grid-area:cataloguehead;display:flex;flex-direction:column;align-items:stretch;gap:8px}
+  #tab-deck>.catalogue-list{grid-area:catalogue;max-height:68vh;overflow:auto;padding-right:4px}
+  .deck-filter-row{grid-template-columns:minmax(0,1fr) minmax(110px,.45fr) minmax(110px,.45fr)}
+}
+@media(orientation:landscape) and (max-width:619px){
+  .app-shell{padding-left:8px;padding-right:8px}
+  .unit-art{height:68px}
+  .unit-slot-empty,.spell-slot-empty{min-height:76px}
+  .player-board{padding:6px}
+  .player-head{gap:5px}
+  .deck-filter-row{grid-template-columns:1fr 1fr}
+  .deck-filter-row input{grid-column:1/-1}
+}

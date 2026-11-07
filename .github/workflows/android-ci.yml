@@ -4,23 +4,38 @@ on:
   push:
     branches:
       - main
-# Add [run-emulator] to a PR title to request the long import/emulator validation.
+# PR title markers can request a DB29 Android import ZIP and emulator smoke test; without markers, PRs remain lightweight.
   pull_request:
     branches:
       - main
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
+      build_apk:
+        description: "Debug APK 및 설정된 경우 서명 Release APK 빌드"
+        required: false
+        type: boolean
+        default: false
       build_card_pack:
         description: "기존 카드DB Release에서 Android용 카드 ZIP 생성"
         required: false
         type: boolean
-        default: true
+        default: false
       run_emulator:
         description: "Android 에뮬레이터에 APK 설치 및 실행"
         required: false
         type: boolean
-        default: true
+        default: false
+      reuse_existing_card_pack:
+        description: "기존 Actions 실행에서 만든 DB29 카드 데이터팩을 재사용 (새 ZIP 생성 안 함)"
+        required: false
+        type: boolean
+        default: false
+      card_pack_run_id:
+        description: "재사용할 DB29 데이터팩을 보유한 기존 Actions 실행 ID"
+        required: false
+        type: string
+        default: "42192845020"
       db_release_tag:
         description: "T 저장소의 정규화 SQLite DB Release tag"
         required: false
@@ -29,7 +44,7 @@ on:
 
 concurrency:
   group: fm-offline-android-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -48,6 +63,56 @@ jobs:
     steps:
       - name: Checkout this APK repository
         uses: actions/checkout@v7
+      - name: Validate workflow gate combinations
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true && inputs.build_card_pack != true && inputs.reuse_existing_card_pack != true) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]') && !contains(github.event.pull_request.title, '[build-card-pack]') && !contains(github.event.pull_request.title, '[reuse-card-pack]')) }}
+        run: |
+          echo "::error::run_emulator requires build_card_pack=true or reuse_existing_card_pack=true so the emulator receives the audited DB29 data ZIP."
+          exit 1
+
+
+      - name: Reuse existing audited DB29 Android card data ZIP
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.reuse_existing_card_pack == true) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[reuse-card-pack]')) }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REUSE_CARD_PACK_RUN_ID: ${{ inputs.card_pack_run_id || '42192845020' }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-package "$RUNNER_TEMP/fm1-reuse-check"
+          META="$RUNNER_TEMP/fm1-reuse-check/artifacts.json"
+          curl --fail --location --retry 4 --retry-delay 2 --retry-all-errors \
+            -H "Authorization: Bearer $GH_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$REUSE_CARD_PACK_RUN_ID/artifacts?per_page=100" \
+            -o "$META"
+          ARTIFACT_ID="$(python - "$META" <<'PY'
+          import json,sys
+          data=json.load(open(sys.argv[1],encoding="utf-8"))
+          name="FM1-CardData-v1.3.0-IMPORT-DB29"
+          matches=[x for x in data.get("artifacts",[]) if x.get("name")==name and not x.get("expired")]
+          if len(matches)!=1:
+              raise SystemExit(f"Expected one unexpired {name} artifact, found {len(matches)}")
+          print(matches[0]["id"])
+          PY
+          )"
+          # Download the original Actions artifact archive itself. This is the
+          # already-built, directly importable ZIP; do not rebuild or repackage DB29.
+          curl --fail --location --retry 4 --retry-delay 3 --retry-all-errors \
+            -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            -o release-package/FM1-CardData-v1.3.0.zip
+          test -s release-package/FM1-CardData-v1.3.0.zip
+          unzip -tq release-package/FM1-CardData-v1.3.0.zip
+          for file in cards.json manifest.json card-skill-mappings.json card-effect-candidates.json skill2-catalogue.json; do
+            unzip -p release-package/FM1-CardData-v1.3.0.zip "$file" > "$RUNNER_TEMP/fm1-reuse-check/$file"
+            test -s "$RUNNER_TEMP/fm1-reuse-check/$file" || { echo "::error::Reused DB29 ZIP is missing $file"; exit 1; }
+          done
+          node scripts/fm1-offline/validate-app-card-pack.cjs \
+            "$RUNNER_TEMP/fm1-reuse-check/cards.json" \
+            "$RUNNER_TEMP/fm1-reuse-check/card-skill-mappings.json" \
+            "$RUNNER_TEMP/fm1-reuse-check/card-effect-candidates.json" \
+            "$RUNNER_TEMP/fm1-reuse-check/skill2-catalogue.json" \
+            "$RUNNER_TEMP/fm1-reuse-check/manifest.json"
+          echo "FM1_DATA_PACK_STATUS=reused-existing-run-$REUSE_CARD_PACK_RUN_ID-artifact-$ARTIFACT_ID" >> "$GITHUB_ENV"
 
       - name: Record source revision
         run: echo "FM_SOURCE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
@@ -64,6 +129,7 @@ jobs:
           node --check app/src/main/assets/game/app.js
           node --check app/src/main/assets/game/rules.js
           node --check scripts/fm1-offline/validate-app-card-pack.cjs
+          node --check scripts/fm1-offline/verify-db29-skill1-runtime-normalization.cjs
           node --test tests/*.test.cjs
 
       - name: Set up Python
@@ -74,13 +140,13 @@ jobs:
       - name: Check Firestore-to-Android converter
         run: |
           set -euo pipefail
-          python -m py_compile scripts/fm1-offline/build-firestore-card-pack.py scripts/fm1-offline/audit-enchant-cards.py
+          python -m py_compile scripts/fm1-offline/build-firestore-card-pack.py scripts/fm1-offline/audit-enchant-cards.py scripts/fm1-offline/verify-db29-skill1-pack-lineage.py scripts/fm1-offline/verify-db29-skill-mapping-pack-lineage.py
           python scripts/fm1-offline/build-firestore-card-pack.py --self-test
           python -m unittest tests/test_sqlite_card_pack.py
           python scripts/fm1-offline/audit-enchant-cards.py --self-test
 
       - name: Download the audited T SQLite DB release and build Android data ZIP
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.build_card_pack == true) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-card-pack]') || contains(github.event.head_commit.message, '[run-emulator]'))) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.build_card_pack == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[build-card-pack]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[build-card-pack]')) }}
         env:
           CARD_DB_RELEASE: https://github.com/dragonslayers-k/T/releases/download/${{ env.CARD_DB_RELEASE_TAG }}
           SOURCE_DIR: ${{ runner.temp }}/fm1-source
@@ -88,20 +154,44 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/fm1-source" release-package
-          curl --fail --location --retry 3 --retry-delay 2 --retry-all-errors \
-            "$CARD_DB_RELEASE/fm1_cards.sqlite.gz" -o "$RUNNER_TEMP/fm1-source/fm1_cards.sqlite.gz"
-          curl --fail --location --retry 3 --retry-delay 2 --retry-all-errors \
-            "$CARD_DB_RELEASE/sqlite-build-summary.json" -o "$RUNNER_TEMP/fm1-source/sqlite-build-summary.json"
-          curl --fail --location --retry 3 --retry-delay 2 --retry-all-errors \
-            "$CARD_DB_RELEASE/enumtable.json" -o "$RUNNER_TEMP/fm1-source/enumtable.json"
-          curl --fail --location --retry 3 --retry-delay 2 --retry-all-errors \
-            "$CARD_DB_RELEASE/images.tar.gz.part-aa" -o "$RUNNER_TEMP/fm1-source/images.tar.gz.part-aa"
-          curl --fail --location --retry 3 --retry-delay 2 --retry-all-errors \
-            "$CARD_DB_RELEASE/fm1-skill-catalog-v1.json" -o "$RUNNER_TEMP/fm1-source/fm1-skill-catalog-v1.json"
-          curl --fail --location --retry 3 --retry-delay 2 --retry-all-errors \
+          # Fetch release metadata first so assets can be downloaded through GitHub's
+          # API endpoint if the browser-download CDN returns transient HTTP 5xx.
+          curl --fail --location --retry 4 --retry-delay 3 --retry-all-errors --connect-timeout 30 \
             -H "Authorization: Bearer $GH_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" \
             "https://api.github.com/repos/dragonslayers-k/T/releases/tags/$CARD_DB_RELEASE_TAG" \
             -o "$RUNNER_TEMP/fm1-source/release-metadata.json"
+
+          download_release_asset() {
+            local asset_name="$1"
+            local destination="$RUNNER_TEMP/fm1-source/$asset_name"
+            local asset_id
+            asset_id="$(python - "$RUNNER_TEMP/fm1-source/release-metadata.json" "$asset_name" <<'PY'
+          import json,sys
+          release=json.load(open(sys.argv[1],encoding="utf-8"))
+          asset=next((a for a in release.get("assets",[]) if a.get("name")==sys.argv[2]),None)
+          if not asset: raise SystemExit(f"Required DB29 release asset not found: {sys.argv[2]}")
+          print(asset["id"])
+          PY
+          )"
+            echo "Downloading DB29 release asset: $asset_name (asset id $asset_id)"
+            if curl --fail --location --retry 2 --retry-delay 3 --retry-all-errors --connect-timeout 30 \
+                "$CARD_DB_RELEASE/$asset_name" -o "$destination"; then
+              return 0
+            fi
+            echo "::warning::Browser release download failed for $asset_name; retrying through GitHub release-asset API."
+            rm -f "$destination"
+            curl --fail --location --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 \
+              -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/octet-stream" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/dragonslayers-k/T/releases/assets/$asset_id" -o "$destination"
+            test -s "$destination"
+          }
+
+          download_release_asset "fm1_cards.sqlite.gz"
+          download_release_asset "sqlite-build-summary.json"
+          download_release_asset "enumtable.json"
+          download_release_asset "images.tar.gz.part-aa"
+          download_release_asset "fm1-skill-catalog-v1.json"
 
           python - <<'PY'
           import hashlib, json, os
@@ -179,41 +269,76 @@ jobs:
           unzip -p release-package/FM1-CardData-v1.3.0.zip card-skill-mappings.json > "$RUNNER_TEMP/fm1-app-skill-mappings.json"
           unzip -p release-package/FM1-CardData-v1.3.0.zip card-effect-candidates.json > "$RUNNER_TEMP/fm1-app-effect-candidates.json"
           unzip -p release-package/FM1-CardData-v1.3.0.zip skill2-catalogue.json > "$RUNNER_TEMP/fm1-app-skill2-catalogue.json"
-          node scripts/fm1-offline/validate-app-card-pack.cjs "$RUNNER_TEMP/fm1-app-cards.json" "$RUNNER_TEMP/fm1-app-skill-mappings.json" "$RUNNER_TEMP/fm1-app-effect-candidates.json" "$RUNNER_TEMP/fm1-app-skill2-catalogue.json"
+          unzip -p release-package/FM1-CardData-v1.3.0.zip manifest.json > "$RUNNER_TEMP/fm1-app-manifest.json"
+          node scripts/fm1-offline/validate-app-card-pack.cjs "$RUNNER_TEMP/fm1-app-cards.json" "$RUNNER_TEMP/fm1-app-skill-mappings.json" "$RUNNER_TEMP/fm1-app-effect-candidates.json" "$RUNNER_TEMP/fm1-app-skill2-catalogue.json" "$RUNNER_TEMP/fm1-app-manifest.json"
+          python scripts/fm1-offline/verify-db29-skill1-pack-lineage.py \
+            --db "$RUNNER_TEMP/fm1-source/fm1_cards.sqlite" \
+            --cards-json "$RUNNER_TEMP/fm1-app-cards.json" \
+            --release-tag "$CARD_DB_RELEASE_TAG" 
+          python scripts/fm1-offline/verify-db29-skill-mapping-pack-lineage.py \
+            --db "$RUNNER_TEMP/fm1-source/fm1_cards.sqlite" \
+            --cards-json "$RUNNER_TEMP/fm1-app-cards.json" \
+            --skill-mappings-json "$RUNNER_TEMP/fm1-app-skill-mappings.json" \
+            --release-tag "$CARD_DB_RELEASE_TAG"
+          node scripts/fm1-offline/verify-db29-skill1-runtime-normalization.cjs \
+            --cards-json "$RUNNER_TEMP/fm1-app-cards.json" \
+            --release-tag "$CARD_DB_RELEASE_TAG"
           rm -f "$RUNNER_TEMP/fm1-app-cards.json" "$RUNNER_TEMP/fm1-app-skill-mappings.json" "$RUNNER_TEMP/fm1-app-effect-candidates.json" "$RUNNER_TEMP/fm1-app-skill2-catalogue.json"
           # Keep the unpacked payload until upload-artifact creates a directly importable ZIP.
           rm -rf "$RUNNER_TEMP/fm1-source"
           echo "FM1_DATA_PACK_STATUS=built-from-$CARD_DB_RELEASE_TAG" >> "$GITHUB_ENV"
+          echo "FM1_DATA_PACK_UPLOAD=true" >> "$GITHUB_ENV"
 
       - name: Set up JDK 17
+        if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.build_apk == true || inputs.build_card_pack == true || inputs.run_emulator == true)) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-apk]') || contains(github.event.head_commit.message, '[build-card-pack]'))) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[build-apk]')) }}
         uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Set up Android SDK
+        if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.build_apk == true || inputs.build_card_pack == true || inputs.run_emulator == true)) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-apk]') || contains(github.event.head_commit.message, '[build-card-pack]'))) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[build-apk]')) }}
         uses: android-actions/setup-android@v4
         with:
           packages: "platform-tools"
 
       - name: Set up Gradle 8.9
+        if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.build_apk == true || inputs.build_card_pack == true || inputs.run_emulator == true)) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-apk]') || contains(github.event.head_commit.message, '[build-card-pack]'))) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[build-apk]')) }}
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "8.9"
 
       - name: Install Android SDK components
+        if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.build_apk == true || inputs.build_card_pack == true || inputs.run_emulator == true)) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-apk]') || contains(github.event.head_commit.message, '[build-card-pack]'))) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[build-apk]')) }}
         run: |
           set -euo pipefail
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Install Android emulator components
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]') && contains(github.event.head_commit.message, '[build-card-pack]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]') && (contains(github.event.pull_request.title, '[build-card-pack]') || contains(github.event.pull_request.title, '[reuse-card-pack]'))) }}
         run: |
           set -euo pipefail
-          sdkmanager "platforms;android-34" "emulator" "system-images;android-34;google_apis;x86_64"
+          # Hosted SDK downloads can occasionally arrive truncated (sdkmanager reports
+          # "Error reading Zip content from a SeekableByteChannel"). Retry the
+          # exact same immutable packages after clearing only SDK Manager's download cache.
+          for attempt in 1 2 3; do
+            if sdkmanager "platforms;android-34" "emulator" "system-images;android-34;google_apis;x86_64"; then
+              echo "Android emulator SDK packages installed (attempt $attempt)."
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::Android emulator SDK package install failed after 3 attempts."
+              exit 1
+            fi
+            echo "::warning::SDK package download/install failed on attempt $attempt; clearing download cache and retrying."
+            rm -rf "$HOME/.android/cache"
+            rm -rf "$ANDROID_HOME/system-images/android-34/google_apis/x86_64"
+            sleep "$((attempt * 5))"
+          done
 
       - name: Prepare optional release signing
+        if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.build_apk == true || inputs.build_card_pack == true || inputs.run_emulator == true)) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-apk]') || contains(github.event.head_commit.message, '[build-card-pack]'))) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[build-apk]')) }}
         run: |
           set -euo pipefail
           if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ] && \
@@ -231,6 +356,7 @@ jobs:
           fi
 
       - name: Build Debug APK and optional signed Release APK
+        if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.build_apk == true || inputs.build_card_pack == true || inputs.run_emulator == true)) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-apk]') || contains(github.event.head_commit.message, '[build-card-pack]'))) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[build-apk]')) }}
         run: |
           set -euo pipefail
           gradle --no-daemon --stacktrace :app:assembleDebug
@@ -247,6 +373,7 @@ jobs:
           echo "RELEASE_APK_STATUS=$RELEASE_STATUS" >> "$GITHUB_ENV"
 
       - name: Verify APK application IDs, signatures and ZIP integrity
+        if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.build_apk == true || inputs.build_card_pack == true || inputs.run_emulator == true)) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-apk]') || contains(github.event.head_commit.message, '[build-card-pack]'))) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[build-apk]')) }}
         run: |
           set -euo pipefail
           for APK in FantasyMastersOffline-debug.apk FantasyMastersOffline-release.apk; do
@@ -263,7 +390,7 @@ jobs:
           done
 
       - name: Reclaim runner disk space for Android emulator userdata
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]') && contains(github.event.head_commit.message, '[build-card-pack]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]') && (contains(github.event.pull_request.title, '[build-card-pack]') || contains(github.event.pull_request.title, '[reuse-card-pack]'))) }}
         run: |
           set -euo pipefail
           echo "Disk space before cleanup:"
@@ -283,7 +410,7 @@ jobs:
           fi
 
       - name: Prepare Android emulator KVM permissions
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]') && contains(github.event.head_commit.message, '[build-card-pack]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]') && (contains(github.event.pull_request.title, '[build-card-pack]') || contains(github.event.pull_request.title, '[reuse-card-pack]'))) }}
         run: |
           set -euo pipefail
           if [ -e /dev/kvm ]; then
@@ -299,7 +426,7 @@ jobs:
           fi
 
       - name: Install and launch APK in Android emulator
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_emulator == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-emulator]') && contains(github.event.head_commit.message, '[build-card-pack]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[run-emulator]') && (contains(github.event.pull_request.title, '[build-card-pack]') || contains(github.event.pull_request.title, '[reuse-card-pack]'))) }}
         id: emulator
         timeout-minutes: 25
         uses: reactivecircus/android-emulator-runner@v2.38.0
@@ -343,7 +470,7 @@ jobs:
           } > release-package/build-status.txt
 
       - name: Upload directly importable Android card data archive
-        if: always() && env.FM1_DATA_PACK_STATUS != ''
+        if: always() && env.FM1_DATA_PACK_UPLOAD == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: FM1-CardData-v1.3.0-IMPORT-DB29

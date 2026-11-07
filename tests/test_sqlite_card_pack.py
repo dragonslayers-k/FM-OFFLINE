@@ -151,36 +151,75 @@ class SqliteCardPackTests(unittest.TestCase):
         self.assertEqual(parsed["cost"], {"metal": 2})
         self.assertEqual(parsed["sourceStatus"], "enum_decoded")
 
-    def test_hybrid_mapping_review_is_playable_with_inferred_both_colors(self):
+    def test_hybrid_mapping_review_fails_closed_until_verified(self):
         row = self.db.execute("SELECT * FROM card_costs").fetchone()
         names = [x[1] for x in self.db.execute("PRAGMA table_info(card_costs)")]
         values = dict(zip(names, row))
         soul = json.loads(values["soul_json"])
-        soul["colors"]["forest"] = 1
-        soul["colors"]["iron"] = 1
+        soul["colors"] = {"forest": 1, "iron": 1}
+        values["source_text"] = "4201"
         values["soul_json"] = json.dumps(soul)
         values["mapping_review"] = 1
         values["verification_status"] = "mapping_review"
         parsed = CONVERTER.db_cost_to_app(values)
-        self.assertTrue(parsed["known"])
-        self.assertEqual(parsed["cost"], {"forest": 1, "metal": 1})
-        self.assertEqual(parsed["candidateCost"], {"forest": 1, "metal": 1})
+        self.assertFalse(parsed["known"])
+        self.assertEqual(parsed["cost"], {})
+        self.assertEqual(parsed["candidateCost"], {"hybrid:forest+iron": 1})
         self.assertTrue(parsed["mappingReview"])
+        self.assertIn("hybrid-payment-semantics-unverified", parsed["review"])
+        self.assertEqual(parsed["runtimeCost"], {})
+        self.assertFalse(parsed["runtimeCostKnown"])
+        self.assertEqual(parsed["runtimeCostStatus"], "semantic_review_blocked")
 
-    def test_ncs_semantics_review_is_playable_as_flexible_neutral(self):
+    def test_ncs_and_bonus_remain_separate_and_unverified_cost_fails_closed(self):
         row = self.db.execute("SELECT * FROM card_costs").fetchone()
         names = [x[1] for x in self.db.execute("PRAGMA table_info(card_costs)")]
         values = dict(zip(names, row))
         soul = json.loads(values["soul_json"])
-        soul["colors"]["ncs"] = 1
-        soul["colors"]["neutral"] = 1
+        soul["colors"] = {"iron": 2, "ncs": 1, "bonus": 2}
+        values["source_text"] = "510282018302"
         values["soul_json"] = json.dumps(soul)
         values["semantic_review"] = 1
         values["verification_status"] = "semantic_review"
         parsed = CONVERTER.db_cost_to_app(values)
-        self.assertTrue(parsed["known"])
-        self.assertEqual(parsed["cost"], {"metal": 2, "neutral": 2})
+        self.assertFalse(parsed["known"])
+        self.assertEqual(parsed["cost"], {})
+        self.assertEqual(parsed["candidateCost"], {"iron": 2, "ncs": 1, "bonus": 2})
         self.assertEqual(parsed["specialSouls"]["ncs"], 1)
+        self.assertEqual(parsed["specialSouls"]["bonus"], 2)
+        self.assertTrue(parsed["semanticReview"])
+        self.assertIn("special-soul-semantics-unverified", parsed["review"])
+        self.assertEqual(parsed["runtimeCost"], {})
+        self.assertFalse(parsed["runtimeCostKnown"])
+        self.assertEqual(parsed["runtimeUpkeepNeutral"], 0)
+        self.assertEqual(parsed["runtimeCostStatus"], "semantic_review_blocked")
+
+    def test_simple_spell_inference_requires_supported_timing_and_enchant_stays_fallback(self):
+        enums = {"TurnType": {"1": "공격"}, "EnchantSlot": {"1": "아군 슬롯 1"}}
+        spell = {"raw_payload": {"Category": 3, "TextBase": "적군 유닛에게 2의 피해", "TurnType": 1}}
+        self.assertEqual(CONVERTER.runtime_effect_mapping_for_row(spell, enums),
+                         {"type": "damage", "target": "enemyUnit"})
+        spell_with_extra = {"raw_payload": {**spell["raw_payload"], "TextExtra": "추가 조건 문구"}}
+        self.assertIsNone(CONVERTER.runtime_effect_mapping_for_row(spell_with_extra, enums))
+        unsupported_timing = {"raw_payload": {"Category": 3, "TextBase": "적군 유닛에게 2의 피해", "TurnType": 99}}
+        self.assertIsNone(CONVERTER.runtime_effect_mapping_for_row(unsupported_timing, enums))
+        enchant = {"raw_payload": {"Category": 5, "TextBase": "아군 유닛의 AP를 +2만큼 증가", "TurnType": 1, "EnchantSlot": 1}}
+        self.assertIsNone(CONVERTER.runtime_effect_mapping_for_row(enchant, enums))
+
+    def test_missing_and_unresolved_costs_are_blocked_instead_of_generic_payable_fallbacks(self):
+        missing = CONVERTER.db_cost_to_app(None)
+        self.assertEqual(missing["runtimeCost"], {})
+        self.assertFalse(missing["runtimeCostKnown"])
+        self.assertEqual(missing["runtimeCostStatus"], "semantic_review_blocked")
+        unknown = CONVERTER.db_cost_to_app({
+            "soul_json": json.dumps({"colors": {}, "known": False, "tokens": [
+                {"raw": "9902", "code": 99, "amount": 2, "status": "manual_review"}]}),
+            "soul_known": 0, "mapping_review": 0, "semantic_review": 1,
+            "verification_status": "semantic_review", "source_text": "9902"
+        })
+        self.assertEqual(unknown["runtimeCost"], {})
+        self.assertFalse(unknown["runtimeCostKnown"])
+        self.assertEqual(unknown["runtimeCostStatus"], "semantic_review_blocked")
 
     def test_load_reads_exact_url_image_hash_and_effect_candidates_from_sqlite(self):
         rows = CONVERTER.load_normalized_database(self.db_path, expected_count=1)
@@ -248,7 +287,7 @@ class SqliteCardPackTests(unittest.TestCase):
             ("701","기선제압","데미지를 1 덜 받는다","skill2_tactical_initiative"),
             ("702","헌신방어","아군 필드 다음 유닛 공방체 +1","skill2_devoted_defense"),
             ("703","격노","자신의 HP가 깎인 수치만큼 AP 상승","skill2_frenzy_defense"),
-            ("704","홀리오오라","방/체 합 1/2 이하","skill2_holy_aura"),
+            ("704","홀리오오라","방어시 적군 유닛의 AP가 자신 방/체 합 1/2 이하(내림)일경우에는 데미지를 입지 않는다.","skill2_holy_aura"),
             ("705","얼라이디펜스","자신과 동일한 소속의 필드 유닛 수 만큼 받는 데미지 감소","skill2_alliance_defense"),
             ("706","레이셜디펜스","자신과 동일한 종족의 필드 유닛 수 만큼 받는 데미지 감소","skill2_racial_defense"),
             ("707","강한헌신방어","아군 필드 유닛 전체의 공방체가 1증가한다","skill2_strong_devoted_defense"),
@@ -263,7 +302,7 @@ class SqliteCardPackTests(unittest.TestCase):
                 "sourceName":name,"mappingStatus":"unmapped","ruleId":None
             })
             cards.append({
-                "id":card_id,"name":"검증 카드 "+name,
+                "id":card_id,"name":"검증 카드 "+name,"type":"unit",
                 "sourceCardUrl":"https://fmlunatic.com/card/"+card_id,
                 "sourceListUrl":"https://fmlunatic.com/cardlist",
                 "specialSkill1":"일반공격기술","text":"",
@@ -282,6 +321,148 @@ class SqliteCardPackTests(unittest.TestCase):
             self.assertEqual(entry["executionStatus"],"source-card-rule-implemented")
             self.assertEqual(entry["cardReferences"][0]["sourceCardUrl"],cards[cases.index((_enum_value,name,evidence,rule_id))]["sourceCardUrl"])
             self.assertTrue(any(evidence in ref["description"] for ref in entry["cardReferences"]))
+
+
+
+
+
+    def test_review_required_database_costs_are_not_exposed_as_playable_costs(self):
+        base = {
+            "card_id":"cost-review-test","name":"비용 검토 유닛","raw_payload":{
+                "ID":"cost-review-test","Name":"비용 검토 유닛","Category":2,"SoulType":41,
+                "RequireSoul":"4101","ATK":3,"DEF":2,"HP":5,"LV":3,"Skill2":"0",
+                "TextBase":"","TextExtra":""
+            },
+            "skill_mappings":[]
+        }
+        for review_flags in (
+            {"mappingReview":True,"semanticReview":False},
+            {"mappingReview":False,"semanticReview":True},
+            {"mappingReview":True,"semanticReview":True},
+        ):
+            with self.subTest(**review_flags):
+                row = dict(base)
+                row["normalized_cost"] = {
+                    "known":True,"cost":{"forest":1},"candidateCost":{"forest":1,"metal":1},
+                    "review":["review-required"],"sourceStatus":"test",
+                    "soulKnown":True,"mappingReview":review_flags["mappingReview"],
+                    "semanticReview":review_flags["semanticReview"]
+                }
+                card = CONVERTER.build_card(row,{"Skill2":{"0":"없음"},"SoulType":{"41":"FOREST"}},{},{})
+                self.assertFalse(card["costKnown"])
+                self.assertFalse(card["costMapped"])
+                self.assertEqual(card["cost"],{})
+                self.assertEqual(card["costCandidate"],{"forest":1,"metal":1})
+                self.assertTrue(card["costMappingReview"] or card["costSemanticReview"])
+
+    def test_skill2_catalogue_does_not_use_item_text_as_unit_rule_evidence(self):
+        mappings = [
+            {"cardId":"holy-unit-no-rounding","sourceField":"Skill2","sourceEnumValue":"181",
+             "sourceName":"홀리오오라","mappingStatus":"inferred","ruleId":None},
+            {"cardId":"holy-item-floor-only","sourceField":"Skill2","sourceEnumValue":"181",
+             "sourceName":"홀리오오라","mappingStatus":"inferred","ruleId":None},
+        ]
+        cards = [
+            {"id":"holy-unit-no-rounding","name":"두랄의기사","type":"unit",
+             "sourceCardUrl":"https://fmlunatic.com/card/holy-unit-no-rounding",
+             "sourceListUrl":"https://fmlunatic.com/cardlist","specialSkill1":"",
+             "specialSkill2":"홀리오오라","description":"방어시 적군 유닛의 AP가 자신 방/체 합 1/2 이하일 경우 데미지를 입지 않는다."},
+            {"id":"holy-item-floor-only","name":"천상의악보","type":"item",
+             "sourceCardUrl":"https://fmlunatic.com/card/holy-item-floor-only",
+             "sourceListUrl":"https://fmlunatic.com/cardlist","specialSkill1":"",
+             "specialSkill2":"홀리오오라","description":"방어시 적군 유닛의 AP가 자신 방/체 합 1/2 이하(내림)일경우에는 데미지를 입지 않는다."},
+        ]
+        catalogue = CONVERTER.build_skill2_catalogue(mappings,cards,"test-release")
+        self.assertEqual(catalogue["executableRuleCount"],0)
+        entry = catalogue["records"][0]
+        self.assertEqual(entry["name"],"홀리오오라")
+        self.assertEqual(entry["verificationStatus"],"extracted_unverified")
+        self.assertEqual(entry["executionStatus"],"disabled-until-skill2-rule-review")
+        self.assertIsNone(entry["ruleId"])
+        self.assertEqual(entry["evidenceCardIds"],[])
+        refs = {x["cardId"]:x for x in entry["cardReferences"]}
+        self.assertEqual(refs["holy-unit-no-rounding"]["cardType"],"unit")
+        self.assertEqual(refs["holy-item-floor-only"]["cardType"],"item")
+        self.assertEqual(entry["evidenceCardIds"],[])
+        self.assertEqual(catalogue["executableRuleIds"],[])
+
+    def test_skill2_card_mapping_requires_each_card_own_text_extra_evidence(self):
+        cases = [
+            ("기선제압", "데미지를 1 덜 받는다", True),
+            ("기선제압", "방어시, 상대의 레벨이 자신보다 낮은 경우 받는 데미지를 1 감소시킨다.", False),
+            ("헌신방어", "아군 필드 다음 유닛 공방체 +1", True),
+            ("헌신방어", "", False),
+            ("홀리오오라", "방/체 합 1/2 이하", False),
+            ("홀리오오라", "방어시 적군 유닛의 AP가 자신 방/체 합 1/2 이하(내림)일경우에는 데미지를 입지 않는다.", True),
+            ("얼라이디펜스", "자신과 동일한 소속의 필드 유닛 수 만큼 받는 데미지 감소", True),
+        ]
+        for name, text_extra, expected in cases:
+            with self.subTest(name=name, text_extra=text_extra):
+                spec = CONVERTER.verified_skill2_rule_for_card("unit", name, text_extra)
+                self.assertEqual(spec is not None, expected)
+        self.assertIsNone(CONVERTER.verified_skill2_rule_for_card(
+            "spell", "기선제압", "데미지를 1 덜 받는다"
+        ))
+
+
+
+    def test_card_pack_skill2_mapping_requires_exact_card_local_text_extra(self):
+        def build(skill2_text_extra, skill2_text_base=""):
+            card_id = "skill2-card-" + ("verified" if skill2_text_extra else "unverified")
+            raw = {
+                "ID":card_id,"Name":"기선제압 검증 유닛","Category":2,"SoulType":41,
+                "RequireSoul":"4101","ATK":3,"DEF":2,"HP":5,"LV":3,
+                "Skill2":"18","TextBase":skill2_text_base,"TextExtra":skill2_text_extra
+            }
+            return CONVERTER.build_card({
+                "card_id":card_id,"name":raw["Name"],"raw_payload":raw,
+                "normalized_cost":{"known":True,"cost":{"forest":1},"review":[],"sourceStatus":"test","soulKnown":True},
+                "skill_mappings":[{"sourceField":"Skill2","sourceEnumValue":"18",
+                    "sourceName":"기선제압","mappingStatus":"inferred","ruleId":None}]
+            },{"Skill2":{"18":"기선제압"},"SoulType":{"41":"FOREST"}},{},{})
+
+        verified = build("적군이 아군보다 이하 레벨일 경우 데미지를 1 덜 받는다.")
+        self.assertEqual(verified["specialSkill2MappingStatus"],"source_card_verified")
+        self.assertEqual(verified["specialSkill2SourceMappingStatus"],"inferred")
+        self.assertEqual(verified["specialSkill2RuleId"],"skill2_tactical_initiative")
+        self.assertEqual(verified["specialSkill2RuleAuthority"],"card_source")
+        self.assertEqual(verified["specialSkill2ExecutionStatus"],"source-card-rule-implemented")
+
+        unverified = build("", "적군이 아군보다 이하 레벨일 경우 데미지를 1 덜 받는다.")
+        self.assertEqual(unverified["specialSkill2MappingStatus"],"inferred")
+        self.assertIsNone(unverified["specialSkill2RuleId"])
+        self.assertIsNone(unverified["specialSkill2RuleAuthority"])
+        self.assertEqual(unverified["specialSkill2ExecutionStatus"],"disabled-until-skill2-rule-review")
+
+        different_variant = build("방어시, 상대의 레벨이 자신보다 낮은 경우 받는 데미지를 1 감소시킨다.")
+        self.assertEqual(different_variant["specialSkill2MappingStatus"],"inferred")
+        self.assertIsNone(different_variant["specialSkill2RuleId"])
+
+        holy_generic = CONVERTER.build_card({
+            "card_id":"holy-generic","name":"홀리오오라","raw_payload":{
+                "ID":"holy-generic","Name":"홀리오오라","Category":2,"SoulType":41,
+                "RequireSoul":"4101","ATK":3,"DEF":2,"HP":5,"LV":3,"Skill2":"181",
+                "TextBase":"","TextExtra":"자신 방/체 합 1/2 이하일 경우 데미지를 받지 않는다."
+            },
+            "normalized_cost":{"known":True,"cost":{"forest":1},"review":[],"sourceStatus":"test","soulKnown":True},
+            "skill_mappings":[{"sourceField":"Skill2","sourceEnumValue":"181",
+                "sourceName":"홀리오오라","mappingStatus":"inferred","ruleId":None}]
+        },{"Skill2":{"181":"홀리오오라"},"SoulType":{"41":"FOREST"}},{},{})
+        self.assertEqual(holy_generic["specialSkill2MappingStatus"],"inferred")
+        self.assertIsNone(holy_generic["specialSkill2RuleId"])
+
+        holy_explicit = CONVERTER.build_card({
+            "card_id":"holy-explicit","name":"홀리오오라 내림표기","raw_payload":{
+                "ID":"holy-explicit","Name":"홀리오오라 내림표기","Category":2,"SoulType":41,
+                "RequireSoul":"4101","ATK":3,"DEF":2,"HP":5,"LV":3,"Skill2":"181",
+                "TextBase":"","TextExtra":"방어시 적군 유닛의 AP가 자신 방/체 합 1/2 이하(내림)일경우에는 데미지를 입지 않는다."
+            },
+            "normalized_cost":{"known":True,"cost":{"forest":1},"review":[],"sourceStatus":"test","soulKnown":True},
+            "skill_mappings":[{"sourceField":"Skill2","sourceEnumValue":"181",
+                "sourceName":"홀리오오라","mappingStatus":"inferred","ruleId":None}]
+        },{"Skill2":{"181":"홀리오오라"},"SoulType":{"41":"FOREST"}},{},{})
+        self.assertEqual(holy_explicit["specialSkill2MappingStatus"],"source_card_verified")
+        self.assertEqual(holy_explicit["specialSkill2RuleId"],"skill2_holy_aura")
 
     def test_load_refuses_missing_or_fabricated_card_url(self):
         self.db.execute("UPDATE cards SET source_card_url=? WHERE card_id=?", (

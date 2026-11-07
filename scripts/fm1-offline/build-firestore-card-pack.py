@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Convert FM Lunatic Firestore release data into the Android app's FM1-CARD-DATA ZIP."""
-import argparse, gzip, hashlib, json, os, shutil, sqlite3, tarfile, zipfile
+import argparse, gzip, hashlib, html, json, os, re, shutil, sqlite3, tarfile, zipfile
 from collections import Counter
 from pathlib import Path, PurePosixPath
 
@@ -64,10 +64,40 @@ def faction(label_text):
         if any(n in s for n in needles): return color
     return "neutral"
 
+def parse_source_stat_tech(fields, stat_type_enum):
+    """Preserve source AP/DP/HP StatType and apply only Manual-defined markers."""
+    result = {}
+    for source_field, stat in (("ATK","ap"),("DEF","dp"),("HP","hp")):
+        value = integer(fields.get(source_field))
+        type_code = integer(fields.get(source_field + "StatType"))
+        if value is None and type_code is None:
+            continue
+        meta = stat_type_enum.get(str(type_code), {}) if type_code is not None else {}
+        symbol = str(meta.get("symbol") or "").upper()
+        icon = str(meta.get("icon") or "")
+        if symbol in {"CONST","UP","DOWN"}:
+            marker = icon
+            status = "manual_marker_mapped"
+        elif symbol == "NONE":
+            marker = ""
+            status = "source_mapped_no_marker"
+        elif symbol:
+            marker = ""
+            status = "source_type_semantics_unverified"
+        else:
+            marker = ""
+            status = "source_stat_type_unmapped" if type_code is not None else "source_stat_type_missing"
+        result[stat] = {
+            "value": value, "typeCode": type_code, "type": symbol or None,
+            "icon": icon or None, "marker": marker, "status": status,
+            "sourceValueField": source_field,
+            "sourceTypeField": source_field + "StatType"
+        }
+    return result
+
+
 def parse_cost(raw, require_soul_enum):
-    """Decode RequireSoul codes, including documented two-colour tokens.
-    NCS and BONUS remain review-only until their payment rules are verified.
-    """
+    """Decode RequireSoul codes; hybrid/NCS/BONUS payment semantics remain review-only."""
     out={"cost":{},"known":False,"review":[],"raw":raw,"tokens":[]}
     if not isinstance(raw,str) or not raw:
         out["review"].append("source-cost-missing"); return out
@@ -102,10 +132,16 @@ def parse_cost(raw, require_soul_enum):
         else:
             components=symbol.split("_")
             if components and all(part in colors for part in components):
-                record["kind"]="colored"
+                record["kind"]="hybrid-candidate" if len(components)>1 else "colored-candidate"
                 record["colors"]=[colors[part] for part in components]
-                for color in record["colors"]:
+                if len(components)==1:
+                    color=record["colors"][0]
                     values[color]=values.get(color,0)+amount
+                if len(components)>1:
+                    record["status"]="hybrid_payment_unverified"
+                    record["inference"]="hybrid_symbol_payment_choice_unverified"
+                    out["mapping_review"]=True
+                    out["review"].append("hybrid-payment-semantics-unverified:"+symbol)
             else:
                 record["status"]="manual_review"
                 out["review"].append("unresolved-requiresoul-symbol:"+symbol)
@@ -194,56 +230,125 @@ def add(tabs, group, label_text, value):
     if value is None or value=="": return
     tabs.setdefault(group,[]).append({"label":label_text,"text":f"{label_text} : {value}"})
 
+def db_flag(value):
+    """Parse SQLite/JSON boolean flags without treating the string '0' as true."""
+    if isinstance(value,str):
+        return value.strip().lower() in {"1","true","yes","y","on"}
+    return bool(value)
+
+
 def db_cost_to_app(cost_row):
-    """Read the canonical T SQLite status; never infer cost validity from token syntax alone."""
-    if cost_row is None:
-        return {
-            "cost": {}, "candidateCost": {}, "known": False, "mappingReview": False,
-            "semanticReview": False, "soulKnown": False, "review": ["database-cost-row-missing"],
-            "tokens": [], "sourceStatus": "missing"
-        }
-    soul=json.loads(cost_row["soul_json"] or "{}")
-    colors=soul.get("colors") or {}
-    candidate={}
-    flexible_special=0
-    for key,value in colors.items():
-        amount=integer(value)
-        if amount is None or not amount:
-            continue
-        if key in ("ncs","bonus"):
-            flexible_special+=amount
-            continue
-        candidate["metal" if key=="iron" else key]=amount
-    if flexible_special:
-        candidate["neutral"]=candidate.get("neutral",0)+flexible_special
-    mapping_review=bool(cost_row["mapping_review"])
-    semantic_review=bool(cost_row["semantic_review"])
-    soul_known=bool(cost_row["soul_known"])
-    known=soul_known
-    review=[]
-    if not soul_known:
-        review.append("unresolved-source-token")
-    if mapping_review:
-        review.append("hybrid-playable-inferred-both-colors")
-    if semantic_review:
-        review.append("special-soul-playable-inferred-flexible-neutral")
-    # Preserve an explicit NONE/00 source as a known zero-cost object.
-    app_cost=dict(candidate) if known else {}
-    if known and not app_cost:
-        app_cost={"neutral":0}
-    return {
-        "cost":app_cost,
-        "candidateCost":candidate,
-        "known":known,
-        "mappingReview":mapping_review,
-        "semanticReview":semantic_review,
-        "soulKnown":soul_known,
-        "review":review,
-        "tokens":soul.get("tokens") or [],
-        "specialSouls":{k:integer(colors.get(k)) or 0 for k in ("ncs","bonus")},
-        "sourceStatus":str(cost_row["verification_status"] or "unknown"),
-        "raw":cost_row["source_text"],
+    """Decode only source-backed playable costs; unresolved tokens are not payable fallbacks."""
+    blocked_result = {
+        "cost": {}, "candidateCost": {}, "runtimeCost": {}, "runtimeCostKnown": False,
+        "runtimeCostStatus": "semantic_review_blocked", "runtimeCostInference": [],
+        "runtimeUpkeepNeutral": 0, "known": False, "mappingReview": False,
+        "semanticReview": True, "soulKnown": False, "review": [], "tokens": [],
+        "sourceStatus": "missing", "specialSouls": {"ncs": 0, "bonus": 0}
     }
+    if cost_row is None:
+        result=dict(blocked_result);result["runtimeCostInference"]=["missing-source-cost-blocked"]
+        result["review"]=["database-cost-row-missing"]
+        return result
+    if not hasattr(cost_row,"get"):
+        try: cost_row={key:cost_row[key] for key in cost_row.keys()}
+        except (AttributeError,KeyError,TypeError):
+            result=dict(blocked_result);result["sourceStatus"]="invalid"
+            result["runtimeCostInference"]=["invalid-source-row-blocked"]
+            result["review"]=["invalid-database-cost-row"]
+            return result
+    review=[]
+    source_status=str(cost_row.get("verification_status") or "unknown").strip().lower()
+    invalid_soul_json=False
+    try: soul=json.loads(cost_row.get("soul_json") or "{}")
+    except (TypeError,ValueError): soul={};invalid_soul_json=True
+    if not isinstance(soul,dict): soul={};invalid_soul_json=True
+    colors=soul.get("colors") or {}
+    if not isinstance(colors,dict): colors={};invalid_soul_json=True
+    tokens=soul.get("tokens") if isinstance(soul.get("tokens"),list) else []
+    raw=cost_row.get("source_text")
+    if isinstance(raw,str) and raw and raw.isdigit() and len(raw)%4==0:
+        source_tokens=[{"raw":raw[i:i+4],"code":int(raw[i:i+2]),"count":int(raw[i+2:i+4])}
+            for i in range(0,len(raw),4)]
+    else:
+        source_tokens=tokens
+    pure_codes={11:"dark",21:"fire",31:"water",41:"forest",51:"iron",61:"earth",71:"light"}
+    hybrid_codes={12:"dark+earth",13:"dark+fire",14:"dark+light",15:"dark+water",
+        22:"fire+forest",23:"fire+iron",24:"fire+water",32:"earth+water",
+        33:"forest+water",42:"forest+iron",43:"forest+light",52:"earth+iron",
+        53:"iron+light",62:"earth+light"}
+    candidate={};runtime={};inference=[]
+    mu_amount=0;ncs_amount=0;bonus_amount=0;hybrid_seen=False;unresolved=False
+    def add(target,key,amount): target[key]=target.get(key,0)+amount
+    for token in source_tokens:
+        if not isinstance(token,dict): continue
+        code=integer(token.get("code"));amount=integer(token.get("count",token.get("amount")))
+        if amount is None or amount<=0: continue
+        if code in pure_codes:
+            color=pure_codes[code];add(candidate,color,amount)
+            add(runtime,"metal" if color=="iron" else color,amount)
+        elif code==81:
+            add(candidate,"neutral",amount);add(runtime,"neutral",amount);mu_amount+=amount
+            inference.append("mu_81_manual_neutral_bead_crosswalk_inferred")
+        elif code==82:
+            add(candidate,"ncs",amount);ncs_amount+=amount;unresolved=True
+            inference.append("ncs_requiresoul_semantics_unverified_blocked")
+        elif code==83:
+            add(candidate,"bonus",amount);bonus_amount+=amount;unresolved=True
+            inference.append("bonus_requiresoul_semantics_unverified_blocked")
+        elif code in hybrid_codes:
+            pair=hybrid_codes[code];add(candidate,"hybrid:"+pair,amount)
+            inference.append("hybrid_payment_semantics_unverified_blocked")
+            unresolved=True;hybrid_seen=True
+        elif code==1:
+            add(candidate,"unknown:none",amount);unresolved=True
+            inference.append("nonzero-none-requiresoul-token-blocked")
+        else:
+            add(candidate,"unknown:"+str(code),amount);unresolved=True
+            inference.append("unknown_requiresoul_token_blocked")
+    if not source_tokens:
+        # A normalized color summary is not source provenance. Older DB rows
+        # can carry stale colors after a token crosswalk was corrected; never
+        # promote a colors-only summary into a playable cost or upkeep.
+        unresolved=True
+        inference.append("source-requiresoul-token-provenance-missing-blocked")
+        review.append("source-requiresoul-token-provenance-missing")
+        for key,value in colors.items():
+            amount=integer(value)
+            if amount is not None and amount>0:
+                add(candidate,"legacy-unverified:"+str(key),amount)
+    mapping_review=(db_flag(cost_row.get("mapping_review")) or db_flag(soul.get("mapping_review"))
+        or source_status=="mapping_review" or hybrid_seen)
+    semantic_review=(db_flag(cost_row.get("semantic_review")) or db_flag(soul.get("semantic_review"))
+        or source_status=="semantic_review" or bool(ncs_amount or bonus_amount))
+    column_soul_known=db_flag(cost_row.get("soul_known"));json_soul_known=db_flag(soul.get("known"))
+    soul_known=column_soul_known and json_soul_known
+    status_unverified=source_status in {"unknown","unresolved","missing","invalid","error","pending","not_verified"}
+    if invalid_soul_json: review.append("invalid-soul-json")
+    if not soul_known:
+        review.append("unresolved-source-token" if not column_soul_known and not json_soul_known
+            else "sqlite-json-known-status-mismatch")
+    if status_unverified: review.append("source-cost-status-unverified")
+    if mapping_review: review.append("hybrid-payment-semantics-unverified")
+    if semantic_review: review.append("special-soul-semantics-unverified")
+    known=soul_known and not invalid_soul_json and not status_unverified and not mapping_review and not semantic_review and not unresolved
+    if known and not runtime: runtime={"neutral":0}
+    blocked=not known
+    if blocked:
+        runtime={}
+        inference.append("unresolved-requiresoul-cost-blocked")
+    allowed={"dark","fire","water","forest","metal","earth","light","neutral"}
+    for key,value in runtime.items():
+        if key not in allowed or not isinstance(value,int) or value<0:
+            raise ValueError(f"Invalid runtime cost: {key}={value}")
+    status="semantic_review_blocked" if blocked else (
+        "implemented_inferred" if mu_amount else "implemented_verified")
+    return {"cost":dict(runtime) if known else {},"candidateCost":candidate,
+        "runtimeCost":runtime,"runtimeCostKnown":not blocked,"runtimeCostStatus":status,
+        "runtimeCostInference":sorted(set(inference)),"runtimeUpkeepNeutral":mu_amount,
+        "known":known,"mappingReview":mapping_review,"semanticReview":semantic_review,
+        "soulKnown":soul_known,"review":review,"tokens":tokens,
+        "specialSouls":{"ncs":ncs_amount,"bonus":bonus_amount},"sourceStatus":source_status,"raw":raw}
 
 
 def load_normalized_database(db_path, expected_count=TOTAL):
@@ -483,7 +588,62 @@ def load_normalized_database(db_path, expected_count=TOTAL):
     return records
 
 
-def build_card(row, enums, earn_soul_enum, require_soul_enum):
+def simple_effect_mapping(text):
+    raw = html.unescape(re.sub(r"<[^>]*>", "", str(text or ""))).strip()
+    compact = re.sub(r"\s+", "", raw)
+    if not compact or re.search(r"수만큼|각각|무작위|랜덤|레벨에맞게|교체|복제|유지턴|조건부|~일때|마다", compact):
+        return None
+    slot_target = re.search(r"(아군|자신|적군|상대(?:방)?|적)(?:필드)?유닛(\d+)?", compact)
+    if slot_target:
+        target = "ownUnit" if slot_target.group(1) in {"아군", "자신"} else "enemyUnit"
+        stat_match = re.search(r"((?:AP|DP|HP)(?:/(?:AP|DP|HP))*)(?:를|이|은)?([+-]?\d+)(?:만큼|씩)?(증가|상승|감소|하락)", compact)
+        if stat_match:
+            return {"type": "buff", "target": target}
+    match = re.search(r"(?:적군|상대(?:방)?|적)(?:필드)?(?:유닛)?(?:의)?(?:HP)?(?:에게|에)?(\d+)(?:의)?(?:HP)?(?:데미지|피해)", compact)
+    if match:
+        return {"type": "damage", "target": "enemyUnit"}
+    match = re.search(r"(?:아군|자신)(?:필드)?(?:유닛)?(?:의)?(?:HP)?(?:를)?(\d+)(?:만큼)?(?:회복|증가)", compact)
+    if match:
+        return {"type": "heal", "target": "ownUnit"}
+    match = re.search(r"(?:상대|적군|적)(?:의)?덱(?:카드)?(\d+)장(?:을)?파괴", compact)
+    if match:
+        return {"type": "mill", "target": "enemyDeck"}
+    match = re.search(r"(?:카드|덱에서)(\d+)장(?:을)?(?:드로우|뽑)", compact)
+    if match:
+        return {"type": "draw", "target": "ownDeck"}
+    match = re.search(r"(?:상대|적군|적)(?:의)?HP(?:를)?(\d+)(?:만큼)?흡수", compact)
+    if match:
+        return {"type": "drain", "target": "enemyUnit"}
+    for stat in ("AP", "DP", "HP"):
+        match = re.search(r"(?:아군|자신)(?:필드)?(?:유닛)?(?:의)?" + stat + r"(?:를)?\+(\d+)(?:만큼)?(?:증가|상승)", compact)
+        if match:
+            return {"type": "buff", "target": "ownUnit"}
+        match = re.search(r"(?:적군|상대|적)(?:필드)?(?:유닛)?(?:의)?" + stat + r"(?:를)?-(\d+)(?:만큼)?(?:감소|하락)", compact)
+        if match:
+            return {"type": "buff", "target": "enemyUnit"}
+    return None
+
+
+def runtime_effect_mapping_for_row(row, enums):
+    payload = row.get("raw_payload") or {}
+    category = CATEGORY.get(integer(payload.get("Category")))
+    if category != "spell":
+        # The current engine has no event/duration-bound enchant runtime slot.
+        # Even simple text is not safe to apply immediately as an enchant.
+        return None
+    extra_text = html.unescape(re.sub(r"<[^>]*>", "", str(payload.get("TextExtra") or ""))).strip()
+    if extra_text:
+        return None
+    mapping = simple_effect_mapping(payload.get("TextBase"))
+    if not mapping:
+        return None
+    timing = re.sub(r"\s+", "", str(label(enums, "TurnType", payload.get("TurnType")) or ""))
+    if not re.search(r"전투시작|전투개시|공격|공격턴|방어|방어턴", timing):
+        return None
+    return mapping
+
+
+def build_card(row, enums, earn_soul_enum, require_soul_enum, stat_type_enum=None):
     f=row.get("raw_payload") or {}
     cid=str(row.get("card_id") or f.get("ID") or "")
     name=str(row.get("name") or f.get("Name") or "")
@@ -514,14 +674,35 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
     if extra: tabs["텍스트"].append({"label":"추가 설명","text":extra})
 
     c=row.get("normalized_cost") or parse_cost(f.get("RequireSoul"),require_soul_enum)
-    cost_known=(c["known"] and typ!="land")
+    cost_known=(c["known"] and not c.get("mappingReview",False) and not c.get("semanticReview",False) and typ!="land")
     skill1_name=label(enums,"Skill1",f.get("Skill1"))
     skill2_name=label(enums,"Skill2",f.get("Skill2"))
     source_skill1=next((m for m in (row.get("skill_mappings") or []) if m.get("sourceField")=="Skill1"),None)
     source_skill2=next((m for m in (row.get("skill_mappings") or []) if m.get("sourceField")=="Skill2"),None)
+    verified_skill2_spec=verified_skill2_rule_for_card(typ,skill2_name,extra) if source_skill2 is not None else None
+    skill2_named=bool(skill2_name and skill2_name!="없음")
+    runtime_effect_mapping=runtime_effect_mapping_for_row(row,enums)
+    effect_candidates_for_card=row.get("effect_candidates") or []
+    single_clause_candidate=(not effect_candidates_for_card) or (len(effect_candidates_for_card)==1 and len((effect_candidates_for_card[0].get("clauses") or []))==1)
+    runtime_effect_disposition=("implemented_inferred" if runtime_effect_mapping and single_clause_candidate else "fallback_noop") if typ in ("spell","enchant") else "not_applicable"
+    if runtime_effect_disposition!="implemented_inferred": runtime_effect_mapping=None
     card={
         "id":cid,"name":name,"type":typ,"faction":color,
+        "sourceStatTech":parse_source_stat_tech(f,stat_type_enum or {}),
         "cost":c["cost"] if cost_known else {},
+        "runtimeCost":c.get("runtimeCost",c["cost"]),
+        "runtimeCostKnown":c.get("runtimeCostKnown",c["known"]),
+        "runtimeCostStatus":c.get("runtimeCostStatus","implemented_verified"),
+        "runtimeCostInference":c.get("runtimeCostInference",[]),
+        "runtimeUpkeepCost":{"neutral":(c.get("runtimeUpkeepNeutral",0) if typ=="unit" else 0)},
+        "runtimeProfileVersion":1,
+        "runtimeProfileStatus":"ready_with_effect_fallback",
+        "runtimeEffectDisposition":runtime_effect_disposition,
+        "runtimeEffectMapping":runtime_effect_mapping,
+        "runtimeEffectFallbackReason":"source-effect-candidate-not-yet-mapped" if runtime_effect_disposition=="fallback_noop" else None,
+        "runtimeEffectClauseCount":sum(len(x.get("clauses") or []) for x in (row.get("effect_candidates") or [])),
+        "runtimeSkill1Disposition":("implemented_verified" if source_skill1 and source_skill1.get("mappingStatus")=="manual_verified" and source_skill1.get("ruleAuthority")=="manual" else ("fallback_noop" if skill1_name and skill1_name!="없음" else "not_applicable")) if typ=="unit" else "not_applicable",
+        "runtimeSkill2Disposition":("implemented_verified" if verified_skill2_spec else ("fallback_noop" if skill2_named else "not_applicable")) if typ=="unit" else "not_applicable",
         "costKnown":cost_known,"costMapped":cost_known,
         "costSource":c.get("sourceStatus","legacy-enum-parse"),
         "soulCostRaw":f.get("RequireSoul"),"costReview":c["review"],
@@ -548,24 +729,19 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
         "specialSkill1EnumValue":f.get("Skill1") if typ=="unit" else None,
         "specialSkill2EnumValue":f.get("Skill2") if typ=="unit" else None,
         "specialSkill2MappingStatus":(
-            "source_card_verified" if typ=="unit" and skill2_name in SKILL2_SOURCE_VERIFIED_RULES
-            else (source_skill2.get("mappingStatus","no_special_skill") if typ=="unit" and source_skill2 else "no_special_skill")
+            "source_card_verified" if verified_skill2_spec is not None
+            else (source_skill2.get("mappingStatus","unmapped") if typ=="unit" and source_skill2
+                  else ("unmapped" if typ=="unit" and skill2_named else "no_special_skill"))
         ),
         "specialSkill2SourceMappingStatus":(
-            source_skill2.get("mappingStatus","no_special_skill") if typ=="unit" and source_skill2 else "no_special_skill"
+            source_skill2.get("mappingStatus","unmapped") if typ=="unit" and source_skill2
+            else ("unmapped" if typ=="unit" and skill2_named else "no_special_skill")
         ),
-        "specialSkill2RuleId":(
-            SKILL2_SOURCE_VERIFIED_RULES[skill2_name]["ruleId"]
-            if typ=="unit" and skill2_name in SKILL2_SOURCE_VERIFIED_RULES else None
-        ),
-        "specialSkill2RuleAuthority":(
-            SKILL2_SOURCE_VERIFIED_RULES[skill2_name]["ruleAuthority"]
-            if typ=="unit" and skill2_name in SKILL2_SOURCE_VERIFIED_RULES else None
-        ),
+        "specialSkill2RuleId":verified_skill2_spec["ruleId"] if verified_skill2_spec else None,
+        "specialSkill2RuleAuthority":verified_skill2_spec["ruleAuthority"] if verified_skill2_spec else None,
         "specialSkill2ExecutionStatus":(
-            "source-card-rule-implemented" if typ=="unit" and skill2_name in SKILL2_SOURCE_VERIFIED_RULES
-            else ("no-skill" if typ!="unit" or not skill2_name or skill2_name=="없음"
-                  else "disabled-until-skill2-rule-review")
+            "source-card-rule-implemented" if verified_skill2_spec else
+            ("disabled-until-skill2-rule-review" if typ=="unit" and skill2_named else "no-skill")
         ),
         "specialSkillMappingStatus":(
             source_skill1.get("mappingStatus","no_special_skill") if typ=="unit" and source_skill1 else "no_special_skill"
@@ -598,21 +774,22 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
         card["requiredLPStatus"]="source-defined" if lp is not None else "source-missing"
         if lp is not None: add(tabs,"분류별","필요LP",lp)
 
-        land_cost_known=bool(c["known"] and not c.get("mappingReview",False) and not c.get("semanticReview",False))
-        card["landInstallCost"]=c["cost"] if land_cost_known else None
+        land_cost_known=bool(c.get("runtimeCostKnown",False))
+        card["landInstallCost"]=c.get("runtimeCost") if land_cost_known else None
         card["landInstallCostKnown"]=land_cost_known
         card["landInstallCostRaw"]=f.get("RequireSoul")
         card["landInstallCostReview"]=c["review"]
         card["landInstallCostReviewStatus"]=c.get("sourceStatus","legacy-enum-parse")
         card["landInstallCostCandidate"]=c.get("candidateCost",{})
         if land_cost_known:
-            add(tabs,"분류별","설치 소울 비용",json.dumps(c["cost"],ensure_ascii=False,sort_keys=True))
+            add(tabs,"분류별","설치 소울 비용",json.dumps(c.get("runtimeCost") or c["cost"],ensure_ascii=False,sort_keys=True))
 
         earn=parse_earn_soul_list(f.get("EarnSoulList"),earn_soul_enum,f.get("MuSoul"))
         mode="needs-review" if not earn["known"] else ("magicland-effect" if earn["magicLand"] else "source-decoded")
         card["soulProduction"]={"colored":earn["colored"],"neutral":earn["neutral"]}
         card["soulProductionTokens"]=earn["tokens"]
         card["soulProductionStatus"]=mode
+        card["runtimeLandProductionStatus"]="fallback_noop" if mode!="source-decoded" else "source_verified"
         card["soulProductionSource"]="Firestore EarnSoulList + Enum+EarnSoul"
         card["soulProductionRaw"]=f.get("EarnSoulList")
         card["soulProductionReview"]=earn["review"]
@@ -627,9 +804,22 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
                 add(tabs,"분류별","생산 소울",f"{soul_color} {amount}")
             add(tabs,"분류별","생산무소울",earn["neutral"])
     elif typ=="unit":
+        source_stats={}
         for src,dst in [("ATK","ap"),("DEF","dp"),("HP","hp")]:
             n=integer(f.get(src))
+            source_stats[dst]=n
             if n is not None: card[dst]=n
+        # Preserve every source stat in sourceFields/sourceStats. A zero or
+        # absent HP cannot create an unplayable unit; use the smallest finite
+        # runtime HP only as a tagged fallback.
+        runtime_stats={"ap":source_stats["ap"] if source_stats["ap"] is not None else 0,
+                       "dp":source_stats["dp"] if source_stats["dp"] is not None else 0,
+                       "hp":source_stats["hp"] if source_stats["hp"] is not None and source_stats["hp"]>0 else 1}
+        card["sourceStats"]=source_stats
+        card["runtimeStats"]=runtime_stats
+        card["runtimeStatStatus"]="source_verified" if source_stats["hp"] is not None and source_stats["hp"]>0 else "fallback_hp_min_1"
+        card["runtimeStatInference"]=[] if card["runtimeStatStatus"]=="source_verified" else ["nonpositive-or-missing-hp-minimum-one"]
+        card["ap"],card["dp"],card["hp"]=runtime_stats["ap"],runtime_stats["dp"],runtime_stats["hp"]
         card["level"]=integer(f.get("LV"))
         card["sourceCoinTech"]={k:f.get(k) for k in ("ATKCoin","ATKCoinType","ATKCoinCount","DEFCoin","DEFCoinType","DEFCoinCount","HPCoin","HPCoinType","HPCoinCount")}
         ability=label(enums,"UnitType",f.get("UnitType"))
@@ -643,7 +833,9 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
             if f.get(src) is not None: tabs["분류별"].append({"label":ko,"text":f"{ko}\n{f[src]}"})
     elif typ=="item":
         ability=label(enums,"UnitType",f.get("UnitType"))
-        card["equipAbility"]=ability;card["allowedUnitAbilities"]=[ability] if ability else []
+        card["equipAbility"]=ability
+        card["runtimeItemConditionStatus"]="source_mapped" if ability else "fallback_any_unit"
+        card["allowedUnitAbilities"]=[ability] if ability else ["만능"]
         for src,dst in [("ATK","apBonus"),("DEF","dpBonus"),("HP","hpBonus")]:
             n=integer(f.get(src))
             if n is not None: card[dst]=n
@@ -717,13 +909,91 @@ def self_test():
         "83":{"symbol":"BONUS","icon":"/bonus.webp"}
     }
     assert parse_cost("11012102",require_soul_enum)["cost"]=={"dark":1,"fire":2}
-    assert parse_cost("12011101",require_soul_enum)["cost"]=={"dark":2,"earth":1}
-    assert parse_cost("1302",require_soul_enum)["cost"]=={"dark":2,"fire":2}
+    hybrid_pair=parse_cost("12011101",require_soul_enum)
+    assert not hybrid_pair["known"] and hybrid_pair["mapping_review"]
+    assert hybrid_pair["tokens"][0]["status"]=="hybrid_payment_unverified"
+    assert hybrid_pair["tokens"][0]["colors"]==["dark","earth"]
+    assert hybrid_pair["cost"]=={}, "unverified hybrid icon must not be stored as two required colors"
+    hybrid_single=parse_cost("1302",require_soul_enum)
+    assert not hybrid_single["known"] and hybrid_single["mapping_review"]
+    assert hybrid_single["tokens"][0]["status"]=="hybrid_payment_unverified"
     assert parse_cost("8102",require_soul_enum)["cost"]=={"neutral":2}
+    stat_enum={"1":{"symbol":"NONE","icon":"없음"},"11":{"symbol":"CONST","icon":"★"},
+        "12":{"symbol":"UP","icon":"▲"},"13":{"symbol":"DOWN","icon":"▼"},
+        "21":{"symbol":"FRONT","icon":"F"}}
+    stat_profile=parse_source_stat_tech({
+        "ATK":4,"ATKStatType":11,"DEF":2,"DEFStatType":12,
+        "HP":5,"HPStatType":13
+    },stat_enum)
+    assert stat_profile["ap"]["marker"]=="★" and stat_profile["ap"]["status"]=="manual_marker_mapped"
+    assert stat_profile["dp"]["marker"]=="▲" and stat_profile["hp"]["marker"]=="▼"
+    none_profile=parse_source_stat_tech({"ATK":3,"ATKStatType":1},stat_enum)
+    assert none_profile["ap"]["marker"]=="" and none_profile["ap"]["status"]=="source_mapped_no_marker"
+    unverified_profile=parse_source_stat_tech({"ATK":3,"ATKStatType":21},stat_enum)
+    assert unverified_profile["ap"]["type"]=="FRONT"
+    assert unverified_profile["ap"]["marker"]=="" and unverified_profile["ap"]["status"]=="source_type_semantics_unverified"
     assert parse_cost("8301",require_soul_enum)["known"] is False
     assert parse_cost("8201",require_soul_enum)["known"] is False
     assert parse_cost("0100",require_soul_enum)["cost"]=={"neutral":0}
     assert parse_cost("",require_soul_enum)["known"] is False
+
+    # Cost playability must fail closed if any persisted status representation
+    # says review is pending, even when another representation says verified.
+    base_cost_row={
+        "soul_json":json.dumps({"colors":{"iron":2,"ncs":0,"bonus":0},"known":True,
+            "mapping_review":False,"semantic_review":False,"tokens":[]}),
+        "soul_known":1,"mapping_review":0,"semantic_review":0,
+        "verification_status":"enum_decoded","source_text":"5102"
+    }
+    decoded=db_cost_to_app(base_cost_row)
+    print("DEBUG db_cost_to_app base fixture:",json.dumps(decoded,sort_keys=True))
+    assert decoded["known"] and decoded["cost"]=={"metal":2}, decoded
+    colors_only=db_cost_to_app({**base_cost_row,"source_text":None,"soul_json":json.dumps({
+        "colors":{"neutral":2},"known":True,"mapping_review":False,"semantic_review":False,"tokens":[]})})
+    assert not colors_only["known"] and not colors_only["runtimeCostKnown"]
+    assert colors_only["runtimeCost"]=={} and colors_only["runtimeUpkeepNeutral"]==0
+    assert "source-requiresoul-token-provenance-missing-blocked" in colors_only["runtimeCostInference"]
+    assert db_cost_to_app({**base_cost_row,"mapping_review":"0"})["known"]
+    json_hybrid=db_cost_to_app({**base_cost_row,"soul_json":json.dumps({
+        "colors":{"iron":2},"known":True,"mapping_review":True,"semantic_review":False})})
+    assert not json_hybrid["known"] and json_hybrid["cost"]=={} and json_hybrid["mappingReview"]
+    json_special=db_cost_to_app({**base_cost_row,"source_text":"82018302","soul_json":json.dumps({
+        "colors":{"ncs":1,"bonus":2},"known":True,"mapping_review":False,"semantic_review":True,
+        "tokens":[{"code":82,"count":1,"normalized_color":"ncs","status":"semantic_review"},
+                  {"code":83,"count":2,"normalized_color":"bonus","status":"semantic_review"}]})})
+    assert not json_special["known"] and json_special["cost"]=={} and json_special["semanticReview"]
+    assert json_special["runtimeCost"]=={} and not json_special["runtimeCostKnown"]
+    assert json_special["runtimeCostStatus"]=="semantic_review_blocked"
+    assert json_special["runtimeUpkeepNeutral"]==0
+    ncs=db_cost_to_app({**base_cost_row,"source_text":"8201","soul_json":json.dumps({
+        "colors":{"ncs":1},"known":True,"mapping_review":False,"semantic_review":True,
+        "tokens":[{"code":82,"count":1,"normalized_color":"ncs","status":"semantic_review"}]})})
+    assert ncs["runtimeCost"]=={} and not ncs["runtimeCostKnown"]
+    assert ncs["runtimeCostStatus"]=="semantic_review_blocked" and ncs["runtimeUpkeepNeutral"]==0
+    mu=db_cost_to_app({**base_cost_row,"source_text":"8102","soul_json":json.dumps({
+        "colors":{"neutral":2},"known":True,"mapping_review":False,"semantic_review":False,
+        "tokens":[{"code":81,"count":2,"normalized_color":"neutral","status":"enum_decoded"}]})})
+    assert mu["runtimeCost"]=={"neutral":2} and mu["runtimeCostKnown"]
+    assert mu["runtimeCostStatus"]=="implemented_inferred" and mu["runtimeUpkeepNeutral"]==2
+    hybrid=db_cost_to_app({**base_cost_row,"source_text":"1201","mapping_review":1,"soul_json":json.dumps({
+        "colors":{"dark":1,"earth":1},"known":True,"mapping_review":True,"semantic_review":False,
+        "tokens":[{"code":12,"count":1,"normalized_color":"dark+earth","status":"hybrid_payment_unverified"}]})})
+    assert hybrid["runtimeCost"]=={} and not hybrid["runtimeCostKnown"]
+    assert hybrid["runtimeCostStatus"]=="semantic_review_blocked" and hybrid["runtimeUpkeepNeutral"]==0
+    assert hybrid["candidateCost"]=={"hybrid:dark+earth":1}
+    status_hybrid=db_cost_to_app({**base_cost_row,"verification_status":"mapping_review"})
+    assert not status_hybrid["known"] and status_hybrid["mappingReview"]
+    status_special=db_cost_to_app({**base_cost_row,"verification_status":"semantic_review"})
+    assert not status_special["known"] and status_special["semanticReview"]
+    mismatched_known=db_cost_to_app({**base_cost_row,"soul_json":json.dumps({
+        "colors":{"iron":2},"known":False,"mapping_review":False,"semantic_review":False})})
+    assert not mismatched_known["known"] and mismatched_known["cost"]=={}
+    invalid_json=db_cost_to_app({**base_cost_row,"soul_json":"{invalid"})
+    assert not invalid_json["known"] and invalid_json["cost"]=={}
+    explicit_zero=db_cost_to_app({**base_cost_row,"source_text":"0100","soul_json":json.dumps({
+        "colors":{},"known":True,"mapping_review":False,"semantic_review":False})})
+    assert explicit_zero["known"] and explicit_zero["cost"]=={"neutral":0}
+
     assert CATEGORY[5]=="enchant" and sum(EXPECTED.values())==TOTAL
     assert expected_large_image_name({"id":"land-card","sourceFields":{"Category":1,"KIND":5}})=="L00005L.webp"
     assert expected_large_image_name({"id":"magic-card","sourceFields":{"Category":3,"KIND":3861}})=="M03861L.webp"
@@ -748,6 +1018,14 @@ def self_test():
     } and all_souls["neutral"]==2
     hybrid=parse_earn_soul_list("120171018201",earn_enum,2)
     assert hybrid["known"] and hybrid["colored"]=={"dark":1,"earth":1,"light":1} and hybrid["neutral"]==2
+    # Same numeric 82 belongs to separate enum namespaces:
+    # EarnSoul=82 -> MU02 production; RequireSoul=82 -> NCS cost token.
+    earn_mu02=parse_earn_soul_list("8201",earn_enum,2)
+    assert earn_mu02["known"] and earn_mu02["neutral"]==2
+    assert earn_mu02["tokens"][0]["symbol"]=="MU02"
+    require_ncs=parse_cost("8201",require_soul_enum)
+    assert not require_ncs["known"] and require_ncs["tokens"][0]["symbol"]=="NCS"
+    assert require_ncs["tokens"][0]["status"]=="manual_review"
     magic=parse_earn_soul_list("0201",earn_enum,0)
     assert magic["known"] and magic["magicLand"] and not magic["colored"] and magic["neutral"]==0
     mismatch=parse_earn_soul_list("8201",earn_enum,1)
@@ -757,6 +1035,19 @@ def self_test():
     magic_many=parse_earn_soul_list("0201",earn_enum,0)
     assert magic_many["known"] and magic_many["magicLand"] is True
     print("converter self-test: PASS")
+
+def verified_skill2_rule_for_card(card_type, skill2_name, text_extra):
+    """Return a Skill2 rule only when this exact card carries its rule evidence in TextExtra."""
+    if card_type != "unit":
+        return None
+    spec = SKILL2_SOURCE_VERIFIED_RULES.get(str(skill2_name or ""))
+    if not spec:
+        return None
+    needle = spec.get("cardVerificationNeedle") or spec.get("evidenceNeedle")
+    if not needle or needle not in str(text_extra or ""):
+        return None
+    return spec
+
 
 SKILL2_SOURCE_VERIFIED_RULES = {
     "기선제압": {
@@ -786,6 +1077,9 @@ SKILL2_SOURCE_VERIFIED_RULES = {
         "trigger":"before_incoming_damage",
         "mechanic":"방어시 공격 유닛 AP가 자신의 DP+HP 합의 절반(내림) 이하이면 받는 데미지 무효",
         "evidenceNeedle":"방/체 합 1/2 이하",
+        # The other DB29 card has the same shorthand but omits floor rounding.
+        # Only the explicit floor(rounded down) source wording verifies this card.
+        "cardVerificationNeedle":"방어시 적군 유닛의 AP가 자신 방/체 합 1/2 이하(내림)일경우에는 데미지를 입지 않는다.",
     },
     "얼라이디펜스": {
         "ruleId":"skill2_alliance_defense",
@@ -816,6 +1110,20 @@ SKILL2_SOURCE_VERIFIED_RULES = {
         "evidenceNeedle":"아군 필드 빈공간수 절반(내림) 만큼 받은 데미지를 감소시킨다",
     },
 }
+
+
+# DB29 card-local TextExtra evidence audit: Holy Aura's only explicit floor
+# wording is on an item, while the unit's wording leaves rounding unspecified.
+# The item must not activate the unit-only combat defense handler.
+DB29_SKILL2_UNIT_EVIDENCE_RULE_IDS = frozenset({
+    "skill2_tactical_initiative",
+    "skill2_devoted_defense",
+    "skill2_frenzy_defense",
+    "skill2_alliance_defense",
+    "skill2_racial_defense",
+    "skill2_strong_devoted_defense",
+    "skill2_pressure_defense",
+})
 
 
 def build_skill2_catalogue(mapping_records, cards, release_tag):
@@ -858,7 +1166,7 @@ def build_skill2_catalogue(mapping_records, cards, release_tag):
             if card is None:
                 raise RuntimeError("Skill2 mapping references missing cards.json record: "+card_id)
             refs.append({
-                "cardId":card_id,"name":card.get("name"),
+                "cardId":card_id,"name":card.get("name"),"cardType":card.get("type"),
                 "sourceCardUrl":card.get("sourceCardUrl"),
                 "sourceListUrl":card.get("sourceListUrl"),
                 "faction":card.get("faction"),"unitAbility":card.get("unitAbility"),
@@ -877,10 +1185,15 @@ def build_skill2_catalogue(mapping_records, cards, release_tag):
         source_name=entry["name"]
         no_skill=source_name in ("","없음") or entry["sourceMappingStatuses"]=={"no_special_skill"}
         spec=SKILL2_SOURCE_VERIFIED_RULES.get(source_name) if not no_skill else None
-        if spec:
-            evidence_refs=[ref for ref in refs if spec["evidenceNeedle"] in (ref.get("description") or "")]
-            if not evidence_refs:
-                raise RuntimeError("Skill2 rule has no matching exact card-source evidence: "+source_name)
+        evidence_needle=(spec.get("cardVerificationNeedle") or spec["evidenceNeedle"]) if spec else None
+        # Skill2 defensive handlers are unit mechanics. Item descriptions may
+        # mention the same label/wording but cannot verify a unit's rule mapping.
+        evidence_refs=[
+            ref for ref in refs
+            if spec and ref.get("cardType")=="unit"
+            and evidence_needle in (ref.get("description") or "")
+        ]
+        if spec and evidence_refs:
             executable_rules.add(spec["ruleId"])
             verification="source_card_verified"
             execution="source-card-rule-implemented"
@@ -918,6 +1231,7 @@ def build_skill2_catalogue(mapping_records, cards, release_tag):
         "noSkillCardCount":len(no_skill_card_ids),
         "mappingStatusCounts":dict(sorted(status_counts.items())),
         "executableRuleCount":len(executable_rules),
+        "executableRuleIds":sorted(executable_rules),
         "records":records
     }
 
@@ -933,6 +1247,9 @@ def convert(a):
     enums=enum_lookup(enum_data)
     earn_soul_enum=enum_symbol_map(enum_data,"EarnSoul")
     require_soul_enum=enum_symbol_map(enum_data,"RequireSoul")
+    stat_type_enum=enum_symbol_map(enum_data,"StatType")
+    if not stat_type_enum:
+        raise RuntimeError("enumtable is missing Enum+StatType; refusing to guess AP/DP/HP stat markers")
     if not earn_soul_enum:
         raise RuntimeError("enumtable is missing Enum+EarnSoul; refusing to guess land soul production")
     if not require_soul_enum:
@@ -973,22 +1290,41 @@ def convert(a):
     }
     skill_mapping_bytes=json.dumps(skill_mapping_data,ensure_ascii=False,separators=(",",":")).encode("utf-8")
     skill_mapping_sha256=hashlib.sha256(skill_mapping_bytes).hexdigest()
-    effect_candidate_records=[
-        {"cardId":row["card_id"],**candidate}
-        for row in source_records for candidate in row.get("effect_candidates",[])
-    ]
+    effect_candidate_records=[]
+    runtime_clause_dispositions=Counter()
+    for row in source_records:
+        for candidate in row.get("effect_candidates",[]):
+            candidate_out=dict(candidate)
+            clause_out=[]
+            candidate_clauses=candidate.get("clauses") or []
+            row_mapping=runtime_effect_mapping_for_row(row,enums)
+            can_infer=(row_mapping is not None and len(row.get("effect_candidates") or [])==1 and len(candidate_clauses)==1)
+            for clause_index,clause in enumerate(candidate_clauses):
+                resolved=dict(clause)
+                # Source clause text/spans remain immutable. Only a single,
+                # exact simple-text pattern with required spell timing/enchant
+                # slot metadata may use the tested inferred handler.
+                disposition="implemented_inferred" if can_infer else "fallback_noop"
+                resolved["runtimeDisposition"]=disposition
+                resolved["runtimeDispositionReason"]="simple-text-effect-parser-v1" if can_infer else "source-effect-clause-not-yet-mapped"
+                resolved["runtimeClauseIndex"]=clause_index
+                runtime_clause_dispositions[disposition]+=1
+                clause_out.append(resolved)
+            candidate_out["clauses"]=clause_out
+            effect_candidate_records.append({"cardId":row["card_id"],**candidate_out})
     effect_candidate_data={
-        "schemaVersion":1,
+        "schemaVersion":2,
         "sourceDatabaseRelease":a.db_release_tag,
-        "description":"Non-executable effect text pattern candidates and exact source clause spans. These records are references for later manual review and rule-handler implementation, not executable card effects.",
+        "description":"Original source effect candidates and exact clause spans, with a separate deterministic runtime disposition for every clause. Candidate text is never treated as a verified executable rule.",
         "candidateCount":len(effect_candidate_records),
         "clauseCount":sum(len(x.get("clauses",[])) for x in effect_candidate_records),
+        "runtimeClauseDispositionCounts":dict(runtime_clause_dispositions),
         "records":effect_candidate_records,
     }
     effect_candidate_bytes=json.dumps(effect_candidate_data,ensure_ascii=False,separators=(",",":")).encode("utf-8")
     effect_candidate_sha256=hashlib.sha256(effect_candidate_bytes).hexdigest()
     for index,row in enumerate(source_records,1):
-        card=build_card(row,enums,earn_soul_enum,require_soul_enum)
+        card=build_card(row,enums,earn_soul_enum,require_soul_enum,stat_type_enum)
         for image_type in ("small","large"):
             meta=(row.get("source_image_metadata") or {}).get(image_type) or {}
             card.setdefault("sourceImageSha256",{})[image_type]=meta.get("sha256")
@@ -999,10 +1335,11 @@ def convert(a):
     skill2_catalogue=build_skill2_catalogue(skill_mapping_records,cards,a.db_release_tag)
     if len(cards)==TOTAL and (
         skill2_catalogue["entryCount"]!=189 or skill2_catalogue["activeSkillCount"]!=188
-        or skill2_catalogue["activeCardCount"]!=1366 or skill2_catalogue["executableRuleCount"]!=8
+        or skill2_catalogue["activeCardCount"]!=1366
+        or set(skill2_catalogue["executableRuleIds"])!=DB29_SKILL2_UNIT_EVIDENCE_RULE_IDS
     ):
-        raise RuntimeError("DB29 Skill2 inventory validation failed: "+json.dumps({
-            k:skill2_catalogue[k] for k in ("entryCount","activeSkillCount","activeCardCount","mappingStatusCounts")
+        raise RuntimeError("DB29 Skill2 inventory/evidence validation failed: "+json.dumps({
+            k:skill2_catalogue[k] for k in ("entryCount","activeSkillCount","activeCardCount","executableRuleCount","executableRuleIds","mappingStatusCounts")
         },ensure_ascii=False))
     skill2_catalogue_bytes=json.dumps(skill2_catalogue,ensure_ascii=False,separators=(",",":")).encode("utf-8")
     skill2_catalogue_sha256=hashlib.sha256(skill2_catalogue_bytes).hexdigest()
@@ -1108,7 +1445,11 @@ def convert(a):
           "candidateFileSha256":effect_candidate_sha256,
           "verificationStatus":"pattern_candidate",
           "executableEffectMappings":0,
-          "policy":"Candidate extraction is reference data only. No candidate is treated as an executable game rule."
+          "runtimeClauseDispositionCounts":dict(runtime_clause_dispositions),
+          "runtimeInferredClauseCount":runtime_clause_dispositions.get("implemented_inferred",0),
+          "runtimeFallbackClauseCount":runtime_clause_dispositions.get("fallback_noop",0),
+          "runtimeCardEffectDispositionCounts":dict(Counter(c.get("runtimeEffectDisposition","missing") for c in cards)),
+          "policy":"Original candidate text remains non-verified. A single exact simple-text spell pattern with supported attack/defend/battle-start timing may use a tested inferred handler. Enchants remain fallback_noop until an event/duration slot engine exists; all other clauses use deterministic fallback_noop so card use and turn progression complete."
         },
         "specialSkillReview":{
           **skill_db_counts,

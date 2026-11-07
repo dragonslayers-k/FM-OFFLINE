@@ -2,25 +2,390 @@
   'use strict';
 
   const COLORS = ['dark', 'fire', 'water', 'forest', 'metal', 'earth', 'light', 'neutral'];
+  const COST_KEYS = [...COLORS, 'bonus'];
   const COLOR_NAMES = {
     dark: '암흑', fire: '불', water: '물', forest: '숲',
-    metal: '금속', earth: '대지', light: '빛', neutral: '무속성'
+    metal: '금속', earth: '대지', light: '빛', neutral: '무속성', bonus: '보너스'
   };
   const TYPE_NAMES = { land: '지형', unit: '유닛', item: '아이템', spell: '마법', enchant: '인챈트' };
 
   function clone(value) { return JSON.parse(JSON.stringify(value)); }
+
+  function deepFreeze(value) {
+    if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
+    for (const child of Object.values(value)) deepFreeze(child);
+    return Object.freeze(value);
+  }
+
+  // Immutable, card-agnostic combat event records. These are deliberately
+  // descriptive only: existing combat resolution is unchanged until a
+  // source-verified rule subscribes to a specific event type.
+  function createCombatEvent(type, details) {
+    if (typeof type !== 'string' || !type.trim()) throw new TypeError('Combat event type is required.');
+    const data = details && typeof details === 'object' ? details : {};
+    const source = data.source && typeof data.source === 'object' ? data.source : {};
+    const target = data.target && typeof data.target === 'object' ? data.target : {};
+    const fieldIndex = Number(data.fieldIndex);
+    return deepFreeze({
+      type: type.trim(),
+      sequence: null,
+      ownerId: data.ownerId == null ? null : String(data.ownerId),
+      cause: data.cause == null ? null : String(data.cause),
+      sourceInstanceId: data.sourceInstanceId ?? source.instanceId ?? null,
+      sourceCardId: data.sourceCardId ?? source.cardId ?? source.id ?? null,
+      targetInstanceId: data.targetInstanceId ?? target.instanceId ?? null,
+      targetCardId: data.targetCardId ?? target.cardId ?? target.id ?? null,
+      fieldIndex: Number.isInteger(fieldIndex) && fieldIndex >= 0 ? fieldIndex : null,
+      snapshot: data.snapshot && typeof data.snapshot === 'object' ? clone(data.snapshot) : {},
+      payload: data.payload && typeof data.payload === 'object' ? clone(data.payload) : {}
+    });
+  }
+
+  function createCombatEventQueue() {
+    let nextSequence = 0;
+    let pending = [];
+    return {
+      enqueue(event) {
+        if (!event || typeof event !== 'object' || typeof event.type !== 'string' || !event.type.trim()) {
+          throw new TypeError('A valid combat event is required.');
+        }
+        const queued = deepFreeze({ ...clone(event), sequence: nextSequence++ });
+        pending.push(queued);
+        return clone(queued);
+      },
+      drain() {
+        const ready = pending.map(clone);
+        pending = [];
+        return ready;
+      },
+      size() { return pending.length; }
+    };
+  }
+
+  function emitCombatEvent(state, type, details) {
+    if (!state || typeof state !== 'object') return null;
+    if (!state.combatEventQueue || typeof state.combatEventQueue.enqueue !== 'function') {
+      state.combatEventQueue = createCombatEventQueue();
+    }
+    return state.combatEventQueue.enqueue(createCombatEvent(type, details));
+  }
+
+  // Data-only status records. Duration ticking, stacking, action locks, and status effects
+  // remain intentionally unresolved until source rules define their exact semantics.
+  function createUnitStatusRecord(statusName, durationTurns, source) {
+    const name = String(statusName || '').trim();
+    if (!name) return {ok:false,reason:'status_name_required',record:null};
+    const duration = Number(durationTurns);
+    if (!Number.isSafeInteger(duration) || duration <= 0) {
+      return {ok:false,reason:'invalid_duration',record:null};
+    }
+    const origin = source && typeof source === 'object' ? source : {};
+    const nestedSource = origin.source && typeof origin.source === 'object' ? origin.source : {};
+    return {
+      ok:true,
+      record:{
+        statusName:name,
+        durationTurns:duration,
+        durationTickPolicy:'unresolved',
+        sourceInstanceId:origin.sourceInstanceId ?? nestedSource.instanceId ?? null,
+        sourceCardId:origin.sourceCardId ?? nestedSource.cardId ?? null,
+        sourceRuleId:origin.sourceRuleId ?? null,
+        metadata:origin.metadata && typeof origin.metadata === 'object' ? clone(origin.metadata) : {}
+      }
+    };
+  }
+
+  function addUnitStatusRecord(unit, statusName, durationTurns, source) {
+    if (!unit || typeof unit !== 'object') return {ok:false,reason:'unit_required',record:null};
+    const created = createUnitStatusRecord(statusName,durationTurns,source);
+    if (!created.ok) return created;
+    if (!Array.isArray(unit.statusRecords)) unit.statusRecords = [];
+    // Keep repeated applications as separate source records; do not infer stack/refresh rules.
+    unit.statusRecords.push(clone(created.record));
+    return {ok:true,record:clone(created.record),recordCount:unit.statusRecords.length};
+  }
+
+  function removeUnitStatusRecords(unit, statusName) {
+    if (!unit || typeof unit !== 'object') return {ok:false,reason:'unit_required',removedCount:0};
+    const name = String(statusName || '').trim();
+    if (!name) return {ok:false,reason:'status_name_required',removedCount:0};
+    if (!Array.isArray(unit.statusRecords)) unit.statusRecords = [];
+    const before = unit.statusRecords.length;
+    unit.statusRecords = unit.statusRecords.filter(record => String(record.statusName || '') !== name);
+    return {ok:true,removedCount:before-unit.statusRecords.length};
+  }
+
+  function clearUnitStatusRecords(unit) {
+    if (!unit || typeof unit !== 'object') return {ok:false,reason:'unit_required',removedCount:0};
+    if (!Array.isArray(unit.statusRecords)) unit.statusRecords = [];
+    const removedCount = unit.statusRecords.length;
+    unit.statusRecords = [];
+    return {ok:true,removedCount};
+  }
+
+  function snapshotCombatUnit(unit) {
+    if (!unit || typeof unit !== 'object') return null;
+    return {
+      instanceId: unit.instanceId ?? null,
+      cardId: unit.cardId ?? unit.id ?? null,
+      name: unit.name ?? null,
+      type: unit.type ?? 'unit',
+      ap: Number(unit.ap || 0),
+      dp: Number(unit.dp || 0),
+      hp: Number(unit.hp || 0),
+      maxHp: Number(unit.maxHp || 0),
+      skill: unit.tempSkill || unit.skill || null,
+      skill2: unit.specialSkill2 || unit.skill2 || null,
+      specialSkill2RuleId: unit.specialSkill2RuleId || null,
+      specialSkill2MappingStatus: unit.specialSkill2MappingStatus || null,
+      specialSkill2RuleAuthority: unit.specialSkill2RuleAuthority || null,
+      specialSkill2ExecutionStatus: unit.specialSkill2ExecutionStatus || null,
+      affiliation: unit.affiliation || null,
+      race: unit.race || null,
+      statusRecords: Array.isArray(unit.statusRecords) ? clone(unit.statusRecords) : []
+    };
+  }
+
+  function snapshotCombatCard(card) {
+    if (!card || typeof card !== 'object') return null;
+    return {
+      instanceId: card.instanceId ?? null,
+      cardId: card.cardId ?? card.id ?? null,
+      name: card.name ?? null,
+      type: card.type ?? null,
+      triggerTiming: card.triggerTiming ?? null,
+      slotIndex: Number.isFinite(Number(card.slotIndex)) ? Number(card.slotIndex) : null
+    };
+  }
+
+  function createCombatEventDispatcher() {
+    const subscribers = new Map();
+    return {
+      register(rule, handler) {
+        if (!rule || typeof rule !== 'object' || typeof handler !== 'function') {
+          return {ok:false,reason:'invalid_registration'};
+        }
+        const ruleId = String(rule.ruleId || '');
+        const mappingStatus = String(rule.mappingStatus || '');
+        const authority = String(rule.authority || '');
+        const executionStatus = String(rule.executionStatus || '');
+        const sourceCardId = rule.sourceCardId == null ? null : String(rule.sourceCardId);
+        const manualAllowed = mappingStatus === 'manual_verified' &&
+          authority === 'manual' && !!SPECIAL_SKILL_RULE_KEYWORDS[ruleId];
+        const sourceAllowed = mappingStatus === 'source_card_verified' &&
+          authority === 'card_source' &&
+          executionStatus === 'source-card-rule-implemented' &&
+          !!SKILL2_SOURCE_RULE_NAMES[ruleId];
+        if (!manualAllowed && !sourceAllowed) {
+          return {ok:false,reason:'rule_not_verified_or_not_implemented'};
+        }
+        const eventTypes = Array.isArray(rule.eventTypes) ? rule.eventTypes : [];
+        if (!eventTypes.length || eventTypes.some(type => typeof type !== 'string' || !type.trim())) {
+          return {ok:false,reason:'invalid_event_types'};
+        }
+        const normalizedTypes = eventTypes.map(type => type.trim());
+        if (new Set(normalizedTypes).size !== normalizedTypes.length) {
+          return {ok:false,reason:'invalid_event_types'};
+        }
+        if (normalizedTypes.some(type => (subscribers.get(type) || []).some(item => item.ruleId === ruleId))) {
+          return {ok:false,reason:'duplicate_rule_subscription'};
+        }
+        for (const type of normalizedTypes) {
+          const list = subscribers.get(type) || [];
+          list.push({
+            ruleId,handler,mappingStatus,authority,executionStatus,sourceCardId,
+            sourceMatch:rule.sourceMatch === 'skill2' ? 'skill2' : null
+          });
+          subscribers.set(type,list);
+        }
+        return {ok:true,ruleId,eventTypes:normalizedTypes};
+      },
+      dispatch(events, context) {
+        const input = Array.isArray(events) ? events : [events];
+        const results = [];
+        for (const event of input) {
+          if (!event || typeof event.type !== 'string') continue;
+          for (const subscriber of subscribers.get(event.type) || []) {
+            if (subscriber.sourceMatch === 'skill2') {
+              const subject = event.snapshot && event.snapshot.unit;
+              const expectedName = SKILL2_SOURCE_RULE_NAMES[subscriber.ruleId];
+              if (!subject || !String(subject.cardId || '').trim() ||
+                  !String(event.targetCardId || '').trim() ||
+                  String(subject.cardId || '') !== String(event.targetCardId || '') ||
+                  (subscriber.sourceCardId !== null && String(subject.cardId || '') !== subscriber.sourceCardId) ||
+                  subject.specialSkill2RuleId !== subscriber.ruleId ||
+                  subject.specialSkill2MappingStatus !== subscriber.mappingStatus ||
+                  subject.specialSkill2RuleAuthority !== subscriber.authority ||
+                  subject.specialSkill2ExecutionStatus !== subscriber.executionStatus ||
+                  String(subject.skill2 || '').replace(/\s+/g,'') !== expectedName) continue;
+            }
+            const result = subscriber.handler(clone(event),context || {});
+            results.push({ruleId:subscriber.ruleId,eventType:event.type,sequence:event.sequence ?? null,result});
+          }
+        }
+        return results;
+      },
+      dispatchPending(queue, context) {
+        if (!queue || typeof queue.drain !== 'function') return [];
+        return this.dispatch(queue.drain(),context);
+      },
+      subscriberCount() {
+        let count = 0;
+        for (const list of subscribers.values()) count += list.length;
+        return count;
+      }
+    };
+  }
+
+  function findNextFriendlyFieldUnit(owner, destroyedFieldIndex, fallbackIndex) {
+    if (!owner || !Array.isArray(owner.units)) return null;
+    const fieldIndex = Number(destroyedFieldIndex);
+    const hasSlotOrder = owner.units.some(unit =>
+      Number.isInteger(Number(unit.slotIndex)) && Number(unit.slotIndex) > 0);
+    if (Number.isInteger(fieldIndex) && fieldIndex >= 0 && hasSlotOrder) {
+      const destroyedSlot = fieldIndex + 1;
+      return owner.units
+        .filter(unit => Number.isInteger(Number(unit.slotIndex)) &&
+          Number(unit.slotIndex) > destroyedSlot)
+        .sort((a,b) => Number(a.slotIndex) - Number(b.slotIndex))[0] || null;
+    }
+    return owner.units[Number(fallbackIndex)] || null;
+  }
+
+  function createCoreCombatEventDispatcher() {
+    const dispatcher = createCombatEventDispatcher();
+    const common = {
+      mappingStatus:'source_card_verified',
+      authority:'card_source',
+      executionStatus:'source-card-rule-implemented',
+      eventTypes:['unit_destroyed'],
+      sourceMatch:'skill2'
+    };
+    const devoted = dispatcher.register({
+      ...common,ruleId:'skill2_devoted_defense'
+    },(event,context)=>{
+      const owner = context.players && context.players[event.ownerId];
+      const nextUnit = findNextFriendlyFieldUnit(owner,event.fieldIndex,event.fieldIndex);
+      if (!nextUnit) return {applied:false,reason:'next_friendly_unit_missing'};
+      changeUnitStat(nextUnit,'ap',1);
+      changeUnitStat(nextUnit,'dp',1);
+      changeUnitStat(nextUnit,'hp',1);
+      addLog(context.state,event.snapshot.unit.name+'의 헌신방어! 다음 아군 유닛의 공·방·체가 각각 1 증가했습니다.');
+      return {applied:true,targetInstanceId:nextUnit.instanceId || null};
+    });
+    const strong = dispatcher.register({
+      ...common,ruleId:'skill2_strong_devoted_defense'
+    },(event,context)=>{
+      const owner = context.players && context.players[event.ownerId];
+      if (!owner || !owner.units.length) return {applied:false,reason:'no_remaining_friendly_units'};
+      owner.units.forEach(ally=>{
+        changeUnitStat(ally,'ap',1);
+        changeUnitStat(ally,'dp',1);
+        changeUnitStat(ally,'hp',1);
+      });
+      addLog(context.state,event.snapshot.unit.name+'의 강한헌신방어! 남은 아군 유닛 전체의 공·방·체가 각각 1 증가했습니다.');
+      return {applied:true,targetCount:owner.units.length};
+    });
+    const preDamage = (ruleId,field)=>dispatcher.register({
+      ...common,ruleId,eventTypes:['unit_damage_prevention_requested']
+    },(event,context)=>{
+      const owner = context.players && context.players[event.ownerId];
+      const unit = event.snapshot && event.snapshot.unit;
+      if (!owner || !unit) return {damageReduction:0};
+      if (ruleId === 'skill2_alliance_defense' || ruleId === 'skill2_racial_defense') {
+        const value = String(unit[field] || '');
+        if (!value) return {damageReduction:0};
+        const allies = owner.units.filter(ally=>ally.instanceId!==unit.instanceId &&
+          String(ally[field] || '')===value).length;
+        return {damageReduction:allies};
+      }
+      if (ruleId === 'skill2_pressure_defense') {
+        // Match the five visible unit slots rendered by app.js. Array length
+        // can over-count occupied slots when legacy/fallback slot indices collide.
+        const occupiedSlots = new Set();
+        owner.units.forEach((ally,index)=>{
+          const rawSlot = Number(ally && ally.slotIndex);
+          const slot = rawSlot || index + 1;
+          if (Number.isInteger(slot) && slot >= 1 && slot <= 5) occupiedSlots.add(slot);
+        });
+        const emptySlots = Math.max(0,5-occupiedSlots.size);
+        return {damageReduction:Math.floor(emptySlots/2)};
+      }
+      if (ruleId === 'skill2_tactical_initiative') {
+        const attackerLevel=Number(event.payload.attackerLevel||0);
+        const defenderLevel=Number(event.payload.defenderLevel||0);
+        return {damageReduction:attackerLevel<=defenderLevel?1:0};
+      }
+      if (ruleId === 'skill2_holy_aura') {
+        const attackAP=Number(event.payload.attackAP||0);
+        const defenseDP=Number(event.payload.defenderDP||0);
+        const currentHP=Number(event.payload.defenderCurrentHP||0);
+        const threshold=Math.floor((defenseDP+currentHP)/2);
+        return {damagePrevented:attackAP<=threshold,threshold};
+      }
+      return {damageReduction:0};
+    });
+    const alliance = preDamage('skill2_alliance_defense','affiliation');
+    const racial = preDamage('skill2_racial_defense','race');
+    const pressure = preDamage('skill2_pressure_defense','');
+    const tactical = preDamage('skill2_tactical_initiative','');
+    const holy = preDamage('skill2_holy_aura','');
+    const frenzy = dispatcher.register({
+      ...common,ruleId:'skill2_frenzy_defense',eventTypes:['unit_hp_damage_applied']
+    },(event,context)=>{
+      const owner = context.players && context.players[event.ownerId];
+      const unit = owner && owner.units.find(card=>card.instanceId===event.snapshot.unit.instanceId);
+      const actual = Math.max(0,Number(event.payload.actualDamage||0));
+      if (!unit || unit.hp<=0 || actual<=0) return {applied:false,reason:'no_surviving_hp_damage'};
+      changeUnitStat(unit,'ap',actual);
+      return {applied:true,apIncrease:actual};
+    });
+    if (!devoted.ok || !strong.ok || !alliance.ok || !racial.ok || !pressure.ok || !tactical.ok || !holy.ok || !frenzy.ok) {
+      throw new Error('Core Skill2 handlers could not be registered.');
+    }
+    dispatcher.coreSkill2Handlers = true;
+    return dispatcher;
+  }
+
+  function attachCombatEventDispatcher(state, dispatcher) {
+    if (!state || typeof state !== 'object' || !dispatcher ||
+        typeof dispatcher.dispatchPending !== 'function') return false;
+    state.combatEventDispatcher = dispatcher;
+    return true;
+  }
+
+  function dispatchPendingCombatEvents(state) {
+    if (!state || !state.combatEventDispatcher ||
+        typeof state.combatEventDispatcher.dispatchPending !== 'function' ||
+        state.combatEventDispatching === true) return [];
+    state.combatEventDispatching = true;
+    try {
+      return state.combatEventDispatcher.dispatchPending(state.combatEventQueue, {
+        state, players: state.players || null
+      });
+    } finally {
+      state.combatEventDispatching = false;
+    }
+  }
   function uid(prefix) { return (prefix || 'c') + '_' + Math.random().toString(36).slice(2, 10); }
   function sumCost(cost) { return Object.values(cost || {}).reduce((a, n) => a + (Number(n) || 0), 0); }
   function colorName(key) { return COLOR_NAMES[key] || key || '무속성'; }
   function readCost(cost) {
     if(!cost||typeof cost!=='object'||Array.isArray(cost)||Object.keys(cost).length===0)return {ok:false,reason:'비용 데이터가 없습니다. 원본 카드 비용을 확인해야 합니다.'};
-    const normalized=Object.fromEntries(COLORS.map(c=>[c,0]));
+    const normalized=Object.fromEntries(COST_KEYS.map(c=>[c,0]));
     for(const [color,value] of Object.entries(cost)){
-      if(!COLORS.includes(color)||!Number.isInteger(Number(value))||Number(value)<0)return {ok:false,reason:'비용 데이터 형식이 올바르지 않습니다.'};
+      if(!COST_KEYS.includes(color)||!Number.isInteger(Number(value))||Number(value)<0)return {ok:false,reason:'비용 데이터 형식이 올바르지 않습니다.'};
       normalized[color]=Number(value);
     }
     return {ok:true,cost:normalized};
   }
+  function runtimeCostFor(card) {
+    if (card && ['semantic_review_blocked','fallback_payable','mapping_review'].includes(card.runtimeCostStatus)) return null;
+    if (card && card.runtimeCostKnown === true) return card.runtimeCost;
+    if (card && card.costKnown === true && card.costMapped === true) return card.cost;
+    return null;
+  }
+
   function costText(cost) {
     const parsed = readCost(cost);
     if (!parsed.ok) return '비용 데이터 확인 필요';
@@ -185,9 +550,12 @@
   function itemMatchesUnit(card, unit, ownerId, targetOwnerId) {
     const condition = card && card.itemConditions;
     if (!condition) return true;
-    if (condition.mapped === false || (condition.unsupported && condition.unsupported.length)) return false;
+    if ((condition.mapped === false || (condition.unsupported && condition.unsupported.length)) &&
+        card.runtimeItemConditionStatus !== 'fallback_any_unit') return false;
     if (condition.owner === 'own' && targetOwnerId !== ownerId) return false;
     if (condition.owner === 'enemy' && targetOwnerId === ownerId) return false;
+    // Keep every parsed condition even when one unsupported source clause needs
+    // fallback; only the unparsed part is ignored.
     if (condition.race && String(unit.race || '') !== condition.race) return false;
     if (condition.affiliation && String(unit.affiliation || '') !== condition.affiliation) return false;
     return true;
@@ -195,9 +563,13 @@
 
   function validateCardForPlay(card) {
     if(!card||!['land','unit','item','spell','enchant'].includes(card.type))return {ok:false,reason:'카드 종류 또는 데이터가 올바르지 않습니다.'};
+    if ((card.type === 'spell' || card.type === 'enchant') && card.runtimeEffectDisposition === 'fallback_noop')
+      return {ok:false,reason:'이 카드의 원본 효과는 아직 구현·검증되지 않아 현재 대전에서 사용할 수 없습니다. 효과가 검증된 뒤 활성화됩니다.'};
     if(card.type!=='land'){
-      if(card.costKnown!==true||card.costMapped!==true)return {ok:false,reason:'원본 카드 이미지의 소울 구슬 비용이 아직 검증되지 않았습니다. 무료 카드로 취급하지 않습니다.'};
-      const parsed=readCost(card.cost);if(!parsed.ok)return parsed;
+      if(['semantic_review_blocked','fallback_payable','mapping_review'].includes(card.runtimeCostStatus))
+        return {ok:false,reason:'이 카드의 RequireSoul 원본 토큰은 소울 비용 의미가 검증되지 않았습니다. 임의의 무속성 비용으로 대체하지 않고 사용을 차단합니다.'};
+      const parsed=readCost(runtimeCostFor(card));
+      if(!parsed.ok)return {ok:false,reason:'카드의 소울 비용을 검증할 수 없습니다: '+parsed.reason};
     }
     if(card.type==='unit'&&(!Number.isFinite(Number(card.ap))||!Number.isFinite(Number(card.dp))||!Number.isFinite(Number(card.hp))||Number(card.hp)<=0))
       return {ok:false,reason:'유닛의 AP·DP·HP 데이터가 누락되었거나 올바르지 않습니다.'};
@@ -208,28 +580,31 @@
       if(card.landInstallCostKnown!==true)return {ok:false,reason:'지형 설치에 필요한 RequireSoul 비용이 아직 확인되지 않았습니다. 무료로 처리하지 않습니다.'};
       const installCost=readCost(card.landInstallCost);
       if(!installCost.ok)return {ok:false,reason:'지형 설치 소울 비용을 검증할 수 없습니다: '+installCost.reason};
-      if(card.isMagicLand===true||card.soulProductionStatus==='magicland-effect')
-        return {ok:false,reason:'매직랜드의 소울 코스트 발동 및 특수효과 실행 규칙은 구현 검증 대기 중입니다. 일반 지형처럼 설치하지 않습니다.'};
-      if(card.soulProductionStatus!=='source-decoded')
-        return {ok:false,reason:'EarnSoulList 생산 규칙이 검증되지 않은 지형입니다.'};
+      // Unknown production/effect provenance is not a card-use gate. The
+      // converter preserves decoded production and marks unresolved clauses
+      // for deterministic no-op; MagicLand is installed without invented output.
+      if(card.runtimeLandProductionStatus!=='fallback_noop' &&
+          card.soulProductionStatus!=='source-decoded' && card.isMagicLand!==true)
+        return {ok:false,reason:'지형 생산 데이터의 형식이 올바르지 않습니다.'};
       if(legacy.some(c=>!COLORS.includes(c)||c==='neutral')||(prod&&(typeof prod!=='object'||!prod.colored||typeof prod.colored!=='object'||
         Object.entries(prod.colored).some(([c,v])=>!COLORS.includes(c)||c==='neutral'||!Number.isFinite(Number(v))||Number(v)<0)||
         !Number.isFinite(Number(prod.neutral))||Number(prod.neutral)<0)))return {ok:false,reason:'지형의 소울 생산 데이터가 올바르지 않습니다.'};
       const ct=prod?Object.values(prod.colored).reduce((s,n)=>s+Number(n||0),0):legacy.length*(Number(card.soulValue)||1);
       const nt=prod?Number(prod.neutral||0):Number(card.neutralSoulProduction||0);
-      if(ct+nt<=0)return {ok:false,reason:'소울 생산량이 0인 표준 지형입니다.'};
+      if(ct+nt<=0 && card.runtimeLandProductionStatus!=='fallback_noop' && card.isMagicLand!==true)
+        return {ok:false,reason:'표준 지형의 소울 생산량이 0입니다.'};
     }
     if(card.type==='item'){
       const allowed=Array.isArray(card.allowedUnitAbilities)?card.allowedUnitAbilities:[];
-      const hasEquipRule=allowed.length>0||card.itemConditions?.universal===true||!!card.itemConditions?.owner||!!card.itemConditions?.race||!!card.itemConditions?.affiliation;
+      const fallbackTarget=card.runtimeItemConditionStatus==='fallback_any_unit';
+      const hasEquipRule=allowed.length>0||card.itemConditions?.universal===true||!!card.itemConditions?.owner||!!card.itemConditions?.race||!!card.itemConditions?.affiliation||fallbackTarget;
       if(!hasEquipRule)return {ok:false,reason:'아이템 장착 조건 데이터가 없습니다.'};
-      if(card.itemConditions&&card.itemConditions.mapped===false)return {ok:false,reason:'아이템의 원본 종족·소속 장착 조건을 해석하지 못해 안전하게 발동을 차단합니다.'};
+      if(card.itemConditions&&card.itemConditions.mapped===false&&!fallbackTarget)return {ok:false,reason:'아이템 장착 조건은 원문 검토가 필요하며, 런타임 대체 대상 규칙이 없습니다.'};
     }
-    if(card.type==='enchant'&&(card.effectExecutionStatus==='candidate-only'||card.effectVerificationStatus==='pattern_candidate'))
-      return {ok:false,reason:'인챈트 효과는 SQLite 후보 추출만 완료됐으며 매뉴얼·카드별 테스트로 검증되기 전까지 실행을 차단합니다.'};
-    if(card.type==='enchant'&&(!Number.isInteger(Number(card.slotIndex))||Number(card.slotIndex)<1||!['own','enemy'].includes(card.slotOwner)))
-      return {ok:false,reason:'인챈트의 원본 슬롯 위치가 확인되지 않아 발동할 수 없습니다.'};
-    if(card.type==='spell'){
+    if(card.type==='enchant'&&card.runtimeEffectDisposition!=='fallback_noop'&&
+        (!Number.isInteger(Number(card.slotIndex))||Number(card.slotIndex)<1||!['own','enemy'].includes(card.slotOwner)))
+      return {ok:false,reason:'인챈트 슬롯 위치가 없고 안전한 효과 fallback도 지정되지 않았습니다.'};
+    if(card.type==='spell'&&card.runtimeEffectDisposition!=='fallback_noop'){
       const effect=card.effect||{};
       if(!card.triggerTiming)return {ok:false,reason:'마법의 원본 발동 시점 정보가 누락되었습니다.'};
       if(card.durationTurns!=null&&(!Number.isInteger(Number(card.durationTurns))||Number(card.durationTurns)<0))return {ok:false,reason:'마법의 지속 턴 정보가 올바르지 않습니다.'};
@@ -280,6 +655,8 @@
         ai: makePlayer('ai', 'AI 상대', shuffle(aiDeck, rng), true)
       },
       log: [],
+      combatEventQueue: createCombatEventQueue(),
+      combatEventDispatcher: createCoreCombatEventDispatcher(),
       settings: { difficulty: opts.difficulty || 'normal', deckSize: playerDeck.length },
       rng
     };
@@ -290,30 +667,57 @@
   }
 
   function buildStarterDeck(cards, faction) {
-    const pool = cards.filter(c => c.faction === faction || c.faction === 'neutral');
-    const source = pool.length >= 20 ? pool : cards;
-    const lands = source.filter(c => c.type === 'land');
-    const units = source.filter(c => c.type === 'unit');
-    const others = source.filter(c => c.type === 'item' || c.type === 'spell' || c.type === 'enchant');
-    const result = [];
-    const used = new Map();
-    function addRepeated(list, wanted) {
-      if (!list.length) return;
-      let added = 0, cursor = 0;
-      while (added < wanted && cursor < list.length * 5) {
-        const card = list[cursor++ % list.length];
-        const limit = Math.max(1, Math.min(4, Number(card.deckLimit) || 4));
-        const count = used.get(card.id) || 0;
-        if (count < limit) { result.push(clone(card)); used.set(card.id, count + 1); added++; }
+    const all=Array.isArray(cards)?cards:[];
+    const factionPool=all.filter(c=>c.faction===faction||c.faction==='neutral');
+    // Never put a source-unverified card into the generated starter deck.
+    // Otherwise an unusable land can satisfy the opening-hand mulligan but
+    // cannot be installed, leaving the AI with no generated souls.
+    const allPlayable=all.filter(c=>validateCardForPlay(c).ok);
+    const factionPlayable=factionPool.filter(c=>validateCardForPlay(c).ok);
+    const source=factionPlayable.length>=20&&factionPlayable.some(c=>c.type==='land')
+      ?factionPlayable:allPlayable;
+    const landInstallScore=card=>card.landInstallCostKnown===true
+      ?sumCost(card.landInstallCost):Number.MAX_SAFE_INTEGER;
+    const lands=source.filter(c=>c.type==='land').sort((a,b)=>
+      (Number(a.requiredLP||0)-Number(b.requiredLP||0))||
+      (landInstallScore(a)-landInstallScore(b)));
+    const offFactionCost=card=>Object.entries(runtimeCostFor(card)||{}).reduce((sum,[color,amount])=>
+      sum+(color!==faction&&color!=='neutral'&&color!=='bonus'?(Number(amount)||0):0),0);
+    const units=source.filter(c=>c.type==='unit').sort((a,b)=>
+      (offFactionCost(a)-offFactionCost(b))||
+      (sumCost(runtimeCostFor(a))-sumCost(runtimeCostFor(b)))||
+      ((Number(b.ap||0)+Number(b.dp||0)+Number(b.hp||0))-
+       (Number(a.ap||0)+Number(a.dp||0)+Number(a.hp||0))));
+    const others=source.filter(c=>c.type==='item'||c.type==='spell'||c.type==='enchant')
+      .sort((a,b)=>(offFactionCost(a)-offFactionCost(b))||
+        (sumCost(runtimeCostFor(a))-sumCost(runtimeCostFor(b))));
+    if(!lands.length)throw new Error('기본 덱을 만들 수 있는 합법적인 지형 카드가 없습니다.');
+    const result=[],used=new Map();
+    function addRepeated(list,wanted){
+      if(!list.length)return;
+      let added=0,cursor=0;
+      while(added<wanted&&cursor<list.length*5){
+        const card=list[cursor++%list.length];
+        const limit=Math.max(1,Math.min(4,Number(card.deckLimit)||4));
+        const count=used.get(card.id)||0;
+        if(count<limit){result.push(clone(card));used.set(card.id,count+1);added++;}
       }
     }
-    addRepeated(lands, 10);
-    addRepeated(units, 24);
-    addRepeated(others, 16);
-    if (result.length !== 50) throw new Error('합법적인 50장 기본 덱을 구성할 카드가 부족합니다.');
+    addRepeated(lands,10);
+    addRepeated(units,24);
+    addRepeated(others,16);
+    // If the legal land pool cannot supply ten copies, fill the remaining
+    // slots with other legal cards instead of failing or adding blocked cards.
+    const filler=units.concat(others,lands);
+    while(result.length<50){
+      const before=result.length;
+      addRepeated(filler,50-result.length);
+      if(result.length===before)break;
+    }
+    if(result.length!==50)throw new Error(
+      '합법적인 카드만으로 50장 기본 덱을 구성할 수 없습니다. 현재 '+result.length+'장입니다.');
     return result;
   }
-
   function player(state, id) { return state.players[id]; }
   function opponentId(id) { return id === 'player' ? 'ai' : 'player'; }
   function addLog(state, text) {
@@ -338,6 +742,18 @@
     return true;
   }
 
+  function concede(state, id) {
+    if (!state || state.status !== 'playing' || !state.players ||
+        (id !== 'player' && id !== 'ai') || !state.players[id] ||
+        !state.players[opponentId(id)]) return false;
+    const winnerId = opponentId(id);
+    state.status = 'finished';
+    state.result = winnerId;
+    addLog(state, player(state, id).name + '이(가) 항복했습니다. ' +
+      player(state, winnerId).name + ' 승리!');
+    return true;
+  }
+
   function drawToSix(state, id) {
     const p = player(state, id);
     while (p.hand.length < 6 && p.deck.length > 0) {
@@ -350,17 +766,28 @@
   function drawInitialHand(state, id) {
     const p = player(state,id);
     const rng = state.rng || Math.random;
+    const hasLand = hand => hand.some(card => card && card.type === 'land');
     let attempts = 0;
     do {
       p.hand = [];
       while (p.hand.length < 6 && p.deck.length) p.hand.push(p.deck.shift());
-      if (p.hand.some(card => card.type === 'land')) break;
+      if (hasLand(p.hand)) break;
+      if (!p.deck.some(card => card && card.type === 'land')) break;
+      // Manual rule: return the six cards, shuffle the whole deck, and deal
+      // six again until the opening hand contains any land (not only a free land).
       p.deck = shuffle(p.deck.concat(p.hand),rng);
       p.hand = [];
       attempts++;
-    } while (attempts < 20 && p.deck.some(card => card.type === 'land'));
+    } while (attempts < 20);
+    // Deterministic fallback for a degenerate RNG: preserve the manual land
+    // guarantee and still complete a six-card opening hand.
+    if (!hasLand(p.hand) && p.deck.some(card => card && card.type === 'land')) {
+      const index = p.deck.findIndex(card => card && card.type === 'land');
+      if (index >= 0) p.hand.push(p.deck.splice(index,1)[0]);
+      while (p.hand.length < 6 && p.deck.length) p.hand.push(p.deck.shift());
+    }
     if (!p.hand.length) drawToSix(state,id);
-    if (!p.hand.some(card => card.type === 'land') && p.deck.length === 0) checkWinner(state);
+    if (!hasLand(p.hand) && p.deck.length === 0) checkWinner(state);
     return p.hand.length;
   }
 
@@ -374,6 +801,7 @@
     p.lp = Math.max(0, Number(p.lp || 0)) + 1;
     p.soulSpent = 0;
     p.soulPool = generateSoulPool(p.lands);
+    const defendingTurn = id !== state.attackerId;
     p._state = state;
     p.units.forEach(unit => {
       unit.canAttack = true;
@@ -383,6 +811,11 @@
       unit.hp = Math.min(unit.hp, unit.maxHp + (unit.itemHP || 0));
     });
     if (state.status !== 'finished') payNeutralUpkeep(p);
+    // Defensive bonus is available for cards/deployment, but never subsidizes existing NCS upkeep.
+    if (state.status !== 'finished' && defendingTurn) {
+      p.soulPool.neutral += 1;
+      addLog(state, p.name + '이(가) 방어 턴 보상으로 무속성 소울 1개를 받았습니다.');
+    }
     if (state.status !== 'finished') p.unitDeployLimit = Math.floor(poolTotal(p.soulPool) + 1e-9);
     if (state.status !== 'finished') drawToSix(state, id);
     if (state.status !== 'finished') {
@@ -435,12 +868,12 @@
     const next = clonePool(pool);
     let coloredRequired = 0;
     for (const [color, amount] of Object.entries(requirements)) {
-      if (color === 'neutral' || amount <= 0) continue;
+      if (color === 'neutral' || color === 'bonus' || amount <= 0) continue;
       if (Number(next.colored[color] || 0) < amount) return null;
       next.colored[color] -= amount;
       coloredRequired += amount;
     }
-    const genericRequired = Number(requirements.neutral || 0);
+    const genericRequired = Number(requirements.neutral || 0) + Number(requirements.bonus || 0);
     if (poolTotal(next) < genericRequired) return null;
     // FM1's neutral bead is a generic soul requirement; it may be paid from any generated soul.
     let left = genericRequired;
@@ -469,10 +902,36 @@
     return true;
   }
 
+  function sourceManualNeutralUpkeep(unit) {
+    const raw = unit && ((unit.sourceFields && unit.sourceFields.RequireSoul) || unit.soulCostRaw);
+    if (typeof raw !== 'string' || !/^\d+$/.test(raw) || raw.length % 4 !== 0) return null;
+    let amount = 0;
+    for (let offset = 0; offset < raw.length; offset += 4) {
+      const code = raw.slice(offset, offset + 2);
+      const count = Number(raw.slice(offset + 2, offset + 4));
+      // RequireSoul MU(81) is the inferred source crosswalk to the Manual's
+      // colorless bead. NCS(82) and BONUS(83) are separate unresolved tokens.
+      if (code === '81') amount += count;
+    }
+    return amount;
+  }
+
   function unitNeutralUpkeep(unit) {
-    if (!unit || unit.costKnown !== true || unit.costMapped !== true) return Number.POSITIVE_INFINITY;
-    const parsed = readCost(unit.cost);
-    return parsed.ok ? Number(parsed.cost.neutral || 0) : Number.POSITIVE_INFINITY;
+    if (!unit) return 0;
+    const sourceAmount = sourceManualNeutralUpkeep(unit);
+    if (sourceAmount !== null) return sourceAmount;
+    // Trust an explicitly versioned MU-only overlay, never a legacy NCS-based
+    // upkeep profile or the generic one-time runtime cost.
+    if (unit.runtimeUpkeepStatus === 'mu_81_manual_neutral_crosswalk_inferred' &&
+        unit.runtimeUpkeepCost && typeof unit.runtimeUpkeepCost === 'object') {
+      const parsed = readCost(unit.runtimeUpkeepCost);
+      if (parsed.ok) return Number(parsed.cost.neutral || 0);
+    }
+    if (unit.runtimeUpkeepStatus === 'manual_verified_ncs_only') return 0;
+    // RequireSoul provenance is mandatory to infer recurring MU upkeep.
+    // An unknown source must not invent a recurring charge: the card's one-time
+    // cost is already blocked by validateCardForPlay when its cost is unresolved.
+    return 0;
   }
 
   function payNeutralUpkeep(p) {
@@ -521,6 +980,7 @@
       hp: card.hp, maxHp: card.hp,
       itemAP: 0, itemDP: 0, itemHP: 0,
       tempAP: 0, tempDP: 0, tempHP: 0,
+      statusRecords: [],
       equipment: [], canAttack: true
     };
   }
@@ -557,6 +1017,12 @@
         ', 설치 소울 지불 '+costText(card.landInstallCost)+
         ', 유색 소울 +'+Object.values(output.colored).reduce((a,b)=>a+Number(b||0),0)+
         ', 무속성 소울 +'+Number(output.neutral||0)+')');
+      emitCombatEvent(state,'land_installed',{
+        ownerId,cause:'play_card',source:card,target:land,fieldIndex:p.lands.length-1,
+        snapshot:{land:snapshotCombatCard(land)},
+        payload:{requiredLP,installCost:clone(card.landInstallCost),production:clone(output)}
+      });
+      dispatchPendingCombatEvents(state);
       return {ok:true};
     }
 if (card.type === 'unit') {
@@ -564,7 +1030,7 @@ if (card.type === 'unit') {
       if (p.unitDeployedThisPhase >= p.unitDeployLimit) {
         return {ok:false,reason:'이번 준비 단계의 유닛 배치는 지형이 생성한 소울 수(' + p.unitDeployLimit + ')를 초과할 수 없습니다.'};
       }
-      if (!spendSoul(p, card.cost)) {
+      if (!spendSoul(p, runtimeCostFor(card))) {
         return {ok:false,reason:'소울이 부족해 유닛을 소환할 수 없습니다.'};
       }
       removeHand(p, instanceId);
@@ -577,22 +1043,47 @@ if (card.type === 'unit') {
       p.unitDeployedThisPhase++;
       p.playedAnyCardThisPhase = true;
       addLog(state, `${p.name}이(가) ${card.name}을(를) ${slot}번 슬롯에 소환했습니다.`);
+      emitCombatEvent(state,'unit_summoned',{
+        ownerId,cause:'play_card',source:card,target:unit,fieldIndex:slot-1,
+        snapshot:{unit:snapshotCombatUnit(unit)},
+        payload:{slotIndex:slot}
+      });
+      dispatchPendingCombatEvents(state);
       return { ok: true };
     }
     if (card.type === 'item' || card.type === 'enchant') {
+      if (card.type === 'enchant' && card.runtimeEffectDisposition === 'fallback_noop') {
+        if (!spendSoul(p,runtimeCostFor(card))) return {ok:false,reason:'인챈트 소울 지불에 실패했습니다.'};
+        const used=removeHand(p,instanceId);
+        if (used) p.graveyard.push(used);
+        p.playedAnyCardThisPhase=true;
+        addLog(state,p.name+'이(가) '+card.name+'을(를) 사용했습니다. 원본 효과는 확인 대기 중이므로 해당 효과만 결정적 무효 처리했습니다.');
+        return {ok:true,effectDisposition:'fallback_noop'};
+      }
       const targetOwner = card.type === 'enchant' && card.slotOwner === 'enemy'
         ? player(state, opponentId(ownerId))
         : card.type === 'item' && card.itemConditions && card.itemConditions.owner === 'enemy'
           ? player(state, opponentId(ownerId)) : p;
       const target = targetOwner.units.find(u => u.instanceId === targetId &&
         (card.type !== 'enchant' || Number(u.slotIndex) === Number(card.slotIndex)));
+      const allowed = Array.isArray(card.allowedUnitAbilities) ? card.allowedUnitAbilities
+        : Array.isArray(card.allowedUnitTypes) ? card.allowedUnitTypes : [];
+      const condition = card.itemConditions || {};
+      const hasKnownTargetRestriction = !!(condition.owner || condition.race || condition.affiliation ||
+        (allowed.length && !allowed.includes('만능')));
+      if (!target && card.type==='item' && card.runtimeItemConditionStatus==='fallback_any_unit' && !hasKnownTargetRestriction) {
+        if (!spendSoul(p,runtimeCostFor(card))) return {ok:false,reason:'아이템 소울 지불에 실패했습니다.'};
+        const used=removeHand(p,instanceId);
+        if (used) p.graveyard.push(used);
+        p.playedAnyCardThisPhase=true;
+        addLog(state,p.name+'이(가) '+card.name+'을(를) 사용했습니다. 미해석 장착 조건만 결정적 무효 처리했습니다.');
+        return {ok:true,effectDisposition:'fallback_noop'};
+      }
       if (!target) return { ok: false, reason: card.type === 'enchant'
         ? '원본 지정 슬롯에 대상 유닛이 없습니다.' : '장착 대상을 정확히 선택해야 합니다.' };
       if (card.type === 'enchant') {
         return { ok:false, reason:'인챈트의 발동 슬롯과 지속 턴은 원본에서 읽었지만 카드별 효과 문구를 실행 규칙으로 매핑하지 못했습니다. 임의로 장비 능력치로 바꾸지 않고 사용을 차단합니다.' };
       }
-      const allowed = Array.isArray(card.allowedUnitAbilities) ? card.allowedUnitAbilities
-        : Array.isArray(card.allowedUnitTypes) ? card.allowedUnitTypes : [];
       const targetAbilities = Array.isArray(target.unitAbilityTags) ? target.unitAbilityTags
         : [target.unitAbility || target.unitType || target.subtype || ''].filter(Boolean);
       if (allowed.length && !allowed.includes('만능') && !allowed.some(x => targetAbilities.includes(x))) {
@@ -601,7 +1092,7 @@ if (card.type === 'unit') {
       if (!itemMatchesUnit(card,target,ownerId,targetOwner.id)) {
         return {ok:false,reason:'이 아이템의 원본 종족·소속·아군/적군 장착 조건을 충족하지 않습니다.'};
       }
-      if (!spendSoul(p,card.cost)) return {ok:false,reason:'소울 지불에 실패했습니다.'};
+      if (!spendSoul(p,runtimeCostFor(card))) return {ok:false,reason:'소울 지불에 실패했습니다.'};
       const item = removeHand(p,instanceId);
       target.equipment.push(card.name);
       target.equipmentCards = target.equipmentCards || [];
@@ -617,10 +1108,25 @@ if (card.type === 'unit') {
       if (card.effect && card.effect.type === 'aura') target.aura = clone(card.effect);
       p.playedAnyCardThisPhase = true;
       addLog(state,p.name + '이(가) ' + target.name + '에게 ' + card.name + '을(를) 장착했습니다.');
+      emitCombatEvent(state,'item_equipped',{
+        ownerId,cause:'play_card',source:card,target,fieldIndex:Math.max(0,targetOwner.units.indexOf(target)),
+        snapshot:{unit:snapshotCombatUnit(target),item:snapshotCombatCard(item)},
+        payload:{targetOwnerId:targetOwner.id,apBonus,dpBonus,hpBonus,
+          grantsSpecialSkill:card.grantsSpecialSkill||null}
+      });
+      dispatchPendingCombatEvents(state);
       return {ok:true};
     }
     if (card.type === 'spell') {
-      if (p.spells.length >= 5) return {ok:false,reason:'마법 필드는 최대 5개 슬롯까지 사용할 수 있습니다.'};
+      if (card.runtimeEffectDisposition==='fallback_noop' || !card.effect || !card.effect.type) {
+        if (!spendSoul(p,runtimeCostFor(card))) return {ok:false,reason:'마법 소울 지불에 실패했습니다.'};
+        const used=removeHand(p,instanceId);
+        if (used) p.graveyard.push(used);
+        p.playedAnyCardThisPhase=true;
+        addLog(state,p.name+'이(가) '+card.name+'을(를) 사용했습니다. 원본 효과를 실행 규칙으로 확정하지 못해 해당 효과만 결정적 무효 처리했습니다.');
+        return {ok:true,effectDisposition:'fallback_noop'};
+      }
+      if (p.spells.length >= 5) return {ok:false,reason:'마법 필드는 최대 5개 슬롯까지 사용할 수 없습니다.'};
       const effect = card.effect || {};
       const other = player(state, opponentId(ownerId));
       const targetOwner = effect.target === 'ownUnit' ? p : other;
@@ -630,7 +1136,7 @@ if (card.type === 'unit') {
       if (['ownUnit','enemyUnit'].includes(effect.target) && !target) {
         return { ok: false, reason: '마법 효과의 정확한 대상 유닛을 선택해야 합니다.' };
       }
-      if (!spendSoul(p, card.cost)) return { ok: false, reason: '소울 지불에 실패했습니다.' };
+      if (!spendSoul(p, runtimeCostFor(card))) return { ok: false, reason: '소울 지불에 실패했습니다.' };
       const spell = removeHand(p, instanceId);
       p.playedAnyCardThisPhase = true;
       spell.instanceId = spell.instanceId || uid('spell');
@@ -638,6 +1144,13 @@ if (card.type === 'unit') {
       spell.selectedTargetId = target ? target.instanceId : null;
       p.spells.push(spell);
       addLog(state, p.name + '이(가) 마법 ' + card.name + '을(를) ' + spell.slotIndex + '번 마법 슬롯에 배치했습니다.');
+      emitCombatEvent(state,'spell_queued',{
+        ownerId,cause:'play_card',source:spell,target,fieldIndex:spell.slotIndex-1,
+        snapshot:{spell:snapshotCombatCard(spell),target:target?snapshotCombatUnit(target):null},
+        payload:{slotIndex:spell.slotIndex,triggerTiming:spell.triggerTiming||'',
+          targetOwnerId:target?targetOwner.id:null,targetInstanceId:target?target.instanceId:null}
+      });
+      dispatchPendingCombatEvents(state);
       return { ok: true };
     }
     return { ok: false, reason: '지원하지 않는 카드 종류입니다.' };
@@ -679,7 +1192,7 @@ if (card.type === 'unit') {
     if (effect.type === 'damage' && target) {
       const targetOwner = effect.target === 'ownUnit' ? owner : enemy;
       changeUnitStat(target,'hp',-amount);
-      if (target.hp <= 0 && statMarker(target,'hp') !== '*' && statMarker(target,'hp') !== '★') destroyUnit(state,targetOwner,target);
+      if (target.hp <= 0 && statMarker(target,'hp') !== '*' && statMarker(target,'hp') !== '★') destroyUnit(state,targetOwner,target,{cause:'effect'});
     } else if (effect.type === 'buff' && target) {
       changeUnitStat(target,'ap',Number(effect.ap || 0));
       changeUnitStat(target,'dp',Number(effect.dp || 0));
@@ -696,37 +1209,61 @@ if (card.type === 'unit') {
     } else if (effect.type === 'drain' && target) {
       const targetOwner = effect.target === 'ownUnit' ? owner : enemy;
       changeUnitStat(target,'hp',-amount);
-      if (target.hp <= 0 && statMarker(target,'hp') !== '*' && statMarker(target,'hp') !== '★') destroyUnit(state,targetOwner,target);
+      if (target.hp <= 0 && statMarker(target,'hp') !== '*' && statMarker(target,'hp') !== '★') destroyUnit(state,targetOwner,target,{cause:'effect'});
       const wounded = owner.units.slice().sort((a, b) => a.hp - b.hp)[0];
       if (wounded) changeUnitStat(wounded,'hp',amount);
     }
+    dispatchPendingCombatEvents(state);
   }
 
-  function destroyUnit(state, owner, unit) {
+  function transferCardBetweenZones(source, destination, cardOrInstanceId, options) {
+    if (!Array.isArray(source) || !Array.isArray(destination) || source === destination) return {ok:false,reason:'invalid_zones',card:null,sourceIndex:-1};
+    const index = typeof cardOrInstanceId === 'string' ? source.findIndex(card => card && card.instanceId === cardOrInstanceId) : source.indexOf(cardOrInstanceId);
+    if (index < 0) return {ok:false,reason:'card_not_in_source',card:null,sourceIndex:-1};
+    const maxSize = options && options.maxDestinationSize != null ? Number(options.maxDestinationSize) : Infinity;
+    if (!(maxSize >= 0) || destination.length >= maxSize) return {ok:false,reason:'destination_full',card:null,sourceIndex:index};
+    const card=source[index]; source.splice(index,1); destination.push(card);
+    return {ok:true,reason:null,card,sourceIndex:index};
+  }
+
+  function destroyUnit(state, owner, unit, eventContext) {
     const idx = owner.units.findIndex(u => u.instanceId === unit.instanceId);
     if (idx >= 0) {
-      const [gone] = owner.units.splice(idx,1);
+      const before = snapshotCombatUnit(unit);
+      const transfer = transferCardBetweenZones(owner.units,owner.graveyard,unit.instanceId);
+      if (!transfer.ok) return;
+      const gone = transfer.card;
+      const context = eventContext && typeof eventContext === 'object' ? eventContext : {};
+      emitCombatEvent(state, 'unit_destroyed', {
+        ownerId: owner.id,
+        cause: context.cause || 'effect',
+        source: context.source || null,
+        target: gone,
+        fieldIndex: Number.isInteger(Number(gone.slotIndex)) && Number(gone.slotIndex) > 0 ? Number(gone.slotIndex) - 1 : idx,
+        snapshot: { unit: before, equipment: (gone.equipmentCards || []).map(item => ({instanceId:item.instanceId||null,cardId:item.cardId||item.id||null,name:item.name||null})) },
+        payload: { equipmentCount: (gone.equipmentCards || []).length }
+      });
       (gone.equipmentCards || []).forEach(item => owner.graveyard.push(item));
-      owner.graveyard.push(gone);
       addLog(state,owner.name + '의 ' + gone.name + '이(가) 파괴되었습니다. 장착 아이템도 함께 소멸했습니다.');
-      const destructionSkill2=normalizeSpecialSkill2ForEngine(gone);
-      if (destructionSkill2 === '헌신방어') {
-        // The unit now occupying the destroyed unit's field position is the
-        // "next" friendly unit. The benefit is temporary for this battle.
-        const nextUnit=owner.units[idx]||null;
-        if (nextUnit) {
-          changeUnitStat(nextUnit,'ap',1);
-          changeUnitStat(nextUnit,'dp',1);
-          changeUnitStat(nextUnit,'hp',1);
-          addLog(state,gone.name+'의 헌신방어! 다음 아군 유닛의 공·방·체가 각각 1 증가했습니다.');
+      if (!state.combatEventDispatcher || state.combatEventDispatcher.coreSkill2Handlers !== true) {
+        const destructionSkill2=normalizeSpecialSkill2ForEngine(gone);
+        if (destructionSkill2 === '헌신방어') {
+          // Compatibility path for isolated test/custom states without the core dispatcher.
+          const nextUnit=findNextFriendlyFieldUnit(owner,Number(gone.slotIndex)-1,idx);
+          if (nextUnit) {
+            changeUnitStat(nextUnit,'ap',1);
+            changeUnitStat(nextUnit,'dp',1);
+            changeUnitStat(nextUnit,'hp',1);
+            addLog(state,gone.name+'의 헌신방어! 다음 아군 유닛의 공·방·체가 각각 1 증가했습니다.');
+          }
+        } else if (destructionSkill2 === '강한헌신방어') {
+          owner.units.forEach(ally=>{
+            changeUnitStat(ally,'ap',1);
+            changeUnitStat(ally,'dp',1);
+            changeUnitStat(ally,'hp',1);
+          });
+          if (owner.units.length) addLog(state,gone.name+'의 강한헌신방어! 남은 아군 유닛 전체의 공·방·체가 각각 1 증가했습니다.');
         }
-      } else if (destructionSkill2 === '강한헌신방어') {
-        owner.units.forEach(ally=>{
-          changeUnitStat(ally,'ap',1);
-          changeUnitStat(ally,'dp',1);
-          changeUnitStat(ally,'hp',1);
-        });
-        if (owner.units.length) addLog(state,gone.name+'의 강한헌신방어! 남은 아군 유닛 전체의 공·방·체가 각각 1 증가했습니다.');
       }
     }
   }
@@ -788,12 +1325,39 @@ if (card.type === 'unit') {
     };
   }
 
+  function expectedStatPower(unit, stat) {
+    const base = totalPower(unit, stat);
+    const tech = unit.coinTech && unit.coinTech.stats && unit.coinTech.stats[stat];
+    let value = base;
+    if (tech && Array.isArray(tech.coin) && tech.coin.length) {
+      for (const modifier of tech.coin) {
+        const expectedHeads = Math.max(0, Number(modifier.tosses || 0)) * 0.5;
+        const delta = Number(modifier.multiplier || 1) * expectedHeads;
+        if (modifier.operation === 'subtract') value -= delta;
+        else if (modifier.operation === 'multiply') value *= delta;
+        else if (modifier.operation === 'set') value = delta;
+        else value += delta;
+      }
+    } else {
+      const legacy = unit.coin || {};
+      value += Math.max(0, Number(legacy[stat + 'Count'] || 0)) * Number(legacy[stat + 'Value'] || 0) * 0.5;
+    }
+    const marker = statMarker(unit, stat);
+    if (marker === '*' || marker === '★') return base;
+    if ((marker === '▲' || marker === '△') && value < base) value = base;
+    if ((marker === '▼' || marker === '▽') && value > base) value = base;
+    return value;
+  }
+
   function chooseBlocker(attacker, defenders, rng) {
     if (!defenders.length) return null;
-    const attackEstimate = totalPower(attacker, 'ap') + (attacker.coin?.apCount || 0) * (attacker.coin?.apValue || 0) * 0.5;
+    // AI estimates use the same source-backed AP/DP coin profile as combat.
+    // Expected coin outcomes are an AI heuristic; the combat engine still
+    // resolves the exact shared toss profile at battle time.
+    const attackEstimate = expectedStatPower(attacker, 'ap');
     let best = defenders[0], bestScore = Infinity;
     for (const defender of defenders) {
-      const defenseEstimate = totalPower(defender, 'dp') + (defender.coin?.dpCount || 0) * (defender.coin?.dpValue || 0) * 0.5;
+      const defenseEstimate = expectedStatPower(defender, 'dp');
       const expectedDamage = Math.max(0, attackEstimate - defenseEstimate);
       const killPenalty = expectedDamage >= defender.hp ? -100 : 0;
       const score = Math.abs(defender.hp - expectedDamage) + killPenalty + (totalPower(defender, 'ap') * 0.1);
@@ -852,11 +1416,23 @@ if (card.type === 'unit') {
       const damage=unitSoulCount(attacker);
       if(!Number.isFinite(damage)){
         addLog(state,attacker.name+'의 소환 소울 비용이 확인되지 않아 직접 공격을 처리하지 않았습니다.');
+        emitCombatEvent(state, 'unit_attack_resolved', {
+          ownerId: attackingOwner.id, cause: 'combat', source: attacker,
+          snapshot: { attacker: snapshotCombatUnit(attacker), defender: null },
+          payload: { damage: 0, direct: true, invalidCost: true }
+        });
+        dispatchPendingCombatEvents(state);
         return {damage:0,direct:true,invalidCost:true};
       }
       const removed=Math.min(damage,defendingOwner.deck.length);
       defendingOwner.deck.splice(0,removed);
       addLog(state,attacker.name+'의 직접 공격! 상대 덱에서 '+removed+'장을 파괴했습니다.');
+      emitCombatEvent(state, 'unit_attack_resolved', {
+        ownerId: attackingOwner.id, cause: 'combat', source: attacker,
+        snapshot: { attacker: snapshotCombatUnit(attacker), defender: null },
+        payload: { damage: removed, direct: true, invalidCost: false }
+      });
+      dispatchPendingCombatEvents(state);
       checkWinner(state);return {damage:removed,direct:true};
     }
     const defenderStats=rolledStats.defender||rollCombatStats(defender,rng),defenseRoll=defenderStats.dp;
@@ -890,7 +1466,11 @@ if (card.type === 'unit') {
     else if(skill.includes('관통공격')){
       const dpBefore=Number(defenseRoll.value||0),requested=Math.min(Math.max(0,dpBefore),Math.max(0,attackPower));
       const applied=requested>0&&change(defender,defenderStats,'dp',-requested)?requested:0;
-      damage=Math.max(0,attackPower-applied);
+      // AP overflows to HP only after positive DP is actually reduced to zero.
+      // A Manual no-decrease marker leaves positive DP intact and absorbs the
+      // attempted piercing step; it must not turn the blocked DP damage into HP damage.
+      const dpBroken=dpBefore<=0||(applied>0&&applied>=dpBefore);
+      damage=dpBroken?Math.max(0,attackPower-applied):0;
     }else if(skill.includes('치명공격')&&canAffectDefender)damage=Math.max(0,Number(defender.hp||0)-1);
     else if(skill.includes('돌진공격'))damage=Math.max(0,attackPower+Number(attackerStats.dp?.value||0)-Number(defenseRoll.value||0));
     else if(skill.includes('광분공격'))damage=Math.max(0,attackPower+frenzyBonus-Number(defenseRoll.value||0));
@@ -917,33 +1497,59 @@ if (card.type === 'unit') {
     }
     if(canAffectDefender&&skill.includes('방어전환공격')&&Number(defenseRoll.value||0)>0)
       set(defender,defenderStats,'dp',-Math.abs(Number(defenseRoll.value||0)));
-    // Skill2 is a defensive, separate rule channel. These exact card-source
-    // effects modify incoming damage before HP is reduced.
-    if(defenderSkill2==='기선제압'&&attackerLevel<=defenderLevel)
-      damage=Math.max(0,Number(damage||0)-1);
-    if(defenderSkill2==='홀리오오라'&&Number(attackRoll.value||0)<=
-        Math.floor((Number(defenseRoll.value||0)+Number(defender.hp||0))/2))
-      damage=0;
-    if(defenderSkill2==='얼라이디펜스'&&String(defender.affiliation||'')) {
-      const allies=defendingOwner.units.filter(unit=>unit.instanceId!==defender.instanceId&&
-        String(unit.affiliation||'')===String(defender.affiliation)).length;
-      damage=Math.max(0,Number(damage||0)-allies);
-    }
-    if(defenderSkill2==='레이셜디펜스'&&String(defender.race||'')) {
-      const allies=defendingOwner.units.filter(unit=>unit.instanceId!==defender.instanceId&&
-        String(unit.race||'')===String(defender.race)).length;
-      damage=Math.max(0,Number(damage||0)-allies);
-    }
-    if(defenderSkill2==='프레셔') {
-      const emptySlots=Math.max(0,5-defendingOwner.units.length);
-      damage=Math.max(0,Number(damage||0)-Math.floor(emptySlots/2));
+    // All source-verified Skill2 defensive rules use the production
+    // pre-damage event. Non-production/custom test states retain the guarded
+    // compatibility implementation below.
+    if (state.combatEventDispatcher && state.combatEventDispatcher.coreSkill2Handlers) {
+      const modifierEvent = createCombatEvent('unit_damage_prevention_requested',{
+        ownerId:defendingOwner.id,cause:'combat',source:attacker,target:defender,
+        snapshot:{unit:snapshotCombatUnit(defender),attacker:snapshotCombatUnit(attacker)},
+        payload:{requestedDamage:Number(damage||0),attackAP:Number(attackRoll.value||0),
+          defenderDP:Number(defenseRoll.value||0),defenderCurrentHP:Number(defender.hp||0),
+          attackerLevel,defenderLevel,defenderOwnerId:defendingOwner.id}
+      });
+      const modifiers = state.combatEventDispatcher.dispatch(modifierEvent,{state,players:state.players});
+      for (const item of modifiers) {
+        const result = item.result || {};
+        if (result.damagePrevented === true) damage=0;
+        else if (Number(result.damageReduction||0)>0)
+          damage=Math.max(0,Number(damage||0)-Number(result.damageReduction||0));
+      }
+    } else {
+      if(defenderSkill2==='기선제압'&&attackerLevel<=defenderLevel)
+        damage=Math.max(0,Number(damage||0)-1);
+      if(defenderSkill2==='홀리오오라'&&Number(attackRoll.value||0)<=
+          Math.floor((Number(defenseRoll.value||0)+Number(defender.hp||0))/2))
+        damage=0;
+      if(defenderSkill2==='얼라이디펜스'&&String(defender.affiliation||'')) {
+        const allies=defendingOwner.units.filter(unit=>unit.instanceId!==defender.instanceId&&
+          String(unit.affiliation||'')===String(defender.affiliation)).length;
+        damage=Math.max(0,Number(damage||0)-allies);
+      }
+      if(defenderSkill2==='레이셜디펜스'&&String(defender.race||'')) {
+        const allies=defendingOwner.units.filter(unit=>unit.instanceId!==defender.instanceId&&
+          String(unit.race||'')===String(defender.race)).length;
+        damage=Math.max(0,Number(damage||0)-allies);
+      }
+      if(defenderSkill2==='프레셔') {
+        const emptySlots=Math.max(0,5-defendingOwner.units.length);
+        damage=Math.max(0,Number(damage||0)-Math.floor(emptySlots/2));
+      }
     }
     const amount=Math.min(Math.max(0,Number(defender.hp||0)),Math.max(0,Number(damage||0)));
     const actual=amount>0&&change(defender,defenderStats,'hp',-amount)?amount:0;
     // Wrath converts actual HP lost while defending into AP immediately, so
     // it is available to the defender's retaliation in this same battle slot.
-    if(defenderSkill2==='격노'&&actual>0&&Number(defender.hp||0)>0)
+    if (state.combatEventDispatcher && state.combatEventDispatcher.coreSkill2Handlers) {
+      const damageEvent=createCombatEvent('unit_hp_damage_applied',{
+        ownerId:defendingOwner.id,cause:'combat',source:attacker,target:defender,
+        snapshot:{unit:snapshotCombatUnit(defender),attacker:snapshotCombatUnit(attacker)},
+        payload:{actualDamage:actual}
+      });
+      state.combatEventDispatcher.dispatch(damageEvent,{state,players:state.players});
+    } else if(defenderSkill2==='격노'&&actual>0&&Number(defender.hp||0)>0) {
       change(defender,defenderStats,'ap',actual);
+    }
     if(skill.includes('흡혈공격')&&actual>0)change(attacker,attackerStats,'hp',Math.ceil(actual/2));
     if(skill.includes('은폐공격'))change(attacker,attackerStats,'dp',1);
     if(canAffectDefender&&skill.includes('조롱')&&defender.hp>1){
@@ -951,10 +1557,18 @@ if (card.type === 'unit') {
       change(defender,defenderStats,'hp',-lost);change(defender,defenderStats,'ap',lost);
     }
     if(defender.hp<=0&&!['*','★','▲','△'].includes(statMarker(defender,'hp'))){
-      destroyUnit(state,defendingOwner,defender);
+      destroyUnit(state,defendingOwner,defender,{cause:'combat',source:attacker});
       addLog(state,attacker.name+'의 '+(skill||'일반 공격')+'으로 '+defender.name+'이(가) 파괴되었습니다. ('+actual+' 피해)');
     }else addLog(state,attacker.name+'의 '+(skill||'일반 공격')+' → '+defender.name+' ('+actual+' 피해)');
-    return {damage:actual,defenderAlive:defendingOwner.units.includes(defender)};
+    const defenderAlive = defendingOwner.units.includes(defender);
+    emitCombatEvent(state, 'unit_attack_resolved', {
+      ownerId: attackingOwner.id, cause: 'combat', source: attacker, target: defender,
+      fieldIndex: Math.max(0, Number(defender.slotIndex ?? defendingOwner.units.indexOf(defender))),
+      snapshot: { attacker: snapshotCombatUnit(attacker), defender: snapshotCombatUnit(defender) },
+      payload: { damage: actual, direct: false, defenderAlive }
+    });
+    dispatchPendingCombatEvents(state);
+    return {damage:actual,defenderAlive};
   }
 
   function resolveBattle(state) {
@@ -987,6 +1601,8 @@ if (card.type === 'unit') {
         attackingUnit.hp = attackerStats.hp.value;
         if (attackingUnit.hp <= 0) {
           destroyUnit(state,attacker,attackingUnit);
+          // Resolve destruction-triggered abilities before the next slot is rolled.
+          dispatchPendingCombatEvents(state);
           continue;
         }
       }
@@ -994,6 +1610,8 @@ if (card.type === 'unit') {
         defendingUnit.hp = defenderStats.hp.value;
         if (defendingUnit.hp <= 0) {
           destroyUnit(state,defender,defendingUnit);
+          // Resolve the defender's destruction triggers before the direct attack proceeds.
+          dispatchPendingCombatEvents(state);
           defendingUnit = null;
           defenderStats = null;
         }
@@ -1056,10 +1674,70 @@ if (card.type === 'unit') {
 
   function bestSpellTarget(state, ownerId, card) {
     const effect = card.effect || {};
-    const targetOwner = effect.target === 'ownUnit' ? player(state, ownerId) : player(state, opponentId(ownerId));
-    if (!targetOwner.units.length) return null;
-    if (effect.target === 'ownUnit') return targetOwner.units.slice().sort((a, b) => totalPower(b, 'ap') - totalPower(a, 'ap'))[0];
-    return targetOwner.units.slice().sort((a, b) => a.hp - b.hp)[0];
+    const ownTarget = effect.target === 'ownUnit';
+    const targetOwner = ownTarget ? player(state, ownerId) : player(state, opponentId(ownerId));
+    const units = (targetOwner.units || []).filter(unit => Number(unit.hp || 0) > 0);
+    if (!units.length) return null;
+    const amount = Math.max(0, Number(effect.amount || 0));
+
+    if (effect.type === 'heal' && ownTarget) {
+      return units.filter(unit => Number(unit.hp || 0) < Number(unit.maxHp || 0) + Number(unit.itemHP || 0) + Number(unit.tempHP || 0) &&
+        canChangeStat(unit, 'hp', 1))
+        .sort((a, b) => {
+          const missingA = Number(a.maxHp || 0) + Number(a.itemHP || 0) + Number(a.tempHP || 0) - Number(a.hp || 0);
+          const missingB = Number(b.maxHp || 0) + Number(b.itemHP || 0) + Number(b.tempHP || 0) - Number(b.hp || 0);
+          return missingB - missingA || totalPower(b, 'ap') - totalPower(a, 'ap');
+        })[0] || null;
+    }
+
+    if ((effect.type === 'damage' || effect.type === 'drain') && !ownTarget) {
+      return units.filter(unit => canChangeStat(unit, 'hp', -1))
+        .sort((a, b) => {
+          const lethalA = amount >= Number(a.hp || 0) ? 1 : 0;
+          const lethalB = amount >= Number(b.hp || 0) ? 1 : 0;
+          return lethalB - lethalA || Number(a.hp || 0) - Number(b.hp || 0) ||
+            totalPower(b, 'ap') - totalPower(a, 'ap');
+        })[0] || null;
+    }
+
+    if (effect.type === 'buff' && ownTarget) {
+      const ap = Number(effect.ap || 0), dp = Number(effect.dp || 0), hp = Number(effect.hp || 0);
+      const value = unit => (ap && canChangeStat(unit, 'ap', Math.sign(ap)) ? Math.abs(ap) : 0) +
+        (dp && canChangeStat(unit, 'dp', Math.sign(dp)) ? Math.abs(dp) : 0) +
+        (hp && canChangeStat(unit, 'hp', Math.sign(hp)) ? Math.abs(hp) : 0);
+      // Do not select a friendly unit when every requested stat change is
+      // blocked by its Manual marker. That would spend the spell for no effect.
+      return units.filter(unit => value(unit) > 0)
+        .sort((a, b) => value(b) - value(a) || totalPower(b, 'ap') - totalPower(a, 'ap'))[0] || null;
+    }
+
+    if (ownTarget) return units.slice().sort((a, b) => totalPower(b, 'ap') - totalPower(a, 'ap'))[0];
+    return units.slice().sort((a, b) => Number(a.hp || 0) - Number(b.hp || 0) ||
+      totalPower(b, 'ap') - totalPower(a, 'ap'))[0];
+  }
+  
+  function aiSpellPriority(state, ownerId, card, target) {
+    const effect = card.effect || {};
+    const amount = Math.max(0, Number(effect.amount || 0));
+    if (effect.type === 'draw') return Math.min(3, amount || 1) * 3;
+    if (effect.type === 'mill') return Math.min(amount, player(state, opponentId(ownerId)).deck.length) * 0.35;
+    if (effect.type === 'damage' && target) {
+      return amount + (amount >= Number(target.hp || 0) ? 8 : 0) + totalPower(target, 'ap') * 0.2;
+    }
+    if (effect.type === 'drain' && target) {
+      const wounded = player(state, ownerId).units.some(unit => Number(unit.hp || 0) < Number(unit.maxHp || 0));
+      return amount + (amount >= Number(target.hp || 0) ? 8 : 0) + (wounded ? amount * 0.6 : 0);
+    }
+    if (effect.type === 'heal' && target) {
+      const missing = Math.max(0, Number(target.maxHp || 0) + Number(target.itemHP || 0) + Number(target.tempHP || 0) - Number(target.hp || 0));
+      return Math.min(amount, missing) * 1.8 + totalPower(target, 'ap') * 0.1;
+    }
+    if (effect.type === 'buff' && target) {
+      return (Number(effect.ap || 0) > 0 ? Number(effect.ap) * 1.8 : 0) +
+        (Number(effect.dp || 0) > 0 ? Number(effect.dp) * 1.2 : 0) +
+        (Number(effect.hp || 0) > 0 ? Number(effect.hp) * 0.8 : 0);
+    }
+    return 0.5;
   }
 
   function runAIPhase(state, ownerId) {
@@ -1067,8 +1745,10 @@ if (card.type === 'unit') {
     if (!ai || !ai.isAI || state.activeId !== ownerId || state.status !== 'playing') return;
     addLog(state, `${ai.name}이(가) 카드를 검토하고 있습니다.`);
     const land=ai.hand.filter(c=>c.type==='land'&&validateCardForPlay(c).ok&&
-      Number(c.requiredLP)<=Number(ai.lp||0))
-      .sort((a,b)=>Number(a.requiredLP||0)-Number(b.requiredLP||0))[0];
+      Number(c.requiredLP)<=Number(ai.lp||0)&&canPay(ai,c.landInstallCost))
+      .sort((a,b)=>
+        (Number(a.requiredLP||0)-Number(b.requiredLP||0)) ||
+        (sumCost(a.landInstallCost)-sumCost(b.landInstallCost)))[0];
     if(land)playCard(state,ownerId,land.instanceId);
 
     const maxActions = state.settings.difficulty === 'easy' ? 2 : state.settings.difficulty === 'hard' ? 8 : 5;
@@ -1077,43 +1757,73 @@ if (card.type === 'unit') {
     while (progressed && actions < maxActions && state.status === 'playing') {
       progressed = false;
       actions++;
-      const candidates = ai.hand.filter(c => c.type !== 'land' && canPay(ai, c.cost) && validateCardForPlay(c).ok && (c.type !== 'unit' || ai.unitDeployedThisPhase < ai.unitDeployLimit));
+      const candidates = ai.hand.filter(c => c.type !== 'land' && canPay(ai, runtimeCostFor(c)) && validateCardForPlay(c).ok &&
+        (c.type !== 'unit' || (ai.unitDeployedThisPhase < ai.unitDeployLimit && ai.units.length < 5)));
       const unitCandidates = candidates.filter(c => c.type === 'unit');
       const unitCard = unitCandidates.sort((a, b) => {
         if (state.settings.difficulty === 'hard') {
-          const scoreA = (a.ap + a.dp + a.hp) / Math.max(1, sumCost(a.cost));
-          const scoreB = (b.ap + b.dp + b.hp) / Math.max(1, sumCost(b.cost));
+          const scoreA = (a.ap + a.dp + a.hp) / Math.max(1, sumCost(runtimeCostFor(a)));
+          const scoreB = (b.ap + b.dp + b.hp) / Math.max(1, sumCost(runtimeCostFor(b)));
           return scoreB - scoreA;
         }
-        return (sumCost(a.cost) - sumCost(b.cost)) || (b.ap + b.hp - a.ap - a.hp);
+        return (sumCost(runtimeCostFor(a)) - sumCost(runtimeCostFor(b))) || (b.ap + b.hp - a.ap - a.hp);
       })[0];
+      const spellCard = candidates.filter(c => c.type === 'spell').map(c => ({
+        card: c, target: bestSpellTarget(state, ownerId, c)
+      })).filter(x => x.card.runtimeEffectDisposition === 'fallback_noop' ||
+        !['enemyUnit', 'ownUnit'].includes(x.card.effect?.target) || x.target)
+        .map(x => ({...x, priority:aiSpellPriority(state,ownerId,x.card,x.target)}))
+        .sort((a,b) => b.priority-a.priority ||
+          sumCost(runtimeCostFor(a.card))-sumCost(runtimeCostFor(b.card)))[0];
+
+      // A high-value spell (notably a legal lethal) should not be starved by
+      // deploying a unit first when both compete for the same preparation souls.
+      if (spellCard && spellCard.priority >= 8) {
+        const result = playCard(state, ownerId, spellCard.card.instanceId, spellCard.target?.instanceId);
+        if (result.ok) { progressed = true; continue; }
+      }
       if (unitCard) {
         const result = playCard(state, ownerId, unitCard.instanceId);
         if (result.ok) { progressed = true; continue; }
       }
-      const spellCard = candidates.filter(c => c.type === 'spell').map(c => ({ card: c, target: bestSpellTarget(state, ownerId, c) }))
-        .filter(x => !['enemyUnit', 'ownUnit'].includes(x.card.effect?.target) || x.target)
-        .sort((a, b) => Number(b.card.effect?.amount || 0) - Number(a.card.effect?.amount || 0))[0];
       if (spellCard) {
         const result = playCard(state, ownerId, spellCard.card.instanceId, spellCard.target?.instanceId);
         if (result.ok) { progressed = true; continue; }
       }
-      const equip = candidates.filter(c => c.type === 'item' &&
-        (!Array.isArray(c.allowedUnitAbilities) || !c.allowedUnitAbilities.length ||
-         c.allowedUnitAbilities.includes('만능') ||
-         ai.units.some(u => (u.unitAbilityTags || [u.unitAbility || '']).some(tag => c.allowedUnitAbilities.includes(tag)))))
-        .sort((a, b) => ((b.apBonus || 0) + (b.dpBonus || 0) + (b.hpBonus || 0)) - ((a.apBonus || 0) + (a.dpBonus || 0) + (a.hpBonus || 0)))[0];
-      if (equip && ai.units.length) {
-        const allowed = ai.units.filter(u =>
-          (!equip.allowedUnitAbilities?.length ||
-           equip.allowedUnitAbilities.includes('만능') ||
-           (u.unitAbilityTags || [u.unitAbility || '']).some(tag => equip.allowedUnitAbilities.includes(tag))) &&
-          itemMatchesUnit(equip,u,ownerId,ownerId));
-        const target = allowed.slice().sort((a, b) => totalPower(b, 'ap') - totalPower(a, 'ap'))[0];
-        if (target && playCard(state, ownerId, equip.instanceId, target.instanceId).ok) {
-          progressed = true;
+      const enchantCard = candidates.filter(c => c.type === 'enchant' &&
+        c.runtimeEffectDisposition === 'fallback_noop')
+        .sort((a,b) => sumCost(runtimeCostFor(a)) - sumCost(runtimeCostFor(b)))[0];
+      if (enchantCard) {
+        const result = playCard(state, ownerId, enchantCard.instanceId);
+        if (result.ok) { progressed = true; continue; }
+      }
+      const itemCards = candidates.filter(c => c.type === 'item')
+        .sort((a,b) =>
+          (Math.abs(Number(b.apBonus||0))+Math.abs(Number(b.dpBonus||0))+Math.abs(Number(b.hpBonus||0))) -
+          (Math.abs(Number(a.apBonus||0))+Math.abs(Number(a.dpBonus||0))+Math.abs(Number(a.hpBonus||0))));
+      for (const itemCard of itemCards) {
+        const targetOwnerId = itemCard.itemConditions && itemCard.itemConditions.owner === 'enemy'
+          ? opponentId(ownerId) : ownerId;
+        const targetOwner = player(state,targetOwnerId);
+        const allowedAbilities = Array.isArray(itemCard.allowedUnitAbilities) ? itemCard.allowedUnitAbilities
+          : Array.isArray(itemCard.allowedUnitTypes) ? itemCard.allowedUnitTypes : [];
+        const condition = itemCard.itemConditions || {};
+        const hasKnownTargetRestriction = !!(condition.owner || condition.race || condition.affiliation ||
+          (allowedAbilities.length && !allowedAbilities.includes('만능')));
+        const targets = targetOwner.units.filter(unit =>
+          (!allowedAbilities.length || allowedAbilities.includes('만능') ||
+           (unit.unitAbilityTags || [unit.unitAbility || unit.unitType || unit.subtype || ''].filter(Boolean))
+             .some(tag => allowedAbilities.includes(tag))) &&
+          itemMatchesUnit(itemCard,unit,ownerId,targetOwnerId));
+        const target = targets.slice().sort((a,b) => totalPower(b,'ap')-totalPower(a,'ap'))[0];
+        const noTargetFallback = itemCard.runtimeItemConditionStatus === 'fallback_any_unit' &&
+          !hasKnownTargetRestriction && !target;
+        if (target || noTargetFallback) {
+          const result = playCard(state,ownerId,itemCard.instanceId,target ? target.instanceId : null);
+          if (result.ok) { progressed = true; break; }
         }
       }
+      if (progressed) continue;
     }
     if (state.status === 'playing' && state.activeId === ownerId) endPhase(state, ownerId);
   }
@@ -1125,9 +1835,9 @@ if (card.type === 'unit') {
 
   const api = {
     COLORS, COLOR_NAMES, TYPE_NAMES, clone, uid, sumCost, costText, colorName,
-    newGame, buildStarterDeck, drawToSix, canPay, spendSoul, totalPower, validateCardForPlay,
+    newGame, buildStarterDeck, drawToSix, concede, canPay, spendSoul, totalPower, validateCardForPlay,
     playCard, discardCard, reshuffleHand, endPhase, resolveBattle, runAIPhase, checkWinner, cardArtClass,
-    _test: { makePlayer, beginPhase, rollStat, coinProfile, chooseBlocker, createUnit, applyEffect, resolveUnitAttack, destroyUnit, productionOf, readCost, validateCardForPlay, itemMatchesUnit, resolveSpellSlot, statMarker, canChangeStat, changeUnitStat, setUnitStat, normalizeSpecialSkillForEngine, normalizeSpecialSkill2ForEngine, SPECIAL_SKILL_RULE_KEYWORDS, SKILL2_SOURCE_RULE_NAMES }
+    _test: { makePlayer, beginPhase, rollStat, coinProfile, chooseBlocker, createUnit, createUnitStatusRecord, addUnitStatusRecord, removeUnitStatusRecords, clearUnitStatusRecords, snapshotCombatUnit, applyEffect, resolveUnitAttack, destroyUnit, productionOf, readCost, validateCardForPlay, itemMatchesUnit, resolveSpellSlot, statMarker, canChangeStat, changeUnitStat, setUnitStat, normalizeSpecialSkillForEngine, normalizeSpecialSkill2ForEngine, transferCardBetweenZones, createCombatEvent, createCombatEventQueue, createCombatEventDispatcher, createCoreCombatEventDispatcher, attachCombatEventDispatcher, dispatchPendingCombatEvents, SPECIAL_SKILL_RULE_KEYWORDS, SKILL2_SOURCE_RULE_NAMES }
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.FM = api;

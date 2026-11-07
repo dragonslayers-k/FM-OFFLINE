@@ -8,9 +8,11 @@ const file = process.argv[2];
 const mappingFile = process.argv[3];
 const effectFile = process.argv[4];
 const skill2File = process.argv[5];
+const manifestFile = process.argv[6];
 if (!file || !fs.existsSync(file) || !mappingFile || !fs.existsSync(mappingFile) ||
-    !effectFile || !fs.existsSync(effectFile) || !skill2File || !fs.existsSync(skill2File)) {
-  console.error('Usage: node validate-app-card-pack.cjs <cards.json> <card-skill-mappings.json> <card-effect-candidates.json> <skill2-catalogue.json>');
+    !effectFile || !fs.existsSync(effectFile) || !skill2File || !fs.existsSync(skill2File) ||
+    !manifestFile || !fs.existsSync(manifestFile)) {
+  console.error('Usage: node validate-app-card-pack.cjs <cards.json> <card-skill-mappings.json> <card-effect-candidates.json> <skill2-catalogue.json> <manifest.json>');
   process.exit(2);
 }
 const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -22,17 +24,21 @@ if (mappingData.schemaVersion !== 1 || !Array.isArray(mappingData.records) ||
   throw new Error('card-skill-mappings.json has an invalid schema or record count');
 }
 const effectData = JSON.parse(fs.readFileSync(effectFile, 'utf8'));
-if (effectData.schemaVersion !== 1 || !Array.isArray(effectData.records) ||
+if (effectData.schemaVersion !== 2 || !Array.isArray(effectData.records) ||
     effectData.candidateCount !== effectData.records.length ||
     effectData.clauseCount !== effectData.records.reduce((n,x)=>n+(Array.isArray(x.clauses)?x.clauses.length:0),0)) {
   throw new Error('card-effect-candidates.json has an invalid schema or record count');
 }
 const skill2Data = JSON.parse(fs.readFileSync(skill2File, 'utf8'));
+const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+if (Number(manifest.cardsCount||0)!==15350 || !manifest.sourceDatabase || manifest.sourceDatabase.releaseTag!=='fm1-carddb-29' || Number(manifest.sourceDatabase.cardCount||0)!==15350) {
+  throw new Error('manifest.json does not describe the protected DB29 15,350-card baseline');
+}
 const SKILL2_SOURCE_VERIFIED_RULES = Object.freeze({
   '기선제압': {ruleId:'skill2_tactical_initiative',evidenceNeedle:'데미지를 1 덜 받는다'},
   '헌신방어': {ruleId:'skill2_devoted_defense',evidenceNeedle:'아군 필드 다음 유닛 공방체 +1'},
   '격노': {ruleId:'skill2_frenzy_defense',evidenceNeedle:'자신의 HP가 깎인 수치만큼 AP 상승'},
-  '홀리오오라': {ruleId:'skill2_holy_aura',evidenceNeedle:'방/체 합 1/2 이하'},
+  '홀리오오라': {ruleId:'skill2_holy_aura',evidenceNeedle:'방/체 합 1/2 이하',cardVerificationNeedle:'방어시 적군 유닛의 AP가 자신 방/체 합 1/2 이하(내림)일경우에는 데미지를 입지 않는다.'},
   '얼라이디펜스': {ruleId:'skill2_alliance_defense',evidenceNeedle:'자신과 동일한 소속의 필드 유닛 수 만큼 받는 데미지 감소'},
   '레이셜디펜스': {ruleId:'skill2_racial_defense',evidenceNeedle:'자신과 동일한 종족의 필드 유닛 수 만큼 받는 데미지 감소'},
   '강한헌신방어': {ruleId:'skill2_strong_devoted_defense',evidenceNeedle:'아군 필드 유닛 전체의 공방체가 1증가한다'},
@@ -40,8 +46,9 @@ const SKILL2_SOURCE_VERIFIED_RULES = Object.freeze({
 });
 if (skill2Data.schemaVersion !== 1 || skill2Data.sourceField !== 'Skill2' ||
     !Array.isArray(skill2Data.records) || skill2Data.entryCount !== skill2Data.records.length ||
-    skill2Data.executableRuleCount !== Object.keys(SKILL2_SOURCE_VERIFIED_RULES).length) {
-  throw new Error('skill2-catalogue.json has an invalid schema or source-verified rule count');
+    !Array.isArray(skill2Data.executableRuleIds) ||
+    skill2Data.executableRuleCount !== skill2Data.executableRuleIds.length) {
+  throw new Error('skill2-catalogue.json has an invalid schema or executable rule ID count');
 }
 const skillMappingsByCard = new Map();
 for (const mapping of mappingData.records) {
@@ -96,18 +103,21 @@ for (const [key, expected] of skill2Expected) {
     throw new Error('Skill2 candidate rule provenance differs: ' + key);
   }
   const verifiedSpec=SKILL2_SOURCE_VERIFIED_RULES[actual.name];
-  if (verifiedSpec) {
+  const evidenceNeedle=verifiedSpec
+    ? (verifiedSpec.cardVerificationNeedle || verifiedSpec.evidenceNeedle) : null;
+  const refsById=new Map((actual.cardReferences||[]).map(ref=>[String(ref.cardId),ref]));
+  const expectedEvidenceIds=(actual.cardReferences||[])
+    .filter(ref=>ref.cardType==='unit' && evidenceNeedle &&
+      String(ref.description||'').includes(evidenceNeedle))
+    .map(ref=>String(ref.cardId)).sort();
+  if (verifiedSpec && expectedEvidenceIds.length) {
     if (actual.ruleId !== verifiedSpec.ruleId || actual.ruleAuthority !== 'card_source' ||
         actual.verificationStatus !== 'source_card_verified' ||
         actual.executionStatus !== 'source-card-rule-implemented' ||
         actual.trigger == null || actual.mechanic == null) {
       throw new Error('Skill2 source-verified rule metadata mismatch: ' + key);
     }
-    const refsById=new Map((actual.cardReferences||[]).map(ref=>[String(ref.cardId),ref]));
     const evidenceIds=[...(actual.evidenceCardIds||[])].map(String).sort();
-    const expectedEvidenceIds=(actual.cardReferences||[])
-      .filter(ref=>String(ref.description||'').includes(verifiedSpec.evidenceNeedle))
-      .map(ref=>String(ref.cardId)).sort();
     if (!evidenceIds.length || JSON.stringify(evidenceIds)!==JSON.stringify(expectedEvidenceIds) ||
         evidenceIds.some(id=>!refsById.has(id))) {
       throw new Error('Skill2 verified rule evidence card list is incomplete or not exact: ' + key);
@@ -125,7 +135,9 @@ for (const [key, expected] of skill2Expected) {
        actual.sourceMappingStatuses[0] === 'no_special_skill');
     if (actual.ruleId !== null || actual.ruleAuthority !== null ||
         actual.verificationStatus !== (expectedNoSkill ? 'no_special_skill' : 'extracted_unverified') ||
-        actual.executionStatus !== (expectedNoSkill ? 'no-skill' : 'disabled-until-skill2-rule-review')) {
+        actual.executionStatus !== (expectedNoSkill ? 'no-skill' : 'disabled-until-skill2-rule-review') ||
+        (actual.evidenceCardIds||[]).length !== 0 ||
+        actual.mechanic !== null || actual.trigger !== null) {
       throw new Error('Unverified Skill2 entry must remain non-executable: ' + key);
     }
   }
@@ -149,6 +161,7 @@ for (const [key, expected] of skill2Expected) {
     const rawEvidenceFields = [
       ['sourceCardUrl', rawCard.sourceCardUrl ?? null],
       ['sourceListUrl', rawCard.sourceListUrl ?? null],
+      ['cardType', rawCard.type ?? null],
       ['name', rawCard.name ?? null],
       ['text', rawCard.text || ''],
       ['description', rawCard.description || ''],
@@ -185,8 +198,10 @@ const noSkill2CardIds = new Set(skill2Data.records
   .flatMap(x => x.cardIds || []));
 skill2Audit.activeCards = activeSkill2CardIds.size;
 if (skill2Audit.sourceMappings !== skill2Data.mappingRecordCount ||
-    skill2Audit.executableRules !== Object.keys(SKILL2_SOURCE_VERIFIED_RULES).length ||
-    executableSkill2RuleIds.size !== Object.keys(SKILL2_SOURCE_VERIFIED_RULES).length ||
+    skill2Audit.executableRules !== Number(skill2Data.executableRuleCount || 0) ||
+    executableSkill2RuleIds.size !== Number(skill2Data.executableRuleCount || 0) ||
+    JSON.stringify([...(skill2Data.executableRuleIds || [])].sort()) !==
+      JSON.stringify([...executableSkill2RuleIds].sort()) ||
     skill2Data.activeSkillCount !== skill2Audit.activeSkills ||
     skill2Data.activeCardCount !== skill2Audit.activeCards ||
     skill2Data.noSkillCardCount !== noSkill2CardIds.size ||
@@ -207,21 +222,141 @@ const costKnown = Object.create(null);
 const playable = Object.create(null);
 const blocked = Object.create(null);
 const landStatus = Object.create(null);
-const landInstallCost = { known:0, review:0, mappingReview:0, semanticReview:0 };
-const effectAudit = { candidates:0, clauses:0, candidateOnlyCards:0, unexpectedExecutableEffects:0, spanErrors:0 };
+const landInstallCost = { known:0, review:0, mappingReview:0, semanticReview:0, runtimeReady:0 };
+const runtimeCostStatus = Object.create(null);
+const coinTechSourceStatus = Object.create(null);
+const coinTechSourceReviewCards = [];
+const blockedCostCandidateCounts = Object.create(null);
+const blockedCostInferenceCounts = Object.create(null);
+const runtimeEffectDisposition = Object.create(null);
+const runtimePlayable = { ready:0, blocked:0 };
+const effectAudit = { candidates:0, clauses:0, candidateOnlyCards:0, unexpectedExecutableEffects:0, spanErrors:0, runtimeDispositions:Object.create(null) };
 const skillAudit = { mappingRows:0, manualVerifiedMappings:0, communityCandidates:0, unmapped:0,
   noSkill:0, communityRuleExecution:0, manualRuleCards:0 };
 const errors = [];
+const runtimeActionAudit = { attempted:0, completed:0, intentionallyBlocked:0, blocked:0, terminalStates:Object.create(null), byType:Object.create(null) };
+function makeProbePlayer(id) {
+  return {
+    id, name:id, isAI:id==='ai',
+    deck:Array.from({length:30},(_,i)=>({id:id+'-probe-deck-'+i})),
+    hand:[], lands:[], units:[], spells:[], graveyard:[],
+    lp:999999, soulSpent:0, playedLand:false,
+    soulPool:{colored:{dark:999,fire:999,water:999,forest:999,metal:999,earth:999,light:999},neutral:999},
+    neutralUpkeep:0, unitDeployLimit:9999, unitDeployedThisPhase:0,
+    playedAnyCardThisPhase:false, reshuffleUsedRound:0
+  };
+}
+function makeProbeUnit(instanceId, ownerId, race, affiliation) {
+  return {
+    id:instanceId, instanceId, ownerId, name:'Runtime probe unit', type:'unit',
+    ap:5, dp:5, hp:10, maxHp:10, slotIndex:1,
+    race:String(race||'버드'), affiliation:String(affiliation||'일반'),
+    specialSkill1Name:'', specialSkill2Name:'', abilities:[], equipment:[]
+  };
+}
+function probeRuntimeAction(sourceCard) {
+  const card=JSON.parse(JSON.stringify(sourceCard));
+  const instanceId=String(card.id)+'-runtime-probe';
+  card.instanceId=instanceId;
+  const owner=makeProbePlayer('player');
+  const opponent=makeProbePlayer('ai');
+  const condition=card.itemConditions||{};
+  const race=condition.race||'버드';
+  const affiliation=condition.affiliation||'일반';
+  const ownTarget=makeProbeUnit('runtime-own-target','player',race,affiliation);
+  const enemyTarget=makeProbeUnit('runtime-enemy-target','ai',race,affiliation);
+  const allowedAbilities=Array.isArray(card.allowedUnitAbilities)?card.allowedUnitAbilities:[];
+  for(const target of [ownTarget,enemyTarget]){
+    target.unitAbilityTags=allowedAbilities.slice();
+    target.unitAbility=allowedAbilities[0]||'';
+    target.unitType=allowedAbilities[0]||'';
+    target.subtype=allowedAbilities[0]||'';
+  }
+  owner.units.push(ownTarget);
+  opponent.units.push(enemyTarget);
+  const state={
+    status:'playing',round:1,attackerId:'player',activeId:'player',
+    prepared:{player:false,ai:false},players:{player:owner,ai:opponent},
+    log:[],rng:()=>0.1
+  };
+  owner.hand.push(card);
+  let targetId=null;
+  if(card.type==='item') {
+    targetId=condition.owner==='enemy'?enemyTarget.instanceId:ownTarget.instanceId;
+  } else if(card.type==='spell' && card.runtimeEffectDisposition!=='fallback_noop' && card.effect) {
+    if(card.effect.target==='ownUnit')targetId=ownTarget.instanceId;
+    else if(card.effect.target==='enemyUnit')targetId=enemyTarget.instanceId;
+  }
+  const result=FM.playCard(state,'player',instanceId,targetId);
+  const remainsInHand=owner.hand.some(x=>x.instanceId===instanceId);
+  let terminalState=false, terminalLabel='';
+  if(card.type==='land') { terminalState=owner.lands.some(x=>x.instanceId===instanceId); terminalLabel='land_installed'; }
+  else if(card.type==='unit') { terminalState=owner.units.some(x=>x.instanceId===instanceId); terminalLabel=terminalState?'unit_summoned':'unit_play_blocked'; }
+  else if(card.type==='spell') {
+    terminalState=owner.spells.some(x=>x.instanceId===instanceId)||owner.graveyard.some(x=>x.instanceId===instanceId);
+    terminalLabel=owner.spells.some(x=>x.instanceId===instanceId)?'spell_queued':
+      owner.graveyard.some(x=>x.instanceId===instanceId)?'spell_fallback_terminal':'spell_effect_unimplemented_blocked';
+  } else if(card.type==='item') {
+    terminalState=owner.graveyard.some(x=>x.instanceId===instanceId)||
+      ownTarget.equipment.includes(card.name)||enemyTarget.equipment.includes(card.name);
+    terminalLabel=owner.graveyard.some(x=>x.instanceId===instanceId)?'item_fallback_terminal':'item_equipped';
+  } else if(card.type==='enchant') {
+    terminalState=owner.graveyard.some(x=>x.instanceId===instanceId);
+    terminalLabel=terminalState?'enchant_fallback_terminal':'enchant_effect_unimplemented_blocked';
+  }
+  return {ok:!!(result&&result.ok)&&!remainsInHand&&terminalState&&owner.playedAnyCardThisPhase,
+    reason:result&&result.reason||(!owner.playedAnyCardThisPhase?'phase action flag was not completed':'action did not reach a terminal state'),
+    terminalLabel,remainsInHand,playedAnyCardThisPhase:owner.playedAnyCardThisPhase};
+}
 
 for (const card of cards) {
   types[card.type] = (types[card.type] || 0) + 1;
+  if(card.type==='unit'){
+    const coinStatus=String(card.coinTechSourceStatus||'missing');
+    coinTechSourceStatus[coinStatus]=(coinTechSourceStatus[coinStatus]||0)+1;
+    if(coinStatus==='source_review') coinTechSourceReviewCards.push({
+      id:String(card.id),name:String(card.name||''),review:Array.isArray(card.coinTechReview)?card.coinTechReview:[]
+    });
+  }
+  if(card.runtimeCostStatus==='semantic_review_blocked'){
+    for(const key of Object.keys(card.candidateCost||{}))
+      blockedCostCandidateCounts[key]=(blockedCostCandidateCounts[key]||0)+1;
+    for(const reason of (Array.isArray(card.runtimeCostInference)?card.runtimeCostInference:[]))
+      blockedCostInferenceCounts[reason]=(blockedCostInferenceCounts[reason]||0)+1;
+  }
   const validation = FM.validateCardForPlay(card);
   playable[card.type] = playable[card.type] || { ok:0, blocked:0 };
+  runtimeActionAudit.attempted++;
+  runtimeActionAudit.byType[card.type]=runtimeActionAudit.byType[card.type]||{completed:0,intentionallyBlocked:0,blocked:0};
+  const actionProbe=probeRuntimeAction(card);
+  const unsupportedEffectCard=['spell','enchant'].includes(card.type) &&
+    card.runtimeEffectDisposition==='fallback_noop';
+  const unresolvedCostBlocked=card.type!=='land' &&
+    card.runtimeCostStatus==='semantic_review_blocked' && card.runtimeCostKnown!==true;
+  const intentionallyBlocked=(unsupportedEffectCard||unresolvedCostBlocked) && !validation.ok && !actionProbe.ok &&
+    actionProbe.remainsInHand && !actionProbe.playedAnyCardThisPhase &&
+    actionProbe.reason===validation.reason;
+  if(actionProbe.ok){
+    runtimeActionAudit.completed++;
+    runtimeActionAudit.byType[card.type].completed++;
+    runtimeActionAudit.terminalStates[actionProbe.terminalLabel]=(runtimeActionAudit.terminalStates[actionProbe.terminalLabel]||0)+1;
+  }else if(intentionallyBlocked){
+    // Unimplemented spell/enchant effects are expected to stay in hand without
+    // paying souls or completing a phase action; they are not playable probes.
+    runtimeActionAudit.intentionallyBlocked++;
+    runtimeActionAudit.byType[card.type].intentionallyBlocked++;
+    runtimeActionAudit.terminalStates[actionProbe.terminalLabel]=(runtimeActionAudit.terminalStates[actionProbe.terminalLabel]||0)+1;
+  }else{
+    runtimeActionAudit.blocked++;
+    runtimeActionAudit.byType[card.type].blocked++;
+    errors.push(card.id+': runtime action did not complete: '+String(actionProbe.reason)+'; handRemains='+actionProbe.remainsInHand+'; terminal='+actionProbe.terminalLabel);
+  }
   if (validation.ok) playable[card.type].ok++;
   else {
     playable[card.type].blocked++;
     const reason = String(validation.reason || 'unknown');
     blocked[reason] = (blocked[reason] || 0) + 1;
+    if (!intentionallyBlocked) errors.push(card.id + ': card cannot enter a playable action: ' + reason);
   }
 
   if (card.sourceCardUrl !== 'https://fmlunatic.com/card/' + card.id) {
@@ -265,8 +400,14 @@ for (const card of cards) {
     const sourceSkill2 = skillMappings.find(x => x.sourceField === 'Skill2');
     const expectedSkill2SourceStatus = sourceSkill2 ? sourceSkill2.mappingStatus : 'no_special_skill';
     const expectedSkill2Name = sourceSkill2?.sourceName || '';
-    const expectedSkill2Rule = SKILL2_SOURCE_VERIFIED_RULES[expectedSkill2Name] || null;
-    const expectedSkill2Status = expectedSkill2Rule ? 'source_card_verified' : expectedSkill2SourceStatus;
+    const expectedSkill2Spec = SKILL2_SOURCE_VERIFIED_RULES[expectedSkill2Name] || null;
+    const skill2EvidenceNeedle = expectedSkill2Spec
+      ? (expectedSkill2Spec.cardVerificationNeedle || expectedSkill2Spec.evidenceNeedle) : null;
+    const expectedSkill2Rule = expectedSkill2Spec && card.type === 'unit' &&
+      skill2EvidenceNeedle && String(card.description || '').includes(skill2EvidenceNeedle)
+      ? expectedSkill2Spec : null;
+    const expectedSkill2Status = expectedSkill2Rule ? 'source_card_verified' :
+      (expectedSkill2Name && expectedSkill2Name !== '없음' ? 'unmapped' : 'no_special_skill');
     if (card.specialSkill2SourceMappingStatus !== expectedSkill2SourceStatus ||
         card.specialSkill2MappingStatus !== expectedSkill2Status) {
       errors.push(card.id + ': compact Skill2 mapping status does not match source mapping/review rule');
@@ -316,6 +457,17 @@ for (const card of cards) {
     }
     const clauses = Array.isArray(candidate.clauses) ? candidate.clauses : [];
     effectAudit.clauses += clauses.length;
+    for (const clause of clauses) {
+      const disposition=String(clause.runtimeDisposition||'');
+      if (!['implemented_verified','implemented_inferred','fallback_noop','not_applicable'].includes(disposition)) {
+        errors.push(card.id + ': effect clause has no terminal runtime disposition');
+      } else {
+        effectAudit.runtimeDispositions[disposition]=(effectAudit.runtimeDispositions[disposition]||0)+1;
+        if (disposition==='implemented_inferred' && card.runtimeEffectDisposition!=='implemented_inferred') {
+          errors.push(card.id + ': inferred clause disposition does not match card runtime handler');
+        }
+      }
+    }
     if (candidate.spanIntegrityStatus === 'exact') {
       const expectedText = Array.isArray(candidate.analysis?.clause_candidates)
         ? candidate.analysis.clause_candidates.map(x => String(x.text || '')).join('')
@@ -328,46 +480,97 @@ for (const card of cards) {
     }
   }
   if (card.effectExecutionStatus === 'candidate-only') effectAudit.candidateOnlyCards++;
-  if (card.effectExecutionStatus === 'candidate-only' && card.effect) {
+  if (card.effectExecutionStatus === 'candidate-only' && card.effect && card.runtimeEffectDisposition !== 'implemented_inferred') {
     effectAudit.unexpectedExecutableEffects++;
-    errors.push(card.id + ': candidate-only effect is incorrectly executable');
+    errors.push(card.id + ': candidate-only source effect has no explicit tested inferred runtime disposition');
+  }
+  if (card.runtimeEffectDisposition === 'implemented_inferred' && !card.effect) {
+    errors.push(card.id + ': inferred runtime effect disposition has no parsed handler');
   }
   if (effectCandidates.length && card.effectVerificationStatus !== 'pattern_candidate') {
     errors.push(card.id + ': compact effect verification status does not match candidate file');
   }
 
+  const runtimeCost = card.type === 'land' ? card.landInstallCost : card.runtimeCost;
+  const runtimeCostKnown = card.type === 'land' ? card.landInstallCostKnown === true : card.runtimeCostKnown === true;
+  const runtimeCostParsed = FM._test.readCost(runtimeCost);
+  const status = String(card.runtimeCostStatus || 'missing');
+  runtimeCostStatus[status] = (runtimeCostStatus[status] || 0) + 1;
+  if (runtimeCostKnown && runtimeCostParsed.ok) {
+    runtimePlayable.ready++;
+    if (Object.prototype.hasOwnProperty.call(runtimeCost || {}, 'bonus')) {
+      errors.push(card.id + ': unsupported BONUS key leaked into runtime payment cost');
+    }
+  } else {
+    runtimePlayable.blocked++;
+    if (!unresolvedCostBlocked) {
+      errors.push(card.id + ': runtime payment cost is missing or invalid: ' + (runtimeCostParsed.reason || 'unknown'));
+    }
+  }
+  if (card.type === 'unit') {
+    const upkeep = FM._test.readCost(card.runtimeUpkeepCost);
+    if (!upkeep.ok) errors.push(card.id + ': runtime upkeep profile is missing or invalid');
+  }
+  if (card.runtimeEffectDisposition) {
+    const disposition = String(card.runtimeEffectDisposition);
+    runtimeEffectDisposition[disposition] = (runtimeEffectDisposition[disposition] || 0) + 1;
+    if (['spell','enchant'].includes(card.type) && !['implemented_verified','implemented_inferred','fallback_noop'].includes(disposition)) {
+      errors.push(card.id + ': spell/enchant has no terminal runtime effect disposition');
+    }
+    if (card.type==='enchant' && disposition!=='fallback_noop') {
+      errors.push(card.id + ': enchant has no supported event/duration runtime handler and must use fallback_noop');
+    }
+    if (card.type==='spell' && disposition==='implemented_inferred' &&
+        !/전투시작|전투개시|공격|공격턴|방어|방어턴/.test(String(card.triggerTiming||'').replace(/\s/g,''))) {
+      errors.push(card.id + ': inferred spell handler has unsupported trigger timing');
+    }
+  }
+
   if (card.type === 'land') {
     landStatus[card.soulProductionStatus || 'missing'] =
       (landStatus[card.soulProductionStatus || 'missing'] || 0) + 1;
-    if (card.landInstallCostKnown === true) landInstallCost.known++;
+    if (card.costTokenParsed === true && !card.costMappingReview && !card.costSemanticReview) landInstallCost.known++;
     else landInstallCost.review++;
     if (card.costMappingReview) landInstallCost.mappingReview++;
     if (card.costSemanticReview) landInstallCost.semanticReview++;
+    if (runtimeCostKnown && runtimeCostParsed.ok) landInstallCost.runtimeReady++;
     if (card.requiredLPKnown !== true) errors.push(card.id + ': LP source value not marked known');
-    if (card.soulProductionStatus === 'magicland-effect' && validation.ok) {
-      errors.push(card.id + ': MagicLand incorrectly accepted as ordinary terrain');
+    if (card.soulProductionStatus === 'magicland-effect') {
+      if (card.runtimeLandProductionStatus !== 'fallback_noop') errors.push(card.id + ': MagicLand effect has no deterministic runtime fallback');
+      const output=card.soulProduction||{};
+      if (Object.values(output.colored||{}).some(v=>Number(v)>0)||Number(output.neutral||0)>0) {
+        errors.push(card.id + ': MagicLand fallback must not invent ordinary soul production');
+      }
     }
-    if (card.soulProductionStatus === 'source-decoded' &&
-        card.landInstallCostKnown === true && !validation.ok) {
+    if (card.soulProductionStatus === 'source-decoded' && card.landInstallCostKnown === true && !validation.ok) {
       errors.push(card.id + ': decoded ordinary land blocked: ' + validation.reason);
     }
-    if (card.landInstallCostKnown !== true && validation.ok) {
-      errors.push(card.id + ': unknown land installation cost incorrectly accepted');
-    }
+    if (card.landInstallCostKnown !== true && validation.ok) errors.push(card.id + ': runtime land installation cost incorrectly missing');
   } else {
     costKnown[card.type] = costKnown[card.type] || { known:0, review:0, mappingReview:0, semanticReview:0 };
     if (card.costKnown === true && card.costMapped === true) {
       costKnown[card.type].known++;
-      if (card.costMappingReview || card.costSemanticReview) {
-        errors.push(card.id + ': reviewed cost is incorrectly marked playable');
-      }
+      if (card.costMappingReview || card.costSemanticReview) errors.push(card.id + ': reviewed source cost is incorrectly marked source-verified');
     } else {
       costKnown[card.type].review++;
       if (card.costMappingReview) costKnown[card.type].mappingReview++;
       if (card.costSemanticReview) costKnown[card.type].semanticReview++;
-      if (validation.ok) errors.push(card.id + ': unresolved or review-required soul cost incorrectly accepted');
     }
   }
+}
+
+const expectedIntentionalBlocks=cards.filter(card=>{
+  const unsupportedEffectCard=['spell','enchant'].includes(card.type) &&
+    card.runtimeEffectDisposition==='fallback_noop';
+  const unresolvedCostBlocked=card.type!=='land' &&
+    card.runtimeCostStatus==='semantic_review_blocked' && card.runtimeCostKnown!==true;
+  return unsupportedEffectCard||unresolvedCostBlocked;
+}).length;
+if (runtimeActionAudit.attempted !== 15350 ||
+    runtimeActionAudit.completed + runtimeActionAudit.intentionallyBlocked !== 15350 ||
+    runtimeActionAudit.intentionallyBlocked !== expectedIntentionalBlocks ||
+    runtimeActionAudit.blocked !== 0) {
+  errors.push('Runtime action completion/intentional-block coverage mismatch: ' + JSON.stringify({runtimeActionAudit,expectedIntentionalBlocks}));
 }
 
 for (const [type, count] of Object.entries(EXPECTED)) {
@@ -389,15 +592,28 @@ if (nonLandKnown !== 14244 || nonLandReview !== 817 ||
   errors.push('Non-land cost status accounting mismatch: ' + JSON.stringify(costKnown));
 }
 if (effectAudit.candidates !== 17407 || effectAudit.clauses !== 48281 ||
+    Object.values(effectAudit.runtimeDispositions).reduce((n,v)=>n+Number(v||0),0)!==48281 ||
+    JSON.stringify(effectData.runtimeClauseDispositionCounts||{})!==JSON.stringify(effectAudit.runtimeDispositions) ||
     effectAudit.spanErrors !== 0 || effectAudit.unexpectedExecutableEffects !== 0) {
   errors.push('Effect candidate audit mismatch: ' + JSON.stringify(effectAudit));
+}
+const manifestEffectReview=manifest.effectReview||{};
+if (JSON.stringify(manifestEffectReview.runtimeClauseDispositionCounts||{})!==JSON.stringify(effectAudit.runtimeDispositions)) {
+  errors.push('Manifest effect clause runtime disposition counts do not match effect-candidates.json.');
+}
+if (Number(manifestEffectReview.runtimeInferredClauseCount||0)!==Number(effectAudit.runtimeDispositions.implemented_inferred||0) ||
+    Number(manifestEffectReview.runtimeFallbackClauseCount||0)!==Number(effectAudit.runtimeDispositions.fallback_noop||0)) {
+  errors.push('Manifest inferred/fallback clause counts do not match effect-candidates.json.');
+}
+if (JSON.stringify(manifestEffectReview.runtimeCardEffectDispositionCounts||{})!==JSON.stringify(runtimeEffectDisposition)) {
+  errors.push('Manifest card-level effect dispositions do not match normalized cards.');
 }
 if (skillAudit.mappingRows < 15000 || skillAudit.manualVerifiedMappings < 1000 ||
     skillAudit.communityCandidates < 100 || skillAudit.communityRuleExecution !== 0) {
   errors.push('Special-skill mapping validation mismatch: ' + JSON.stringify(skillAudit));
 }
 if (errors.length) {
-  console.error(JSON.stringify({errors:errors.slice(0,50),errorCount:errors.length,types,landStatus,landInstallCost,costKnown,playable,effectAudit,skillAudit},null,2));
+  console.error(JSON.stringify({errors:errors.slice(0,50),errorCount:errors.length,types,landStatus,landInstallCost,runtimeCostStatus,coinTechSourceStatus,coinTechSourceReviewCards,blockedCostCandidateCounts,blockedCostInferenceCounts,runtimePlayable,runtimeEffectDisposition,runtimeActionAudit,costKnown,playable,effectAudit,skillAudit},null,2));
   process.exit(1);
 }
 console.log(JSON.stringify({
@@ -412,6 +628,14 @@ console.log(JSON.stringify({
   standardLands:landStatus['source-decoded'],
   magicLandEffectRecords:landStatus['magicland-effect'],
   landInstallCost,
+  runtimeCostStatus,
+  coinTechSourceStatus,
+  coinTechSourceReviewCards,
+  blockedCostCandidateCounts,
+  blockedCostInferenceCounts,
+  runtimeCostCoverage:runtimePlayable,
+  runtimeEffectDisposition,
+  runtimeActionAudit,
   playableByType:playable,
   blockedReasons:blocked,
   effectAudit,

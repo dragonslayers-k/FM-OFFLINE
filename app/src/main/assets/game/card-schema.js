@@ -2,6 +2,7 @@
   'use strict';
 
   const COLORS = ['dark','fire','water','forest','metal','earth','light','neutral'];
+  const COST_KEYS = [...COLORS,'bonus'];
   const TYPE_NAMES = { land:'지형', unit:'유닛', item:'아이템', spell:'마법', enchant:'인챈트' };
   const META_LABELS = {
     '분류':'category','속성':'faction','에피소드':'episode','덱 수량제한':'deckLimit',
@@ -79,7 +80,7 @@
   function normalizeCostObject(value) {
     if(!value||typeof value!=='object'||Array.isArray(value)) return null;
     const out={}; for(const [color,amount] of Object.entries(value)){
-      if(!COLORS.includes(color)||!Number.isInteger(Number(amount))||Number(amount)<0) return null;
+      if(!COST_KEYS.includes(color)||!Number.isInteger(Number(amount))||Number(amount)<0) return null;
       out[color]=Number(amount);
     } return out;
   }
@@ -157,12 +158,40 @@
   }
   function parseCoinExpression(value) {
     const raw=String(value||'').trim().replace(/\s+/g,'').toUpperCase();
-    const match=raw.match(/^([+\-X]?)(\d*)C(\d+)$/);
+    const match=raw.match(/^([+\-X=]?)(\d*)C(\d+)$/);
     if(!match)return null;
     const op=match[1];
     return {source:raw,operation:op==='-'?'subtract':op==='X'?'multiply':op==='+'?'add':'set',
       multiplier:match[2]?Number(match[2]):1,tosses:Number(match[3])};
   }
+  function sourceStatTechFromFields(fields) {
+    if(!fields||typeof fields!=='object'||Array.isArray(fields))return {};
+    const names={1:'NONE',11:'CONST',12:'UP',13:'DOWN',21:'FRONT',22:'BACK',23:'HAND',24:'TURN',31:'PLUS',32:'MINUS',33:'EQUAL'};
+    const specs=[
+      {stat:'ap',value:'ATK',type:'ATKStatType'},
+      {stat:'dp',value:'DEF',type:'DEFStatType'},
+      {stat:'hp',value:'HP',type:'HPStatType'}
+    ];
+    const result={};
+    for(const spec of specs){
+      const hasValue=Object.prototype.hasOwnProperty.call(fields,spec.value);
+      const hasType=Object.prototype.hasOwnProperty.call(fields,spec.type);
+      if(!hasValue&&!hasType)continue;
+      const typeCode=integer(fields[spec.type]);
+      let marker='',status='source_type_semantics_unverified';
+      if(typeCode===1)status='source_mapped_no_marker';
+      else if(typeCode===11){marker='★';status='manual_marker_mapped';}
+      else if(typeCode===12){marker='▲';status='manual_marker_mapped';}
+      else if(typeCode===13){marker='▼';status='manual_marker_mapped';}
+      else if(typeCode===null)status='source_stat_type_missing';
+      result[spec.stat]={
+        value:decimal(fields[spec.value]),typeCode,type:names[typeCode]||'',
+        marker,status,sourceValueField:spec.value,sourceTypeField:spec.type
+      };
+    }
+    return result;
+  }
+
   function parseStatTech(card) {
     const lines = entries(card,'분류별');
     const block = lines.find(x => /(^|\n)\s*(공|방|체)\s*(\n|$)/.test(x)) || '';
@@ -188,9 +217,117 @@
         result[current].value = Number(valueMatch[2]);
       }
     }
+    // DB29 v1.3.0 is intentionally reused and predates the derived
+    // sourceStatTech object; its raw Firestore sourceFields are authoritative.
+    const sourceStatTech=card.sourceStatTech&&typeof card.sourceStatTech==='object'
+      ?card.sourceStatTech:sourceStatTechFromFields(card.sourceFields);
+    for(const stat of ['ap','dp','hp']){
+      const source=sourceStatTech[stat];
+      if(!source||typeof source!=='object')continue;
+      const previous=result[stat]||{value:null,marker:'',coin:[]};
+      const typeCode=integer(source.typeCode);
+      let marker=previous.marker||'';
+      if(typeCode===1)marker='';
+      else if([11,12,13].includes(typeCode))marker=String(source.marker||'');
+      else if(typeCode!==null)marker='';
+      result[stat]={
+        ...previous,
+        value:decimal(source.value)??previous.value,
+        marker,
+        sourceTypeCode:typeCode,
+        sourceType:String(source.type||''),
+        sourceTypeStatus:String(source.status||'source_type_unverified')
+      };
+    }
     const tosses = Object.values(result).flatMap(x => x.coin).reduce((m,x) => Math.max(m,x.tosses),0);
     return { stats:result, sharedTosses:tosses, raw:block };
   }
+  function parseSourceCoinTech(source) {
+    if (!source || typeof source !== 'object' || Array.isArray(source)) {
+      return {status:'missing',stats:{},sharedTosses:0,review:[]};
+    }
+    // Firestore CoinType raw values: 1 NONE, 2 PLUS, 3 MINUS, 4 X, 5 EQUAL.
+    const operations={2:'add',3:'subtract',4:'multiply',5:'set'};
+    const specs=[
+      {stat:'ap',value:'ATKCoin',type:'ATKCoinType',count:'ATKCoinCount'},
+      {stat:'dp',value:'DEFCoin',type:'DEFCoinType',count:'DEFCoinCount'},
+      {stat:'hp',value:'HPCoin',type:'HPCoinType',count:'HPCoinCount'}
+    ];
+    const stats={},review=[],inferredStats=[];
+    let sharedTosses=0,hasExpression=false,hasInferredEqual=false;
+    for(const spec of specs){
+      const rawValue=String(source[spec.value]??'').trim();
+      const rawCount=integer(source[spec.count]);
+      const rawType=source[spec.type]===undefined||source[spec.type]===null||source[spec.type]===''
+        ?null:integer(source[spec.type]);
+      if(!rawValue||/^NONE$/i.test(rawValue)){
+        if(rawCount!==null&&rawCount>0)review.push(spec.stat+':coin-count-without-expression');
+        stats[spec.stat]={coin:[]};
+        continue;
+      }
+      hasExpression=true;
+      const parsed=parseCoinExpression(rawValue);
+      if(!parsed){
+        review.push(spec.stat+':unparsed-expression');
+        stats[spec.stat]={coin:[]};
+        continue;
+      }
+      let operation=null;
+      if(rawType!==null){
+        operation=operations[rawType]||null;
+        // CoinType EQUAL(5) exists in the Firestore enum, but Manual coin.htm
+        // does not define its execution. The replacement interpretation is
+        // inferred from the enum symbol and must remain visibly non-Manual.
+        if(rawType===5){hasInferredEqual=true;inferredStats.push(spec.stat);}
+        if(rawType===1){
+          review.push(spec.stat+':NONE-type-with-coin-expression');
+          stats[spec.stat]={coin:[]};
+          continue;
+        }
+      }else if(/^[+\-X=]/i.test(rawValue)){
+        operation=parsed.operation;
+      }else{
+        review.push(spec.stat+':missing-coin-type');
+        stats[spec.stat]={coin:[]};
+        continue;
+      }
+      if(!operation){
+        review.push(spec.stat+':unknown-coin-type');
+        stats[spec.stat]={coin:[]};
+        continue;
+      }
+      if(rawType!==null&&['+','-','X','='].includes(rawValue[0].toUpperCase())&&parsed.operation!==operation){
+        review.push(spec.stat+':coin-type-expression-mismatch');
+        stats[spec.stat]={coin:[]};
+        continue;
+      }
+      if(rawCount!==null&&rawCount!==parsed.tosses){
+        review.push(spec.stat+':coin-count-mismatch');
+        stats[spec.stat]={coin:[]};
+        continue;
+      }
+      parsed.operation=operation;
+      stats[spec.stat]={coin:[parsed]};
+      sharedTosses=Math.max(sharedTosses,parsed.tosses);
+    }
+    return {status:review.length?'source_review':(hasInferredEqual?'source_inferred':(hasExpression?'source_mapped':'no_coin')),
+      stats,sharedTosses,review,inferredStats};
+  }
+
+  function mergeSourceCoinTech(parsed,source) {
+    if(!source||!['source_mapped','source_inferred','source_review','no_coin'].includes(source.status))return parsed;
+    const stats={...(parsed.stats||{})},inferred=new Set(source.inferredStats||[]);
+    for(const stat of ['ap','dp','hp']){
+      const previous=stats[stat]||{value:null,marker:'',coin:[]};
+      const sourceCoin=(source.stats[stat]&&source.stats[stat].coin)||[];
+      // EQUAL is only an enum-name inference; preserve it but do not execute it
+      // until a Manual rule defines the operation.
+      stats[stat]={...previous,coin:inferred.has(stat)?[]:sourceCoin};
+    }
+    return {...parsed,stats,sharedTosses:source.sharedTosses,source:'firestore-source-coin-fields',
+      sourceReview:source.review||[],sourceInferredStats:[...inferred]};
+  }
+
   function normalizeTabs(rawTabs) {
     const output = {};
     for (const [group,items] of Object.entries(rawTabs || {})) {
@@ -215,6 +352,63 @@
     c.requiresTargetCheck=!!(c.owner||c.race||c.affiliation||c.unsupported.length);
     c.mapped=c.unsupported.length===0; return c;
   }
+  function parseRequireSoulRuntime(rawValue, cardType) {
+    if (typeof rawValue !== 'string' || !rawValue.length) return null;
+    const candidate={}, runtime={}, inference=[];
+    let blocked=false, muCrosswalk=false, upkeep=0;
+    const pure={'11':'dark','21':'fire','31':'water','41':'forest','51':'iron','61':'earth','71':'light'};
+    const hybrid={
+      '12':'dark+earth','13':'dark+fire','14':'dark+light','15':'dark+water',
+      '22':'fire+forest','23':'fire+iron','24':'fire+water','32':'earth+water',
+      '33':'forest+water','42':'forest+iron','43':'forest+light',
+      '52':'earth+iron','53':'iron+light','62':'earth+light'
+    };
+    const add=(target,key,value)=>{target[key]=(target[key]||0)+value;};
+    const digits=[...rawValue].every(ch=>ch>='0'&&ch<='9');
+    if(!digits||rawValue.length%4!==0){
+      return {candidateCost:{unknown:rawValue},runtimeCost:null,runtimeCostKnown:false,
+        runtimeCostStatus:'semantic_review_blocked',
+        runtimeCostInference:['invalid-requiresoul-source-blocked'],
+        runtimeUpkeepCost:{neutral:0},runtimeUpkeepNeutral:0,runtimeUpkeepStatus:'zero_upkeep'};
+    }
+    for(let i=0;i<rawValue.length;i+=4){
+      const code=rawValue.slice(i,i+2),amount=Number(rawValue.slice(i+2,i+4));
+      if(amount===0)continue;
+      if(pure[code]){
+        const color=pure[code];add(candidate,color,amount);add(runtime,color==='iron'?'metal':color,amount);
+      }else if(code==='81'){
+        add(candidate,'neutral',amount);add(runtime,'neutral',amount);
+        muCrosswalk=true;inference.push('mu_81_manual_neutral_bead_crosswalk_inferred');
+        if(cardType==='unit')upkeep+=amount;
+      }else if(code==='82'){
+        add(candidate,'ncs',amount);
+        inference.push('ncs_soul_distinct_resource_candidate_unverified_blocked');blocked=true;
+      }else if(code==='83'){
+        add(candidate,'bonus',amount);
+        inference.push('bonus_requiresoul_semantics_unverified_blocked');blocked=true;
+      }else if(hybrid[code]){
+        add(candidate,'hybrid:'+hybrid[code],amount);
+        inference.push('hybrid_payment_semantics_unverified_blocked');blocked=true;
+      }else if(code==='01'){
+        add(candidate,'unknown:'+code,amount);
+        inference.push('nonzero-none-requiresoul-token-blocked');blocked=true;
+      }else{
+        add(candidate,'unknown:'+code,amount);
+        inference.push('unknown_requiresoul_token_blocked');blocked=true;
+      }
+    }
+    if(!Object.keys(candidate).length&&!blocked)runtime.neutral=0;
+    return {
+      candidateCost:candidate,
+      runtimeCost:blocked?null:runtime,
+      runtimeCostKnown:!blocked,
+      runtimeCostStatus:blocked?'semantic_review_blocked':(muCrosswalk?'implemented_inferred':'implemented_verified'),
+      runtimeCostInference:[...new Set(inference)],
+      runtimeUpkeepCost:{neutral:upkeep},runtimeUpkeepNeutral:upkeep,
+      runtimeUpkeepStatus:upkeep?'mu_81_manual_neutral_crosswalk_inferred':'zero_upkeep'
+    };
+  }
+
   function normalize(raw) {
     if(!raw||typeof raw!=='object') throw new TypeError('FM1 card record must be an object');
     const detail=fieldMap(raw,'분류별'),meta=fieldMap(raw,'기타'),textFields=fieldMap(raw,'텍스트');
@@ -222,7 +416,21 @@
     const attribute=raw.faction||raw.attribute||meta['속성']||'neutral';
     const colors=parseColors(Array.isArray(raw.souls)&&raw.souls.length?raw.souls:attribute).filter(c=>c!=='neutral');
     const faction=COLORS.includes(raw.faction)?raw.faction:(colors[0]||'neutral');
-    const statTech=parseStatTech(raw);
+    const parsedStatTech=parseStatTech(raw);
+    const rawSourceFields=raw.sourceFields&&typeof raw.sourceFields==='object'&&!Array.isArray(raw.sourceFields)?raw.sourceFields:{};
+    const rawCoinFields=raw.sourceCoinTech&&typeof raw.sourceCoinTech==='object'&&!Array.isArray(raw.sourceCoinTech)?raw.sourceCoinTech:{};
+    const coinSourceKeys=['ATKCoin','ATKCoinType','ATKCoinCount','DEFCoin','DEFCoinType','DEFCoinCount','HPCoin','HPCoinType','HPCoinCount'];
+    const hasCoinSource=coinSourceKeys.some(key =>
+      Object.prototype.hasOwnProperty.call(rawCoinFields,key) ||
+      Object.prototype.hasOwnProperty.call(rawSourceFields,key));
+    // Older immutable DB29 packs may omit the derived sourceCoinTech object.
+    // Use sourceFields only when at least one original coin field exists;
+    // otherwise retain any coin expression already preserved in the stat tab.
+    const sourceCoinTech=type==='unit'&&hasCoinSource
+      ?parseSourceCoinTech({...rawSourceFields,...rawCoinFields})
+      :(type==='unit'?{status:'missing',stats:{},sharedTosses:0,review:[]}:
+        {status:'not-applicable',stats:{},sharedTosses:0,review:[]});
+    const statTech=mergeSourceCoinTech(parsedStatTech,sourceCoinTech);
     const cardText=htmlToText(raw.text||detail['카드 텍스트']||detail['카드텍스트']||textFields['카드 텍스트']||'');
     const n={...raw,id:String(raw.id||''),name:String(raw.name||''),type:type||raw.type,faction,rawType:raw.type||null,
       text:htmlToText(raw.text||''),race:raw.race||meta['종족타입']||'',affiliation:raw.affiliation||meta['소속타입']||'',
@@ -237,6 +445,23 @@
     const sourceCost=hasPrimaryCost?primaryCost:(verifiedImageCost!==null?verifiedImageCost:normalizeCostObject(raw.soulCost));
     const costKnown=verifiedImageCost!==null||(raw.costKnown!==false&&sourceCost!==null&&Object.keys(sourceCost).length>0);
     n.cost=costKnown?sourceCost:null;n.costKnown=costKnown;n.costMapped=costKnown;
+    const runtimeCost=normalizeCostObject(raw.runtimeCost);
+    const sourceFields=raw.sourceFields&&typeof raw.sourceFields==='object'?raw.sourceFields:{};
+    const sourceRequireSoul=sourceFields.RequireSoul??raw.soulCostRaw;
+    const sourceSoulRuntime=type!=='land'?parseRequireSoulRuntime(sourceRequireSoul,type):null;
+    n.runtimeCostKnown=sourceSoulRuntime?sourceSoulRuntime.runtimeCostKnown===true:(raw.runtimeCostKnown===true&&runtimeCost!==null);
+    n.runtimeCost=sourceSoulRuntime?sourceSoulRuntime.runtimeCost:(n.runtimeCostKnown?runtimeCost:null);
+    n.runtimeCostStatus=sourceSoulRuntime?sourceSoulRuntime.runtimeCostStatus:String(raw.runtimeCostStatus||'source-not-available');
+    n.runtimeCostInference=sourceSoulRuntime?sourceSoulRuntime.runtimeCostInference:(Array.isArray(raw.runtimeCostInference)?raw.runtimeCostInference:[]);
+    if(sourceSoulRuntime){
+      n.candidateCost=sourceSoulRuntime.candidateCost;
+      n.runtimeUpkeepCost=sourceSoulRuntime.runtimeUpkeepCost;
+      n.runtimeUpkeepNeutral=sourceSoulRuntime.runtimeUpkeepNeutral;
+      n.runtimeUpkeepStatus=sourceSoulRuntime.runtimeUpkeepStatus;
+      if(sourceSoulRuntime.runtimeCostStatus==='semantic_review_blocked'){
+        n.cost=null;n.costKnown=false;n.costMapped=false;
+      }
+    }
     n.costSource=hasPrimaryCost?'source-json':(verifiedImageCost!==null?'verified-image-map':(sourceCost?'source-soulCost':'unknown'));
     const landCandidates=[raw.landInstallCost,raw.installCost,raw.summonCost,raw.soulCost,type==='land'?raw.cost:null]
       .map(normalizeCostObject).filter(value=>value!==null&&Object.keys(value).length>0);
@@ -317,7 +542,8 @@
         (raw.specialSkillMappingStatus==='community_documented_candidate'||
          n.specialSkillMappings.some(x=>x&&x.mappingStatus==='community_documented_candidate')
           ?'community-candidate-not-executable':'unmapped-or-no-skill');
-      n.coinTech=statTech;n.ap=raw.ap!==undefined&&raw.ap!==null&&raw.ap!==''&&Number.isFinite(Number(raw.ap))?Number(raw.ap):statTech.stats.ap?.value;
+      n.coinTech=statTech;n.coinTechSourceStatus=sourceCoinTech.status;n.coinTechReview=sourceCoinTech.review;
+      n.ap=raw.ap!==undefined&&raw.ap!==null&&raw.ap!==''&&Number.isFinite(Number(raw.ap))?Number(raw.ap):statTech.stats.ap?.value;
       n.dp=raw.dp!==undefined&&raw.dp!==null&&raw.dp!==''&&Number.isFinite(Number(raw.dp))?Number(raw.dp):statTech.stats.dp?.value;
       n.hp=raw.hp!==undefined&&raw.hp!==null&&raw.hp!==''&&Number.isFinite(Number(raw.hp))?Number(raw.hp):statTech.stats.hp?.value;
       n.level=Number.isFinite(Number(raw.level))?Number(raw.level):integer(meta['레벨']||detail['레벨']);
@@ -340,6 +566,11 @@
       const conditionText=[cardText,detail['장착 조건'],detail['장착 대상']].filter(Boolean).join('\n');
       n.itemConditions=parseItemConditions(conditionText);n.itemConditions.universal=n.itemConditions.universal||allowed.includes('만능');
       n.itemConditions.mapped=!!(n.itemConditions.mapped&&(allowed.length>0||n.itemConditions.universal||n.itemConditions.owner||n.itemConditions.race||n.itemConditions.affiliation));
+      // Keep the original condition parser status for diagnostics, but assign a
+      // deterministic any-unit runtime target when the source wording cannot
+      // be mapped. Provenance uncertainty is not an item-use gate.
+      if(!n.itemConditions.mapped||(n.itemConditions.unsupported&&n.itemConditions.unsupported.length))n.runtimeItemConditionStatus='fallback_any_unit';
+      else if(!n.runtimeItemConditionStatus)n.runtimeItemConditionStatus='source_mapped';
       n.rules.cardText=cardText;n.rules.itemConditions=n.itemConditions;
       const hasEquipRule=allowed.length>0||n.itemConditions.universal||n.itemConditions.owner||n.itemConditions.race||n.itemConditions.affiliation;
       n.rules.status=!hasEquipRule?'incomplete':!n.itemConditions.mapped?'unmapped':'condition-text';
@@ -357,7 +588,12 @@
       n.effectExecutionStatus=candidateOnly?'candidate-only':(raw.effectExecutionStatus||'unmapped');
       n.effectVerificationStatus=candidateOnly?'pattern_candidate':
         (raw.effectVerificationStatus||((raw.effectVerified===true)?'verified':'unmapped'));
-      n.effect=candidateOnly?null:(raw.effectVerified===true?raw.effect:(raw.effect||parseCardTextEffect(cardText)));
+      const parsedSimpleEffect=parseCardTextEffect(cardText);
+      const declaredRuntimeEffect=String(raw.runtimeEffectDisposition||'');
+      const mayRunInferred=declaredRuntimeEffect==='implemented_inferred';
+      const mayRunVerified=raw.effectVerified===true||declaredRuntimeEffect==='implemented_verified';
+      n.effect=raw.effectVerified===true?raw.effect:
+        ((mayRunInferred||mayRunVerified)?(raw.effect||parsedSimpleEffect||null):null);
       n.rules.effectStatus=candidateOnly?'pattern_candidate':(n.effect?'simple-text-mapped':'unmapped-text-effect');
       if(type==='enchant'){
         n.slotLocation=detail['슬롯 위치']||detail['슬롯위치']||'';
@@ -366,8 +602,28 @@
         n.rules.status=n.slotLocation?'condition-text':'incomplete';
         if(!n.slotLocation)n.rules.unsupportedReason='인챈트 슬롯 위치 조건이 없습니다.';
       }else{
-        n.rules.status=n.effect?'simple-effect-mapped':'text-effect-only';
+        n.rules.status=candidateOnly?'pattern_candidate':(n.effect?'simple-effect-mapped':'text-effect-only');
         if(!n.effect)n.rules.unsupportedReason='원본 설명은 보존했으나 효과 실행 규칙으로 매핑되지 않았습니다.';
+      }
+      const supportedEffectTypes=['damage','heal','buff','draw','mill','drain'];
+      const effectTargetValid=!n.effect||!['damage','heal','buff','drain'].includes(n.effect.type)||['ownUnit','enemyUnit'].includes(n.effect.target);
+      const slotMatchesEffect=type!=='enchant'||!n.effect||!['ownUnit','enemyUnit'].includes(n.effect.target)||
+        (n.effect.target==='ownUnit'&&n.slotOwner==='own')||(n.effect.target==='enemyUnit'&&n.slotOwner==='enemy');
+      const timingOrSlotReady=type==='spell'?
+        /전투시작|전투개시|공격|공격턴|방어|방어턴/.test(String(n.triggerTiming||'').replace(/\s/g,'')):
+        false;
+      const runtimeEffectReady=!!n.effect&&supportedEffectTypes.includes(n.effect.type)&&effectTargetValid&&slotMatchesEffect&&timingOrSlotReady;
+      n.runtimeEffectDisposition=runtimeEffectReady?
+        (raw.effectVerified===true?'implemented_verified':(mayRunInferred?'implemented_inferred':'fallback_noop')):
+        'fallback_noop';
+      if(n.runtimeEffectDisposition==='fallback_noop')n.effect=null;
+      if(type==='enchant'){
+        n.runtimeEffectDisposition='fallback_noop';
+        n.effect=null;
+        n.runtimeEffectFallbackReason='enchant-event-duration-handler-not-implemented';
+      }else{
+        n.runtimeEffectFallbackReason=n.runtimeEffectDisposition==='fallback_noop'?
+          (raw.runtimeEffectFallbackReason||'source-effect-clause-not-yet-mapped'):null;
       }
     }else{n.rules.status='incomplete';n.rules.unsupportedReason='원본 카드 종류를 판별하지 못했습니다.';}
     if(type!=='land')n.rules.costStatus=costKnown?'mapped':'missing-from-card-image';
@@ -396,7 +652,7 @@
       return card;
     });
   }
-  const api = {normalize,normalizeMany,fieldMap,entries,normalizeAbility,mappedType,parseStatTech,parseCoinExpression,parseItemConditions,parseCardTextEffect,htmlToText,dedupeTextBlocks,parseColors,parseSoulProduction,safeSourceCardUrl};
+  const api = {normalize,normalizeMany,fieldMap,entries,normalizeAbility,mappedType,parseStatTech,parseCoinExpression,parseSourceCoinTech,parseRequireSoulRuntime,parseItemConditions,parseCardTextEffect,htmlToText,dedupeTextBlocks,parseColors,parseSoulProduction,safeSourceCardUrl};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.FMCardSchema = api;
 })(typeof window !== 'undefined' ? window : globalThis);

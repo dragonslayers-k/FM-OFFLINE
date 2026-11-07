@@ -213,20 +213,17 @@
       showDataMessage(message, true);
     }
   };
-  function defaultDeckCounts(faction) {
-    if (!cards.length) return {};
-    const sample = FM.buildStarterDeck(cards, faction || 'forest');
-    const counts = {};
-    sample.forEach(c => counts[c.id] = (counts[c.id] || 0) + 1);
-    return counts;
+  function defaultDeckCounts() {
+    // A fresh profile starts with an intentionally empty editable deck.
+    // Starter lists remain an explicit user action through the faction button.
+    return {};
   }
   function currentDeckCounts() {
-    if (!cards.length) return {};
-    if (!data.deckCounts || countDeck(data.deckCounts) !== DEMO_DECK_SIZE) {
-      data.deckCounts = defaultDeckCounts(data.deckFaction || 'forest');
+    return FM.DeckState.currentDeckCounts(data, cards.length, () => {
+      const counts = defaultDeckCounts(data.deckFaction || 'forest');
       safeWrite();
-    }
-    return data.deckCounts;
+      return counts;
+    });
   }
   function countDeck(counts) { return Object.values(counts).reduce((a, n) => a + Number(n || 0), 0); }
   function deckArray(counts) {
@@ -245,7 +242,7 @@
     }
     const deck = deckArray(currentDeckCounts());
     if (deck.length !== DEMO_DECK_SIZE) {
-      alert(`대전 덱은 현재 데모 기준 ${DEMO_DECK_SIZE}장이어야 합니다. 덱 편집에서 장수를 맞춰주십시오.`);
+      alert(`대전 덱은 ${DEMO_DECK_SIZE}장이어야 합니다. 현재 ${deck.length}장입니다. 덱 편집에서 장수를 맞춰주십시오.`);
       switchTab('deck');
       return;
     }
@@ -271,11 +268,13 @@
       return 'AP '+card.ap+' · DP '+card.dp+' · HP '+card.hp+' · '+(card.unitAbility||'능력 미상')+' · '+(card.skill||'스킬 없음')+(coinText?' · '+coinText:'');
     }
     if(card.type==='land'){
+      const install=card.landInstallCostKnown===true
+        ? runtimeCostLabel(card.landInstallCost,card.runtimeCostStatus)
+        : '설치 소울 확인 필요';
       if(card.isMagicLand||card.soulProductionStatus==='magicland-effect')
-        return '매직랜드 · 소울 코스트 발동 효과 구현 대기';
+        return '매직랜드 · LP '+(card.requiredLP??'미상')+' · 설치 '+install+' · 특수 효과 fallback (일반 소울 생산 없음)';
       const prod=card.soulProduction||{colored:{},neutral:0};
       const colors=Object.entries(prod.colored||{}).filter(([,v])=>Number(v)>0).map(([c,v])=>(COLOR_LABEL[c]||c)+' '+v).join(' + ')||'유색 소울 없음';
-      const install=card.landInstallCostKnown===true?FM.costText(card.landInstallCost):'설치 소울 확인 필요';
       return '필요 LP '+(card.requiredLP??'미상')+' · 설치 소울 '+install+' · 생산 '+colors+' · 무소울 '+(prod.neutral??0);
     }
     if(card.type==='item')return '장착 능력 '+(card.equipAbility||'미상')+' · AP '+(card.apBonus||0)+' · DP '+(card.dpBonus||0)+' · HP '+(card.hpBonus||0)+' · 코인 '+(card.coinDeltaText||'미상');
@@ -283,17 +282,28 @@
     if(card.type==='spell')return '발동 '+(card.triggerTiming||'미상')+' · 지속 '+(card.durationText||'미상')+' · '+(card.effect?effectText(card.effect):'효과 매핑 대기');
     return '특수 효과';
   }
+  function runtimeCostLabel(cost,status) {
+    const amount=FM.costText(cost);
+    if(status==='implemented_inferred')return '추정 비용 '+amount;
+    if(status==='fallback_payable')return '대체 비용 '+amount;
+    return '비용 '+amount;
+  }
   function costLabel(card) {
     if(card.type==='land'){
-      if(card.isMagicLand||card.soulProductionStatus==='magicland-effect')return '매직랜드 효과 구현 대기';
-      const install=card.landInstallCostKnown===true?FM.costText(card.landInstallCost):
-        (card.costMappingReview?'혼합 설치 비용 검토':'설치 소울 확인 필요');
-      return 'LP '+(card.requiredLP??'미상')+' · 설치 소울 '+install;
+      const install=card.landInstallCostKnown===true
+        ? runtimeCostLabel(card.landInstallCost,card.runtimeCostStatus)
+        : '설치 소울 확인 필요';
+      if(card.isMagicLand||card.soulProductionStatus==='magicland-effect')
+        return 'LP '+(card.requiredLP??'미상')+' · 설치 '+install+' · 효과 fallback';
+      return 'LP '+(card.requiredLP??'미상')+' · 설치 '+install;
     }
-    if(card.costKnown===true&&card.costMapped===true)return FM.costText(card.cost);
+    if(card.runtimeCostKnown===true&&card.runtimeCost&&typeof card.runtimeCost==='object')
+      return runtimeCostLabel(card.runtimeCost,card.runtimeCostStatus);
+    if(card.costKnown===true&&card.costMapped===true)return '원본 비용 '+FM.costText(card.cost);
+    if(card.costMappingReview&&card.costSemanticReview)return '혼합/특수 소울 검토';
     if(card.costMappingReview)return '혼합 소울 비용 검토';
-    if(card.costSemanticReview)return 'NCS/BONUS 의미 검토';
-    return '소울 구슬 비용 검증 대기';
+    if(card.costSemanticReview)return '특수 소울 의미 검토';
+    return '런타임 비용 확인 필요';
   }
   function canEquipOn(card, unit, targetOwnerId = 'player') {
     if (!card || !unit) return false;
@@ -303,7 +313,8 @@
     if (!abilityOk) return false;
     const condition = card.itemConditions;
     if (!condition) return true;
-    if (!condition.mapped || (condition.unsupported && condition.unsupported.length)) return false;
+    if ((!condition.mapped || (condition.unsupported && condition.unsupported.length)) &&
+        card.runtimeItemConditionStatus !== 'fallback_any_unit') return false;
     if (condition.owner === 'enemy' && targetOwnerId !== 'ai') return false;
     if (condition.owner === 'own' && targetOwnerId !== 'player') return false;
     if (condition.race && String(unit.race || '') !== condition.race) return false;
@@ -413,7 +424,10 @@
     renderUnits('ai-units', ai, false); renderUnits('player-units', you, true);
     el('hand-cards').innerHTML = you.hand.map(c => cardMarkup(c, selectedHandId === c.instanceId, false)).join('') || '<div class="empty-state">패가 비어 있습니다.</div>';
     renderSelectedCard();
-    el('play-card').disabled = !playerPhase || !selectedHandId || state.status !== 'playing';
+    const selectedCard = you.hand.find(card => card.instanceId === selectedHandId);
+    const selectedValidation = selectedCard ? FM.validateCardForPlay(selectedCard) : null;
+    el('play-card').disabled = !playerPhase || !selectedHandId || state.status !== 'playing' || !selectedValidation?.ok;
+    el('play-card').title = selectedValidation && !selectedValidation.ok ? selectedValidation.reason : '';
     el('discard-card').disabled = !playerPhase || !selectedHandId || state.status !== 'playing';
     const reshuffle = el('reshuffle-hand');
     if (reshuffle) {
@@ -421,7 +435,7 @@
         you.reshuffleUsedRound === state.round || you.playedAnyCardThisPhase || you.playedLand ||
         Number(you.unitDeployedThisPhase || 0) > 0 || !you.hand.length;
       reshuffle.textContent = state.round > 4 ? '리셔플 종료 (4턴까지)' :
-        you.reshuffleUsedRound === state.round ? '이번 턴 리셔플 사용 완료' : '핸드 다시 받기 · 1장 소각';
+        you.reshuffleUsedRound === state.round ? '이번 턴 리셔플 사용 완료' : '핸드 셔플 · 1장 소각 (지형 보장 없음)';
     }
     el('end-phase').disabled = !playerPhase || state.status !== 'playing';
     el('end-phase').textContent = playerPhase ? (state.attackerId === 'player' ? '공격 준비 완료' : '방어 준비 완료') : 'AI 진행 중';
@@ -446,8 +460,10 @@
     }
     box.classList.remove('empty');
     const unitButton=unit?'<button type="button" class="selected-card-detail" data-open-card-detail="'+escapeAttr(unit.id)+'">선택 유닛 상세</button>':'';
+    const validation=FM.validateCardForPlay(card);
+    const validationNote=validation.ok?'':'<small class="selected-card-warning">사용 불가: '+escapeHtml(validation.reason)+'</small>';
     box.innerHTML='<div class="selected-card-main"><strong>'+escapeHtml(card.name)+'</strong> · '+escapeHtml(cardMeta(card))+
-      '<small class="selected-card-condition">비용: '+escapeHtml(costLabel(card))+'</small></div>'+
+      '<small class="selected-card-condition">비용: '+escapeHtml(costLabel(card))+'</small>'+validationNote+'</div>'+
       '<button type="button" class="selected-card-detail" data-open-card-detail="'+escapeAttr(card.id)+'">카드 상세 보기</button>'+unitButton;
   }
   function chooseHand(instanceId) {
@@ -469,16 +485,33 @@
     if (!state || state.activeId !== 'player' || !selectedHandId) return;
     const card = state.players.player.hand.find(c => c.instanceId === selectedHandId);
     if (!card) return;
+    const validation = FM.validateCardForPlay(card);
+    if (!validation.ok) { alert(validation.reason); return; }
     let candidates = [], title = '';
     if (card.type === 'item') {
       const targetOwnerId = card.itemConditions && card.itemConditions.owner === 'enemy' ? 'ai' : 'player';
       candidates = state.players[targetOwnerId].units.filter(unit => canEquipOn(card,unit,targetOwnerId));
-      title = targetOwnerId === 'ai' ? '장착 조건을 충족하는 적군 유닛' : '장착 조건을 충족하는 아군 유닛';
-      if (!candidates.length) { alert('원본 장착 능력·종족·소속 조건에 맞는 유닛이 없습니다.'); return; }
+      const condition=card.itemConditions||{};
+      const allowed=Array.isArray(card.allowedUnitAbilities)?card.allowedUnitAbilities:[];
+      const hasKnownTargetRestriction=!!(condition.owner||condition.race||condition.affiliation||(allowed.length&&!allowed.includes('만능')));
+      const canUseNoTargetFallback=card.runtimeItemConditionStatus==='fallback_any_unit'&&!hasKnownTargetRestriction;
+      if (card.runtimeItemConditionStatus === 'fallback_any_unit' && !candidates.length && !hasKnownTargetRestriction) {
+        candidates = state.players[targetOwnerId].units.slice();
+      }
+      title = targetOwnerId === 'ai' ? '장착 대상 유닛' : '장착 대상 유닛';
+      if (!candidates.length && !canUseNoTargetFallback) {
+        alert('현재 원본에서 확인된 장착 조건을 충족하는 유닛이 없습니다.'); return;
+      }
     } else if (card.type === 'enchant') {
-      alert('인챈트는 원본 발동 시점·지속 턴·슬롯 위치를 확인할 수 있지만, 카드별 효과가 아직 실행 규칙으로 매핑되지 않아 임의 발동하지 않습니다. 상세 보기에서 원문 조건을 확인할 수 있습니다.');
-      return;
-    } else if (card.type === 'spell' && ['ownUnit','enemyUnit'].includes(card.effect?.target)) {
+      if (card.runtimeEffectDisposition === 'fallback_noop') {
+        completePlay(card,null);
+        return;
+      }
+      const targetOwnerId = card.slotOwner === 'enemy' ? 'ai' : 'player';
+      candidates = state.players[targetOwnerId].units.filter(unit => Number(unit.slotIndex) === Number(card.slotIndex));
+      title = '인챈트 대상 유닛';
+      if (!candidates.length) { alert('지정 슬롯에 인챈트를 적용할 유닛이 없습니다.'); return; }
+    } else if (card.type === 'spell' && card.runtimeEffectDisposition !== 'fallback_noop' && ['ownUnit','enemyUnit'].includes(card.effect?.target)) {
       candidates = card.effect.target === 'ownUnit' ? state.players.player.units : state.players.ai.units;
       title = card.effect.target === 'ownUnit' ? '효과를 받을 아군 유닛' : '마법의 대상이 될 적 유닛';
       if (!candidates.length) { alert('효과를 적용할 대상 유닛이 없습니다.'); return; }
@@ -544,10 +577,20 @@
     const tabRows = Array.from(tabGroups.entries()).map(([group,items]) =>
       `<section class="native-rule-panel"><h4>${escapeHtml(group)}</h4>${items.map(text => `<div class="source-tab-row">${escapeHtml(text)}</div>`).join('')}</section>`
     ).join('');
-    const costWarning = card.type !== 'land' && card.rules?.costStatus !== 'mapped'
-      ? '<div class="rule-warning">소울 구슬 비용이 원본 카드 이미지 기준으로 아직 확인되지 않았습니다. 무료로 처리하지 않습니다.</div>' : '';
-    const effectWarning = card.type === 'enchant' || (card.type === 'spell' && !card.effect)
-      ? '<div class="rule-warning">원문 설명은 보존되어 있지만 실행 효과 매핑이 완료되지 않아 전투 발동을 차단합니다.</div>' : '';
+    const hasRuntimeCost = card.runtimeCostKnown === true &&
+      card.runtimeCost && typeof card.runtimeCost === 'object';
+    const sourceCostPending = card.type !== 'land' && card.rules?.costStatus !== 'mapped';
+    const costWarning = sourceCostPending
+      ? '<div class="rule-warning">원본 비용 의미는 검토 중입니다. ' +
+        (hasRuntimeCost
+          ? '실제 게임 결제에는 위에 표시된 runtime 비용을 사용합니다.'
+          : '누락 비용은 무료로 처리하지 않고 지불 가능한 runtime fallback 정책을 적용합니다.') +
+        ' 출처 검증 상태와 카드 플레이 가능 여부는 별개입니다.</div>'
+      : '';
+    const effectWarning = ['spell', 'enchant'].includes(card.type) &&
+      card.runtimeEffectDisposition === 'fallback_noop'
+      ? '<div class="rule-warning">이 카드의 미지원 효과만 no-op fallback으로 종료합니다. 비용 결제와 카드 사용, 턴 진행은 정상 완료됩니다.</div>'
+      : '';
     const ruleWarning = costWarning + effectWarning;
     // Keep the exact per-card source page visible in the detail view. Do not
     // derive it from image/archive paths: those are separate provenance fields.
@@ -598,12 +641,17 @@
   function renderDeckCatalogue(reset = true) {
     if (reset) catalogueVisibleCount = 100;
     const query = (el('deck-search').value || '').trim().toLocaleLowerCase();
+    const type = el('deck-filter-type').value, faction = el('deck-filter-faction').value;
     const counts = currentDeckCounts();
-    const visible = cards.filter(c => !query || matchesCardSearch(c, query));
+    const visible = cards.filter(c =>
+      (type === 'all' || c.type === type) &&
+      (faction === 'all' || c.faction === faction) &&
+      (!query || matchesCardSearch(c, query))
+    );
     const page = visible.slice(0, catalogueVisibleCount);
     el('deck-catalogue').innerHTML = page.map(c => {
       const art = cardArtUrl(c.artImage);
-      return `<div class="catalogue-item" data-card-detail="${escapeAttr(c.id)}"><div class="mini-art ${FM.cardArtClass(c)}">${art ? `<img src="${escapeAttr(art)}" alt="" loading="lazy" onerror="this.remove();">` : ART[c.type]}</div><div class="catalogue-main"><strong>${escapeHtml(c.name)}</strong><small>${escapeHtml(cardMeta(c))} · ${escapeHtml(statsText(c))}</small></div><div class="qty-controls"><b>${counts[c.id] || 0}</b><button data-deck-plus="${escapeAttr(c.id)}">+</button></div></div>`;
+      return `<div class="catalogue-item" data-card-detail="${escapeAttr(c.id)}"><div class="mini-art ${FM.cardArtClass(c)}">${art ? `<img src="${escapeAttr(art)}" alt="" loading="lazy" onerror="this.remove();">` : ART[c.type]}</div><div class="catalogue-main"><strong>${escapeHtml(c.name)}</strong><small>${escapeHtml(cardMeta(c))} · ${escapeHtml(statsText(c))}</small></div><div class="qty-controls"><button data-deck-minus="${escapeAttr(c.id)}" ${(counts[c.id] || 0) <= 0 ? 'disabled' : ''} aria-label="덱에서 ${escapeAttr(c.name)} 1장 빼기">−</button><b>${counts[c.id] || 0}</b><button data-deck-plus="${escapeAttr(c.id)}">+</button></div></div>`;
     }).join('') || '<div class="empty-state">검색 결과가 없습니다.</div>';
     if (visible.length > catalogueVisibleCount) {
       el('deck-catalogue').insertAdjacentHTML('beforeend', `<button id="catalogue-more" class="library-more" type="button">카드 더 보기 · ${catalogueVisibleCount.toLocaleString()} / ${visible.length.toLocaleString()}</button>`);
@@ -611,16 +659,18 @@
     }
   }
   function adjustDeck(id, delta) {
-    const counts = Object.assign({}, currentDeckCounts());
-    const next = (counts[id] || 0) + delta;
-    if (next < 0) return;
+    currentDeckCounts();
     const card = cards.find(c => c.id === id);
-    const rawLimit = Number(card && card.deckLimit);
+    if (!card) return;
+    const rawLimit = Number(card.deckLimit);
     const limit = Number.isInteger(rawLimit) ? Math.max(0, Math.min(4, rawLimit)) : 4;
-    if (delta > 0 && countDeck(counts) >= DEMO_DECK_SIZE) { alert(`덱은 ${DEMO_DECK_SIZE}장까지 편성할 수 있습니다.`); return; }
-    if (delta > 0 && next > limit) { alert(`이 카드는 최대 ${limit}장까지 넣을 수 있습니다.`); return; }
-    if (next === 0) delete counts[id]; else counts[id] = next;
-    data.deckCounts = counts; safeWrite(); renderDeck();
+    const result = FM.DeckState.adjustDeckCounts(data, id, delta, limit, DEMO_DECK_SIZE);
+    if (!result.ok) {
+      if (result.reason === 'deck_full') alert(`덱은 ${DEMO_DECK_SIZE}장까지 편성할 수 있습니다.`);
+      else if (result.reason === 'card_limit') alert(`이 카드는 최대 ${limit}장까지 넣을 수 있습니다.`);
+      return;
+    }
+    safeWrite(); renderDeck();
   }
   function renderLibrary(reset = true) {
     if (reset) libraryVisibleCount = 60;
@@ -685,7 +735,7 @@
       if (minus) adjustDeck(minus.dataset.deckMinus, -1); else if (plus) adjustDeck(plus.dataset.deckPlus, 1);
       else { const item=e.target.closest('[data-card-detail]'); if(item) openCardDetail(item.dataset.cardDetail); }
     });
-    el('deck-catalogue').addEventListener('click', e => { const plus = e.target.closest('[data-deck-plus]'); if (plus) adjustDeck(plus.dataset.deckPlus, 1); else { const item=e.target.closest('[data-card-detail]'); if(item) openCardDetail(item.dataset.cardDetail); } });
+    el('deck-catalogue').addEventListener('click', e => { const minus = e.target.closest('[data-deck-minus]'), plus = e.target.closest('[data-deck-plus]'); if (minus) { if (!minus.disabled) adjustDeck(minus.dataset.deckMinus, -1); } else if (plus) adjustDeck(plus.dataset.deckPlus, 1); else { const item=e.target.closest('[data-card-detail]'); if(item) openCardDetail(item.dataset.cardDetail); } });
     el('library-grid').addEventListener('click', e => { const item=e.target.closest('[data-card-detail]'); if(item) openCardDetail(item.dataset.cardDetail); });
     el('close-card-modal').addEventListener('click', closeCardDetail);
     el('card-modal').addEventListener('click', e => { if(e.target.id==='card-modal' || e.target.classList.contains('detail-art-image')) closeCardDetail(); });
@@ -706,13 +756,16 @@
       if (card) { const id = card.dataset.cardDetail; closeGraveyard(); openCardDetail(id); }
     });
     el('save-deck').addEventListener('click', () => { safeWrite(); alert('현재 덱 구성을 기기에 저장했습니다.'); });
+    el('clear-deck').addEventListener('click', () => { FM.DeckState.clearDeckCounts(data); safeWrite(); renderDeck(); });
     el('starter-deck').addEventListener('click', () => {
       const faction = el('starter-faction').value;
       const sample = FM.buildStarterDeck(cards, faction);
       const counts = {}; sample.forEach(c => counts[c.id] = (counts[c.id] || 0) + 1);
       data.deckCounts = counts; data.deckFaction = faction; safeWrite(); renderDeck();
     });
-    el('deck-search').addEventListener('input', () => renderDeckCatalogue(true));
+    ['deck-search','deck-filter-type','deck-filter-faction'].forEach(id => {
+      el(id).addEventListener(id === 'deck-search' ? 'input' : 'change', () => renderDeckCatalogue(true));
+    });
     ['library-search','filter-type','filter-faction'].forEach(id => el(id).addEventListener('input', () => renderLibrary(true)));
     el('import-data-pack').addEventListener('click', importDataPack);
     el('download-data-pack').addEventListener('click', downloadDataPack);
