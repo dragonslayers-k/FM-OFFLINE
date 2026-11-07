@@ -1901,7 +1901,7 @@ test('RequireSoul NCS(82) fallback payment does not become recurring unit upkeep
   assert.equal(p.soulPool.neutral,1);
   FM._test.beginPhase(s,'player');
   assert.equal(p.neutralUpkeep,0,'NCS(82) has no verified recurring-upkeep mapping');
-  assert.equal(p.soulPool.neutral,1);
+  assert.equal(p.soulPool.neutral,0,'the empty test battlefield generates no neutral soul; NCS adds no upkeep');
   assert.equal(s.status,'playing');
 });
 
