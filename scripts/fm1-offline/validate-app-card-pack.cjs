@@ -287,7 +287,7 @@ function probeRuntimeAction(sourceCard) {
   const remainsInHand=owner.hand.some(x=>x.instanceId===instanceId);
   let terminalState=false, terminalLabel='';
   if(card.type==='land') { terminalState=owner.lands.some(x=>x.instanceId===instanceId); terminalLabel='land_installed'; }
-  else if(card.type==='unit') { terminalState=owner.units.some(x=>x.instanceId===instanceId); terminalLabel='unit_summoned'; }
+  else if(card.type==='unit') { terminalState=owner.units.some(x=>x.instanceId===instanceId); terminalLabel=terminalState?'unit_summoned':'unit_play_blocked'; }
   else if(card.type==='spell') {
     terminalState=owner.spells.some(x=>x.instanceId===instanceId)||owner.graveyard.some(x=>x.instanceId===instanceId);
     terminalLabel=owner.spells.some(x=>x.instanceId===instanceId)?'spell_queued':
@@ -314,7 +314,9 @@ for (const card of cards) {
   const actionProbe=probeRuntimeAction(card);
   const unsupportedEffectCard=['spell','enchant'].includes(card.type) &&
     card.runtimeEffectDisposition==='fallback_noop';
-  const intentionallyBlocked=unsupportedEffectCard && !validation.ok && !actionProbe.ok &&
+  const unresolvedCostBlocked=card.type!=='land' &&
+    card.runtimeCostStatus==='semantic_review_blocked' && card.runtimeCostKnown!==true;
+  const intentionallyBlocked=(unsupportedEffectCard||unresolvedCostBlocked) && !validation.ok && !actionProbe.ok &&
     actionProbe.remainsInHand && !actionProbe.playedAnyCardThisPhase &&
     actionProbe.reason===validation.reason;
   if(actionProbe.ok){
@@ -475,16 +477,18 @@ for (const card of cards) {
   const runtimeCost = card.type === 'land' ? card.landInstallCost : card.runtimeCost;
   const runtimeCostKnown = card.type === 'land' ? card.landInstallCostKnown === true : card.runtimeCostKnown === true;
   const runtimeCostParsed = FM._test.readCost(runtimeCost);
+  const status = String(card.runtimeCostStatus || 'missing');
+  runtimeCostStatus[status] = (runtimeCostStatus[status] || 0) + 1;
   if (runtimeCostKnown && runtimeCostParsed.ok) {
     runtimePlayable.ready++;
-    const status = String(card.runtimeCostStatus || 'missing');
-    runtimeCostStatus[status] = (runtimeCostStatus[status] || 0) + 1;
     if (Object.prototype.hasOwnProperty.call(runtimeCost || {}, 'bonus')) {
       errors.push(card.id + ': unsupported BONUS key leaked into runtime payment cost');
     }
   } else {
     runtimePlayable.blocked++;
-    errors.push(card.id + ': runtime payment cost is missing or invalid: ' + (runtimeCostParsed.reason || 'unknown'));
+    if (!unresolvedCostBlocked) {
+      errors.push(card.id + ': runtime payment cost is missing or invalid: ' + (runtimeCostParsed.reason || 'unknown'));
+    }
   }
   if (card.type === 'unit') {
     const upkeep = FM._test.readCost(card.runtimeUpkeepCost);
