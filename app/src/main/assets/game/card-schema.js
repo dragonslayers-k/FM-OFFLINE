@@ -417,7 +417,13 @@
     const colors=parseColors(Array.isArray(raw.souls)&&raw.souls.length?raw.souls:attribute).filter(c=>c!=='neutral');
     const faction=COLORS.includes(raw.faction)?raw.faction:(colors[0]||'neutral');
     const parsedStatTech=parseStatTech(raw);
-    const sourceCoinTech=type==='unit'?parseSourceCoinTech(raw.sourceCoinTech):{status:'not-applicable',stats:{},sharedTosses:0,review:[]};
+    const rawSourceFields=raw.sourceFields&&typeof raw.sourceFields==='object'&&!Array.isArray(raw.sourceFields)?raw.sourceFields:{};
+    const rawCoinFields=raw.sourceCoinTech&&typeof raw.sourceCoinTech==='object'&&!Array.isArray(raw.sourceCoinTech)?raw.sourceCoinTech:{};
+    // Older immutable DB29 packs may not contain the derived sourceCoinTech
+    // object; original Firestore coin fields remain in sourceFields.
+    const sourceCoinTech=type==='unit'
+      ?parseSourceCoinTech({...rawSourceFields,...rawCoinFields})
+      :{status:'not-applicable',stats:{},sharedTosses:0,review:[]};
     const statTech=mergeSourceCoinTech(parsedStatTech,sourceCoinTech);
     const cardText=htmlToText(raw.text||detail['카드 텍스트']||detail['카드텍스트']||textFields['카드 텍스트']||'');
     const n={...raw,id:String(raw.id||''),name:String(raw.name||''),type:type||raw.type,faction,rawType:raw.type||null,

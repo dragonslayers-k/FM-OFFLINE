@@ -1018,6 +1018,14 @@ def self_test():
     } and all_souls["neutral"]==2
     hybrid=parse_earn_soul_list("120171018201",earn_enum,2)
     assert hybrid["known"] and hybrid["colored"]=={"dark":1,"earth":1,"light":1} and hybrid["neutral"]==2
+    # Same numeric 82 belongs to separate enum namespaces:
+    # EarnSoul=82 -> MU02 production; RequireSoul=82 -> NCS cost token.
+    earn_mu02=parse_earn_soul_list("8201",earn_enum,2)
+    assert earn_mu02["known"] and earn_mu02["neutral"]==2
+    assert earn_mu02["tokens"][0]["symbol"]=="MU02"
+    require_ncs=parse_cost("8201",require_soul_enum)
+    assert not require_ncs["known"] and require_ncs["tokens"][0]["symbol"]=="NCS"
+    assert require_ncs["tokens"][0]["status"]=="manual_review"
     magic=parse_earn_soul_list("0201",earn_enum,0)
     assert magic["known"] and magic["magicLand"] and not magic["colored"] and magic["neutral"]==0
     mismatch=parse_earn_soul_list("8201",earn_enum,1)

@@ -4352,3 +4352,38 @@ test('Firestore StatType markers map CONST/UP/DOWN and retain unverified types s
   assert.equal(front.statTech.stats.ap.sourceType,'FRONT');
   assert.equal(front.statTech.stats.ap.sourceTypeStatus,'source_type_semantics_unverified');
 });
+
+
+test('legacy DB29 sourceFields supplies coin fields when sourceCoinTech is absent',()=>{
+  const source=CardSchema.normalize({
+    id:'legacy-db29-source-coin',name:'Legacy DB29 source-only coin unit',type:'unit',
+    ap:2,dp:1,hp:3,
+    sourceFields:{
+      ATKCoin:'2C1',ATKCoinType:2,ATKCoinCount:1,
+      DEFCoin:'C1',DEFCoinType:3,DEFCoinCount:1,
+      HPCoin:'NONE',HPCoinType:1,HPCoinCount:0
+    }
+  });
+  let tossCalls=0;
+  const rng=()=>{tossCalls++;return 0.9;};
+  const profile=FM._test.coinProfile(source,rng);
+  const attack=FM._test.rollStat(source,'ap',rng,profile);
+  const defense=FM._test.rollStat(source,'dp',rng,profile);
+  assert.equal(profile.count,1);
+  assert.equal(tossCalls,1);
+  assert.equal(attack.value,4);
+  assert.equal(defense.value,0);
+});
+
+test('same numeric 82 in EarnSoul and RequireSoul does not cross-map at app load',()=>{
+  const card=CardSchema.normalize({
+    id:'separate-enum-82',name:'Separate enum namespaces',type:'unit',ap:1,dp:1,hp:2,
+    sourceFields:{RequireSoul:'8201',EarnSoulList:'8201',MuSoul:2}
+  });
+  assert.equal(card.sourceFields.EarnSoulList,'8201');
+  assert.equal(card.sourceFields.MuSoul,2);
+  assert.deepEqual(card.candidateCost,{ncs:1});
+  assert.equal(card.runtimeCostStatus,'semantic_review_blocked');
+  assert.deepEqual(card.runtimeCost,{});
+  assert.equal(card.runtimeUpkeepNeutral,0);
+});

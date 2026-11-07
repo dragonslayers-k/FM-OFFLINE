@@ -55,3 +55,10 @@ The Manual's `soulcost.htm` ties recurring upkeep to the neutral bead on a Unit'
 - The app pack converter no longer treats a colors-only legacy `soul_json` summary as source proof when the original `RequireSoul` token list is absent. It preserves the old colors as `legacy-unverified` candidates and blocks payment/upkeep. This prevents a stale NCS-to-neutral summary from silently re-entering the runtime after the raw token has been lost.
 - In `card-schema.js`, a non-manual `StatType` such as FRONT/BACK/HAND/TURN/PLUS/MINUS/EQUAL can no longer inherit a marker parsed from display text and become an AP/DP/HP combat restriction. Raw type and icon remain preserved; only source codes 11/12/13 receive Manual-defined ★/▲/▼ runtime behavior.
 - Regression coverage: colors-only neutral source without RequireSoul provenance is blocked; FRONT source type clears an otherwise parsed ▲ marker while UP/DOWN remain mapped.
+
+
+## 2026-11-07 — source-backed namespace example and DB29 fallback test
+
+Firestore card `16112710291` (`구름도시`) provides a cross-check: `RequireSoul="71018101"` encodes LIGHT ×1 + MU ×1 for installation; `EarnSoulList="8201"` uses a different enum where code 82 is MU02 and outputs two neutral/MU souls; `MuSoul=2` matches the output. The card's source TextExtra also states the special land consumes 1 MU soul and 1 colored soul. This confirms that a numeric code must be read with its exact source field and enum namespace. `RequireSoul=8201` remains the distinct NCS cost token and is blocked.
+
+The app normalizer now merges raw `sourceFields` coin data with the derived `sourceCoinTech` object. If the derived object is absent in an older immutable DB29 pack, the raw original fields still drive the shared coin calculation. Regression coverage checks the Manual `+2C1 AP / -C1 DP` one-toss example through `sourceFields` alone.
