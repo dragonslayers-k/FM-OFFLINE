@@ -158,7 +158,7 @@
   }
   function parseCoinExpression(value) {
     const raw=String(value||'').trim().replace(/\s+/g,'').toUpperCase();
-    const match=raw.match(/^([+\-X]?)(\d*)C(\d+)$/);
+    const match=raw.match(/^([+\-X=]?)(\d*)C(\d+)$/);
     if(!match)return null;
     const op=match[1];
     return {source:raw,operation:op==='-'?'subtract':op==='X'?'multiply':op==='+'?'add':'set',
@@ -248,7 +248,7 @@
           stats[spec.stat]={coin:[]};
           continue;
         }
-      }else if(/^[+\-X]/i.test(rawValue)){
+      }else if(/^[+\-X=]/i.test(rawValue)){
         operation=parsed.operation;
       }else{
         review.push(spec.stat+':missing-coin-type');

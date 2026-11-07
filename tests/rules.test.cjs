@@ -4187,6 +4187,18 @@ test('AI blocker selection accounts for source coin modifier expectations',()=>{
 });
 
 
+test('Firestore EQUAL CoinType accepts explicit equals coin notation',()=>{
+  const parsed=CardSchema.parseSourceCoinTech({
+    ATKCoin:'=C5',ATKCoinType:5,ATKCoinCount:5,
+    DEFCoin:'NONE',DEFCoinType:1,DEFCoinCount:0,
+    HPCoin:'NONE',HPCoinType:1,HPCoinCount:0
+  });
+  assert.equal(parsed.status,'source_mapped');
+  assert.deepEqual(parsed.stats.ap.coin[0],{
+    source:'=C5',operation:'set',multiplier:1,tosses:5
+  });
+});
+
 test('Firestore source coin fields map CoinType operators and share one toss profile',()=>{
   const source={
     ATKCoin:'2C3',ATKCoinType:2,ATKCoinCount:3,

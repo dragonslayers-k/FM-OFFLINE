@@ -224,6 +224,7 @@ const blocked = Object.create(null);
 const landStatus = Object.create(null);
 const landInstallCost = { known:0, review:0, mappingReview:0, semanticReview:0, runtimeReady:0 };
 const runtimeCostStatus = Object.create(null);
+const coinTechSourceStatus = Object.create(null);
 const runtimeEffectDisposition = Object.create(null);
 const runtimePlayable = { ready:0, blocked:0 };
 const effectAudit = { candidates:0, clauses:0, candidateOnlyCards:0, unexpectedExecutableEffects:0, spanErrors:0, runtimeDispositions:Object.create(null) };
@@ -307,6 +308,10 @@ function probeRuntimeAction(sourceCard) {
 
 for (const card of cards) {
   types[card.type] = (types[card.type] || 0) + 1;
+  if(card.type==='unit'){
+    const coinStatus=String(card.coinTechSourceStatus||'missing');
+    coinTechSourceStatus[coinStatus]=(coinTechSourceStatus[coinStatus]||0)+1;
+  }
   const validation = FM.validateCardForPlay(card);
   playable[card.type] = playable[card.type] || { ok:0, blocked:0 };
   runtimeActionAudit.attempted++;
@@ -596,7 +601,7 @@ if (skillAudit.mappingRows < 15000 || skillAudit.manualVerifiedMappings < 1000 |
   errors.push('Special-skill mapping validation mismatch: ' + JSON.stringify(skillAudit));
 }
 if (errors.length) {
-  console.error(JSON.stringify({errors:errors.slice(0,50),errorCount:errors.length,types,landStatus,landInstallCost,runtimeCostStatus,runtimePlayable,runtimeEffectDisposition,runtimeActionAudit,costKnown,playable,effectAudit,skillAudit},null,2));
+  console.error(JSON.stringify({errors:errors.slice(0,50),errorCount:errors.length,types,landStatus,landInstallCost,runtimeCostStatus,coinTechSourceStatus,runtimePlayable,runtimeEffectDisposition,runtimeActionAudit,costKnown,playable,effectAudit,skillAudit},null,2));
   process.exit(1);
 }
 console.log(JSON.stringify({
@@ -612,6 +617,7 @@ console.log(JSON.stringify({
   magicLandEffectRecords:landStatus['magicland-effect'],
   landInstallCost,
   runtimeCostStatus,
+  coinTechSourceStatus,
   runtimeCostCoverage:runtimePlayable,
   runtimeEffectDisposition,
   runtimeActionAudit,
