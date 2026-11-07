@@ -438,3 +438,8 @@ Firestore enum raw-code audit: `Enum+StatType` row values, not outer map indexes
 
 
 Final enum regression fixture alignment: explicit zero-cost source rows use raw `RequireSoul=0100`; converter fixtures no longer pair an empty normalized soul object with a nonzero raw cost string. Current source-code mapping is StatType 1/11/12/13/... and CoinType 1/2/3/4/5 as documented above.
+
+
+### EarnSoul / RequireSoul code-82 namespace split
+
+The Firestore enumtable defines `EarnSoul` raw code 82 as `MU02` (two neutral souls produced per token), while `RequireSoul` raw code 82 is the separate `NCS` token. The user-confirmed `NCS(82)` notation is a third, unrelated unit-stat shorthand (N/C/S with attack dice 0–8 and defense dice 0–2). A fourth literal, `NCS소울`, appears in some `TextExtra` effects and remains a separate source-text resource question. These meanings must never be joined by the shared number/string alone. The app's `parse_earn_soul_list` already decodes `EarnSoul` 8201 as two neutral output; converter self-tests cover it separately from `RequireSoul` 8201 review handling.

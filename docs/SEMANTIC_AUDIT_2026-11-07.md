@@ -38,3 +38,8 @@ This audit rechecked the Dropbox Manual.zip pages `gamerule.htm`, `ready.htm`, `
 ## Firestore enum raw-code correction
 
 The enumtable's outer map key is an index; the first integer in each enum row is the raw code stored in the card fields. For `StatType`, raw values are 1=NONE, 11=CONST(★), 12=UP(▲), 13=DOWN(▼), 21=FRONT, 22=BACK, 23=HAND, 24=TURN, 31=PLUS, 32=MINUS, 33=EQUAL. For `CoinType`, raw values are 1=NONE, 2=PLUS, 3=MINUS, 4=X, 5=EQUAL. The app parser and regression fixtures now use these raw values. The outer index must never be substituted for the source row value.
+
+
+### EarnSoul / RequireSoul code-82 namespace split
+
+The Firestore enumtable defines `EarnSoul` raw code 82 as `MU02` (two neutral souls produced per token), while `RequireSoul` raw code 82 is the separate `NCS` token. The user-confirmed `NCS(82)` notation is a third, unrelated unit-stat shorthand (N/C/S with attack dice 0–8 and defense dice 0–2). A fourth literal, `NCS소울`, appears in some `TextExtra` effects and remains a separate source-text resource question. These meanings must never be joined by the shared number/string alone. The app's `parse_earn_soul_list` already decodes `EarnSoul` 8201 as two neutral output; converter self-tests cover it separately from `RequireSoul` 8201 review handling.
