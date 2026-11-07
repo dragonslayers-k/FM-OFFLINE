@@ -222,7 +222,7 @@
       {stat:'dp',value:'DEFCoin',type:'DEFCoinType',count:'DEFCoinCount'},
       {stat:'hp',value:'HPCoin',type:'HPCoinType',count:'HPCoinCount'}
     ];
-    const stats={},review=[];
+    const stats={},review=[],inferredStats=[];
     let sharedTosses=0,hasExpression=false,hasInferredEqual=false;
     for(const spec of specs){
       const rawValue=String(source[spec.value]??'').trim();
@@ -247,7 +247,7 @@
         // CoinType EQUAL(5) exists in the Firestore enum, but Manual coin.htm
         // does not define its execution. The replacement interpretation is
         // inferred from the enum symbol and must remain visibly non-Manual.
-        if(rawType===5)hasInferredEqual=true;
+        if(rawType===5){hasInferredEqual=true;inferredStats.push(spec.stat);}
         if(rawType===1){
           review.push(spec.stat+':NONE-type-with-coin-expression');
           stats[spec.stat]={coin:[]};
@@ -265,6 +265,11 @@
         stats[spec.stat]={coin:[]};
         continue;
       }
+      if(rawType!==null&&/^[+\\-X=]/i.test(rawValue)&&parsed.operation!==operation){
+        review.push(spec.stat+':coin-type-expression-mismatch');
+        stats[spec.stat]={coin:[]};
+        continue;
+      }
       if(rawCount!==null&&rawCount!==parsed.tosses){
         review.push(spec.stat+':coin-count-mismatch');
         stats[spec.stat]={coin:[]};
@@ -275,17 +280,21 @@
       sharedTosses=Math.max(sharedTosses,parsed.tosses);
     }
     return {status:review.length?'source_review':(hasInferredEqual?'source_inferred':(hasExpression?'source_mapped':'no_coin')),
-      stats,sharedTosses,review};
+      stats,sharedTosses,review,inferredStats};
   }
 
   function mergeSourceCoinTech(parsed,source) {
-    if(!source||!['source_mapped','source_inferred','no_coin'].includes(source.status))return parsed;
-    const stats={...(parsed.stats||{})};
+    if(!source||!['source_mapped','source_inferred','source_review','no_coin'].includes(source.status))return parsed;
+    const stats={...(parsed.stats||{})},inferred=new Set(source.inferredStats||[]);
     for(const stat of ['ap','dp','hp']){
       const previous=stats[stat]||{value:null,marker:'',coin:[]};
-      stats[stat]={...previous,coin:(source.stats[stat]&&source.stats[stat].coin)||[]};
+      const sourceCoin=(source.stats[stat]&&source.stats[stat].coin)||[];
+      // EQUAL is only an enum-name inference; preserve it but do not execute it
+      // until a Manual rule defines the operation.
+      stats[stat]={...previous,coin:inferred.has(stat)?[]:sourceCoin};
     }
-    return {...parsed,stats,sharedTosses:source.sharedTosses,source:'firestore-source-coin-fields'};
+    return {...parsed,stats,sharedTosses:source.sharedTosses,source:'firestore-source-coin-fields',
+      sourceReview:source.review||[],sourceInferredStats:[...inferred]};
   }
 
   function normalizeTabs(rawTabs) {

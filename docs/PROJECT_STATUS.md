@@ -465,3 +465,10 @@ The CardSchema parser preserves Firestore CoinType EQUAL(5) as an enum-inferred 
 The Dropbox `Manual.zip` page `soulcost.htm` explicitly states that the Soul Cost rule applies only to Unit cards with a colorless/neutral (무속성) summon-cost bead. That amount is paid once when the unit is summoned and is then paid again as recurring upkeep at each following preparation phase; an unpaid amount destroys the same number of deck cards. Accordingly, source `RequireSoul` MU(81) maps to the Manual neutral bead and contributes to recurring upkeep only for Unit cards. Non-Unit MU costs are one-time costs only. NCS(82), BONUS(83), and hybrid tokens remain blocked pending separate authoritative definitions.
 
 A separate fail-open/fail-closed defect was corrected: when an already-present/legacy unit has no valid source RequireSoul provenance and no versioned upkeep overlay, the engine previously invented a one-neutral-soul recurring charge. Missing provenance is not evidence of a one-soul upkeep. The unit now contributes zero inferred upkeep; its card remains unplayable from hand if its one-time cost is unresolved. Explicit MU(81) upkeep and explicit versioned overlays continue to be charged. Regression tests now distinguish a source-backed MU(81) upkeep unit from an unknown legacy unit.
+
+
+## 2026-11-07 — CoinType execution boundary correction
+
+- Firestore `CoinType=EQUAL(5)` remains preserved as an enum-inferred candidate. Manual `coin.htm` does not define its execution, so the candidate `set` operation is not merged into executable AP/DP/HP coin rules.
+- If an explicit operator in the source expression (for example `+2C1`) conflicts with the Firestore `CoinType` enum (for example MINUS), that stat lane is marked `source_review` and its source-derived coin modifier is cleared. Display-text parsing cannot restore the conflicting effect.
+- Valid source lanes on the same card remain independently mapped; invalid lanes are blocked without discarding other validated lanes.

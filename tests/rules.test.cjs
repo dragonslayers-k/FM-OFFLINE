@@ -4208,10 +4208,17 @@ test('Firestore EQUAL CoinType accepts explicit equals coin notation',()=>{
     DEFCoin:'NONE',DEFCoinType:1,DEFCoinCount:0,
     HPCoin:'NONE',HPCoinType:1,HPCoinCount:0
   });
-  assert.equal(parsed.status,'source_mapped');
+  assert.equal(parsed.status,'source_inferred');
   assert.deepEqual(parsed.stats.ap.coin[0],{
     source:'=C5',operation:'set',multiplier:1,tosses:5
   });
+  const card=CardSchema.normalize({id:'equal-coin-blocked',name:'EQUAL 후보',type:'unit',
+    ap:2,dp:1,hp:3,sourceFields:{RequireSoul:'1101'},
+    sourceCoinTech:{ATKCoin:'=C5',ATKCoinType:5,ATKCoinCount:5,
+      DEFCoin:'NONE',DEFCoinType:1,DEFCoinCount:0,
+      HPCoin:'NONE',HPCoinType:1,HPCoinCount:0}});
+  assert.equal(card.coinTechSourceStatus,'source_inferred');
+  assert.deepEqual(card.coinTech.stats.ap.coin,[]);
 });
 
 test('Firestore source coin fields map CoinType operators and share one toss profile',()=>{
@@ -4238,6 +4245,18 @@ test('Firestore source coin fields map CoinType operators and share one toss pro
   assert.equal(normalized.coinTech.source,'firestore-source-coin-fields');
   assert.equal(normalized.coinTech.stats.ap.coin[0].operation,'add');
   assert.equal(normalized.coinTech.stats.dp.coin[0].operation,'subtract');
+});
+
+test('Firestore CoinType operator/sign conflict is blocked instead of using display fallback',()=>{
+  const card=CardSchema.normalize({id:'coin-conflict-runtime',name:'충돌 코인',type:'unit',
+    ap:3,dp:1,hp:4,sourceFields:{RequireSoul:'1101'},
+    tabs:{'분류별':[{text:'공\\n3\\n+C1\\n방\\n1\\n체\\n4'}]},
+    sourceCoinTech:{ATKCoin:'+2C1',ATKCoinType:3,ATKCoinCount:1,
+      DEFCoin:'NONE',DEFCoinType:1,DEFCoinCount:0,
+      HPCoin:'NONE',HPCoinType:1,HPCoinCount:0}});
+  assert.equal(card.coinTechSourceStatus,'source_review');
+  assert.ok(card.coinTechReview.includes('ap:coin-type-expression-mismatch'));
+  assert.deepEqual(card.coinTech.stats.ap.coin,[]);
 });
 
 test('inconsistent Firestore coin count is retained for review and not executed',()=>{

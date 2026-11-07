@@ -59,7 +59,7 @@ test('source StatType markers override text parsing and unknown types never beco
   const card=Schema.normalize({
     id:'U-STAT-SOURCE',name:'원본기호검증',type:'unit',faction:'light',
     ap:5,dp:2,hp:4,
-    tabs:{'분류별':['공\\n▲5\\n방\\n▼2\\n체\\n★4']},
+    tabs:{'분류별':['공\n▲5\n방\n▼2\n체\n★4']},
     sourceStatTech:{
       ap:{value:5,typeCode:21,type:'FRONT',icon:'F',marker:'',status:'source_type_semantics_unverified'},
       dp:{value:2,typeCode:12,type:'UP',icon:'▲',marker:'▲',status:'manual_marker_mapped'},
@@ -71,6 +71,22 @@ test('source StatType markers override text parsing and unknown types never beco
   assert.equal(card.statTech.stats.ap.marker,'');
   assert.equal(card.statTech.stats.dp.marker,'▲');
   assert.equal(card.statTech.stats.hp.marker,'▼');
+});
+
+test('source CoinType conflicts never fall back to display-text coin effects',()=>{
+  const card=Schema.normalize({
+    id:'coin-type-conflict',name:'코인 원본 충돌',type:'unit',faction:'light',
+    ap:3,dp:1,hp:4,
+    tabs:{'분류별':[{text:'공\\n3\\n+C1\\n방\\n1\\n체\\n4'}]},
+    sourceCoinTech:{
+      ATKCoin:'+2C1',ATKCoinType:3,ATKCoinCount:1,
+      DEFCoin:'NONE',DEFCoinType:1,DEFCoinCount:0,
+      HPCoin:'NONE',HPCoinType:1,HPCoinCount:0
+    }
+  });
+  assert.equal(card.coinTechSourceStatus,'source_review');
+  assert.ok(card.coinTechReview.includes('ap:coin-type-expression-mismatch'));
+  assert.deepEqual(card.coinTech.stats.ap.coin,[]);
 });
 
 test('parses multiplier coin notation and stat immunity markers',()=>{
@@ -290,11 +306,12 @@ test('CoinType EQUAL remains an enum-inferred replacement, not a Manual-verified
   };
   const parsed=Schema.parseSourceCoinTech(sourceCoinTech);
   assert.equal(parsed.status,'source_inferred');
-  assert.equal(parsed.stats.ap.coin[0].operation,'set');
+  assert.equal(parsed.stats.ap.coin[0].operation,'set'); // preserved candidate only
   const card=Schema.normalize({id:'coin-equal-inferred',name:'EQUAL 코인',type:'unit',
     sourceFields:{RequireSoul:'1101'},sourceCoinTech,ap:3,dp:1,hp:2});
   assert.equal(card.coinTechSourceStatus,'source_inferred');
-  assert.equal(card.coinTech.stats.ap.coin[0].operation,'set');
+  assert.deepEqual(card.coinTech.stats.ap.coin,[]);
+  assert.deepEqual(card.coinTech.sourceInferredStats,['ap']);
 });
 
 test('stat tech parser reads all three FM1 coin lanes and directional markers',()=>{
