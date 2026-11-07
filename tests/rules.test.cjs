@@ -4133,3 +4133,40 @@ test('AI blocker selection accounts for NCS attack and defense dice expectations
   const selected=FM._test.chooseBlocker(attacker,[heavyDefense,likelyKill],()=>0.5);
   assert.equal(selected.instanceId,likelyKill.instanceId,'expected attack dice should make the lower-defense target the preferred blocker');
 });
+
+
+test('Firestore source coin fields map CoinType operators and share one toss profile',()=>{
+  const source={
+    ATKCoin:'C3',ATKCoinType:3,ATKCoinCount:3,
+    DEFCoin:'2C1',DEFCoinType:2,DEFCoinCount:1,
+    HPCoin:'NONE',HPCoinType:0,HPCoinCount:0
+  };
+  const parsed=CardSchema.parseSourceCoinTech(source);
+  assert.equal(parsed.status,'source_mapped');
+  assert.equal(parsed.sharedTosses,3);
+  assert.deepEqual(parsed.stats.ap.coin[0],{
+    source:'C3',operation:'multiply',multiplier:1,tosses:3
+  });
+  assert.deepEqual(parsed.stats.dp.coin[0],{
+    source:'2C1',operation:'subtract',multiplier:2,tosses:1
+  });
+  assert.deepEqual(parsed.stats.hp.coin,[]);
+  const normalized=CardSchema.normalize({
+    id:'source-coin-unit',name:'원본 코인 유닛',type:'unit',faction:'forest',
+    ap:3,dp:1,hp:5,cost:{forest:1},costKnown:true,
+    sourceCoinTech:source,tabs:{}
+  });
+  assert.equal(normalized.coinTech.source,'firestore-source-coin-fields');
+  assert.equal(normalized.coinTech.stats.ap.coin[0].operation,'multiply');
+  assert.equal(normalized.coinTech.stats.dp.coin[0].operation,'subtract');
+});
+
+test('inconsistent Firestore coin count is retained for review and not executed',()=>{
+  const parsed=CardSchema.parseSourceCoinTech({
+    ATKCoin:'C3',ATKCoinType:3,ATKCoinCount:2,
+    DEFCoin:'NONE',DEFCoinType:0,DEFCoinCount:0,
+    HPCoin:'NONE',HPCoinType:0,HPCoinCount:0
+  });
+  assert.equal(parsed.status,'source_review');
+  assert.ok(parsed.review.includes('ap:coin-count-mismatch'));
+});

@@ -192,6 +192,79 @@
     const tosses = Object.values(result).flatMap(x => x.coin).reduce((m,x) => Math.max(m,x.tosses),0);
     return { stats:result, sharedTosses:tosses, raw:block };
   }
+  function parseSourceCoinTech(source) {
+    if (!source || typeof source !== 'object' || Array.isArray(source)) {
+      return {status:'missing',stats:{},sharedTosses:0,review:[]};
+    }
+    // Firestore Enum+CoinType keys: 0 NONE, 1 PLUS, 2 MINUS, 3 X, 4 EQUAL.
+    const operations={1:'add',2:'subtract',3:'multiply',4:'set'};
+    const specs=[
+      {stat:'ap',value:'ATKCoin',type:'ATKCoinType',count:'ATKCoinCount'},
+      {stat:'dp',value:'DEFCoin',type:'DEFCoinType',count:'DEFCoinCount'},
+      {stat:'hp',value:'HPCoin',type:'HPCoinType',count:'HPCoinCount'}
+    ];
+    const stats={},review=[];
+    let sharedTosses=0,hasExpression=false;
+    for(const spec of specs){
+      const rawValue=String(source[spec.value]??'').trim();
+      const rawCount=integer(source[spec.count]);
+      const rawType=source[spec.type]===undefined||source[spec.type]===null||source[spec.type]===''
+        ?null:integer(source[spec.type]);
+      if(!rawValue||/^NONE$/i.test(rawValue)){
+        if(rawCount!==null&&rawCount>0)review.push(spec.stat+':coin-count-without-expression');
+        stats[spec.stat]={coin:[]};
+        continue;
+      }
+      hasExpression=true;
+      const parsed=parseCoinExpression(rawValue);
+      if(!parsed){
+        review.push(spec.stat+':unparsed-expression');
+        stats[spec.stat]={coin:[]};
+        continue;
+      }
+      let operation=null;
+      if(rawType!==null){
+        operation=operations[rawType]||null;
+        if(rawType===0){
+          review.push(spec.stat+':NONE-type-with-coin-expression');
+          stats[spec.stat]={coin:[]};
+          continue;
+        }
+      }else if(/^[+\-X]/i.test(rawValue)){
+        operation=parsed.operation;
+      }else{
+        review.push(spec.stat+':missing-coin-type');
+        stats[spec.stat]={coin:[]};
+        continue;
+      }
+      if(!operation){
+        review.push(spec.stat+':unknown-coin-type');
+        stats[spec.stat]={coin:[]};
+        continue;
+      }
+      if(rawCount!==null&&rawCount!==parsed.tosses){
+        review.push(spec.stat+':coin-count-mismatch');
+        stats[spec.stat]={coin:[]};
+        continue;
+      }
+      parsed.operation=operation;
+      stats[spec.stat]={coin:[parsed]};
+      sharedTosses=Math.max(sharedTosses,parsed.tosses);
+    }
+    return {status:review.length?'source_review':(hasExpression?'source_mapped':'no_coin'),
+      stats,sharedTosses,review};
+  }
+
+  function mergeSourceCoinTech(parsed,source) {
+    if(!source||!['source_mapped','no_coin'].includes(source.status))return parsed;
+    const stats={...(parsed.stats||{})};
+    for(const stat of ['ap','dp','hp']){
+      const previous=stats[stat]||{value:null,marker:'',coin:[]};
+      stats[stat]={...previous,coin:(source.stats[stat]&&source.stats[stat].coin)||[]};
+    }
+    return {...parsed,stats,sharedTosses:source.sharedTosses,source:'firestore-source-coin-fields'};
+  }
+
   function normalizeTabs(rawTabs) {
     const output = {};
     for (const [group,items] of Object.entries(rawTabs || {})) {
@@ -223,7 +296,9 @@
     const attribute=raw.faction||raw.attribute||meta['속성']||'neutral';
     const colors=parseColors(Array.isArray(raw.souls)&&raw.souls.length?raw.souls:attribute).filter(c=>c!=='neutral');
     const faction=COLORS.includes(raw.faction)?raw.faction:(colors[0]||'neutral');
-    const statTech=parseStatTech(raw);
+    const parsedStatTech=parseStatTech(raw);
+    const sourceCoinTech=type==='unit'?parseSourceCoinTech(raw.sourceCoinTech):{status:'not-applicable',stats:{},sharedTosses:0,review:[]};
+    const statTech=mergeSourceCoinTech(parsedStatTech,sourceCoinTech);
     const cardText=htmlToText(raw.text||detail['카드 텍스트']||detail['카드텍스트']||textFields['카드 텍스트']||'');
     const n={...raw,id:String(raw.id||''),name:String(raw.name||''),type:type||raw.type,faction,rawType:raw.type||null,
       text:htmlToText(raw.text||''),race:raw.race||meta['종족타입']||'',affiliation:raw.affiliation||meta['소속타입']||'',
@@ -323,7 +398,8 @@
         (raw.specialSkillMappingStatus==='community_documented_candidate'||
          n.specialSkillMappings.some(x=>x&&x.mappingStatus==='community_documented_candidate')
           ?'community-candidate-not-executable':'unmapped-or-no-skill');
-      n.coinTech=statTech;n.ap=raw.ap!==undefined&&raw.ap!==null&&raw.ap!==''&&Number.isFinite(Number(raw.ap))?Number(raw.ap):statTech.stats.ap?.value;
+      n.coinTech=statTech;n.coinTechSourceStatus=sourceCoinTech.status;n.coinTechReview=sourceCoinTech.review;
+      n.ap=raw.ap!==undefined&&raw.ap!==null&&raw.ap!==''&&Number.isFinite(Number(raw.ap))?Number(raw.ap):statTech.stats.ap?.value;
       n.dp=raw.dp!==undefined&&raw.dp!==null&&raw.dp!==''&&Number.isFinite(Number(raw.dp))?Number(raw.dp):statTech.stats.dp?.value;
       n.hp=raw.hp!==undefined&&raw.hp!==null&&raw.hp!==''&&Number.isFinite(Number(raw.hp))?Number(raw.hp):statTech.stats.hp?.value;
       n.level=Number.isFinite(Number(raw.level))?Number(raw.level):integer(meta['레벨']||detail['레벨']);
@@ -432,7 +508,7 @@
       return card;
     });
   }
-  const api = {normalize,normalizeMany,fieldMap,entries,normalizeAbility,mappedType,parseStatTech,parseCoinExpression,parseItemConditions,parseCardTextEffect,htmlToText,dedupeTextBlocks,parseColors,parseSoulProduction,safeSourceCardUrl};
+  const api = {normalize,normalizeMany,fieldMap,entries,normalizeAbility,mappedType,parseStatTech,parseCoinExpression,parseSourceCoinTech,parseItemConditions,parseCardTextEffect,htmlToText,dedupeTextBlocks,parseColors,parseSoulProduction,safeSourceCardUrl};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.FMCardSchema = api;
 })(typeof window !== 'undefined' ? window : globalThis);

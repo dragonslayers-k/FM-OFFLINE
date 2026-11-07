@@ -388,3 +388,10 @@ Do not equate those unit markers with the separate `NCS (82)` token in `RequireS
 - The current combat engine rolls AP/DP coin modifiers from coinTech; this patch adds explicit lower/upper-bound regression coverage for 0–8 AP and 0–2 DP dice and makes AI blocker estimates use the same expected coin modifiers instead of ignoring coinTech.
 - Critical (C) remains a separately identified stat category in the notation; its precise combat resolution must be connected to the correct source fields and manual rule before being treated as implemented. No critical multiplier or probability is invented here.
 - Validation is pending for this commit. DB29 pack rebuild is not required; the existing audited DB29 artifact remains the input for emulator validation.
+
+
+## 2026-11-07 — Firestore coin source-field mapping
+
+- Manual coin.htm confirms a single shared coin toss set is used across AP/DP/HP; each stat applies its own operation to the same result. Examples include AP +2C1 with DP -C1, which uses one coin toss, not two independent tosses.
+- Firestore sourceCoinTech fields are ATKCoin/DEFCoin/HPCoin (C-count and multiplier expression), corresponding CoinType operator codes (0 NONE, 1 PLUS, 2 MINUS, 3 X, 4 EQUAL), and CoinCount fields. Card-schema now maps these raw source fields into executable coinTech only when expression, operator and count agree; inconsistent/missing source metadata remains review-only.
+- Critical (C) remains a separately named stat category in user-provided NCS notation. This source-field mapping does not invent a critical-damage multiplier or probability.
