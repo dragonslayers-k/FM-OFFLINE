@@ -4106,3 +4106,30 @@ test('malformed explicit upkeep overlay falls back conservatively while verified
   assert.equal(p.soulPool.neutral,1,'only the conservative two-soul upkeep is consumed');
   assert.equal(p.deck.length,0,'the phase draw occurs after upkeep');
 });
+
+
+test('NCS(82) unit coin profile resolves 0..8 attack dice and 0..2 defense dice',()=>{
+  const source=unit('ncs-82-unit',{ap:3,dp:4,hp:6,coinTech:{sharedTosses:8,stats:{
+    ap:{value:3,marker:'',coin:[{source:'C8',operation:'add',multiplier:1,tosses:8}]},
+    dp:{value:4,marker:'',coin:[{source:'C2',operation:'add',multiplier:1,tosses:2}]}
+  }}});
+  const profile=FM._test.coinProfile(source,()=>0.9);
+  const attack=FM._test.rollStat(source,'ap',()=>0.9,profile);
+  const defense=FM._test.rollStat(source,'dp',()=>0.9,profile);
+  assert.equal(profile.count,8);
+  assert.equal(attack.value,11,'eight successful attack dice add at most eight');
+  assert.equal(defense.value,6,'two successful defense dice add at most two');
+  const noHeads={rolls:Array(8).fill(0),count:8};
+  assert.equal(FM._test.rollStat(source,'ap',()=>0.1,noHeads).value,3,'zero attack heads is the lower bound');
+  assert.equal(FM._test.rollStat(source,'dp',()=>0.1,noHeads).value,4,'zero defense heads is the lower bound');
+});
+
+test('AI blocker selection accounts for NCS attack and defense dice expectations',()=>{
+  const attacker=unit('ncs-ai-attacker',{ap:2,coinTech:{sharedTosses:8,stats:{
+    ap:{value:2,marker:'',coin:[{source:'C8',operation:'add',multiplier:1,tosses:8}]}
+  }}});
+  const likelyKill=unit('ncs-ai-likely-kill',{hp:5,dp:0});
+  const heavyDefense=unit('ncs-ai-heavy-defense',{hp:2,dp:5});
+  const selected=FM._test.chooseBlocker(attacker,[heavyDefense,likelyKill],()=>0.5);
+  assert.equal(selected.instanceId,likelyKill.instanceId,'expected attack dice should make the lower-defense target the preferred blocker');
+});

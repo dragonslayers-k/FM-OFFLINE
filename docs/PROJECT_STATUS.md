@@ -379,3 +379,12 @@ The community guide describes two separate unit markers: first-marked units crea
 Reference: https://neginote.wixsite.com/fantasymasters/guide-units
 
 Do not equate those unit markers with the separate `NCS (82)` token in `RequireSoul`; the latter remains a semantic-review item until its exact payment/production meaning is verified. No generic NCS soul production has been invented.
+
+
+## 2026-11-07 — N/C/S(82) stat notation correction
+
+- User-confirmed card-stat notation: N = Normal attack, C = Critical attack, S = Defensive; the (82) suffix means attack dice range 0–8 and defense dice range 0–2. A unit with NCS has all three stat categories; NC(80) omits S.
+- This notation is distinct from the RequireSoul field's source token code. Do not reinterpret a unit's NCS(82) stat notation as a soul-generation or soul-payment mechanic.
+- The current combat engine rolls AP/DP coin modifiers from coinTech; this patch adds explicit lower/upper-bound regression coverage for 0–8 AP and 0–2 DP dice and makes AI blocker estimates use the same expected coin modifiers instead of ignoring coinTech.
+- Critical (C) remains a separately identified stat category in the notation; its precise combat resolution must be connected to the correct source fields and manual rule before being treated as implemented. No critical multiplier or probability is invented here.
+- Validation is pending for this commit. DB29 pack rebuild is not required; the existing audited DB29 artifact remains the input for emulator validation.

@@ -1314,12 +1314,39 @@ if (card.type === 'unit') {
     };
   }
 
+  function expectedStatPower(unit, stat) {
+    const base = totalPower(unit, stat);
+    const tech = unit.coinTech && unit.coinTech.stats && unit.coinTech.stats[stat];
+    let value = base;
+    if (tech && Array.isArray(tech.coin) && tech.coin.length) {
+      for (const modifier of tech.coin) {
+        const expectedHeads = Math.max(0, Number(modifier.tosses || 0)) * 0.5;
+        const delta = Number(modifier.multiplier || 1) * expectedHeads;
+        if (modifier.operation === 'subtract') value -= delta;
+        else if (modifier.operation === 'multiply') value *= delta;
+        else if (modifier.operation === 'set') value = delta;
+        else value += delta;
+      }
+    } else {
+      const legacy = unit.coin || {};
+      value += Math.max(0, Number(legacy[stat + 'Count'] || 0)) * Number(legacy[stat + 'Value'] || 0) * 0.5;
+    }
+    const marker = statMarker(unit, stat);
+    if (marker === '*' || marker === '★') return base;
+    if ((marker === '▲' || marker === '△') && value < base) value = base;
+    if ((marker === '▼' || marker === '▽') && value > base) value = base;
+    return value;
+  }
+
   function chooseBlocker(attacker, defenders, rng) {
     if (!defenders.length) return null;
-    const attackEstimate = totalPower(attacker, 'ap') + (attacker.coin?.apCount || 0) * (attacker.coin?.apValue || 0) * 0.5;
+    // AI estimates use the same source-backed AP/DP coin profile as combat.
+    // NCS(82) means 0..8 attack dice and 0..2 defense dice;
+    // expected heads are one half per toss for blocker selection only.
+    const attackEstimate = expectedStatPower(attacker, 'ap');
     let best = defenders[0], bestScore = Infinity;
     for (const defender of defenders) {
-      const defenseEstimate = totalPower(defender, 'dp') + (defender.coin?.dpCount || 0) * (defender.coin?.dpValue || 0) * 0.5;
+      const defenseEstimate = expectedStatPower(defender, 'dp');
       const expectedDamage = Math.max(0, attackEstimate - defenseEstimate);
       const killPenalty = expectedDamage >= defender.hp ? -100 : 0;
       const score = Math.abs(defender.hp - expectedDamage) + killPenalty + (totalPower(defender, 'ap') * 0.1);
