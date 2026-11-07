@@ -419,11 +419,17 @@
     const parsedStatTech=parseStatTech(raw);
     const rawSourceFields=raw.sourceFields&&typeof raw.sourceFields==='object'&&!Array.isArray(raw.sourceFields)?raw.sourceFields:{};
     const rawCoinFields=raw.sourceCoinTech&&typeof raw.sourceCoinTech==='object'&&!Array.isArray(raw.sourceCoinTech)?raw.sourceCoinTech:{};
-    // Older immutable DB29 packs may not contain the derived sourceCoinTech
-    // object; original Firestore coin fields remain in sourceFields.
-    const sourceCoinTech=type==='unit'
+    const coinSourceKeys=['ATKCoin','ATKCoinType','ATKCoinCount','DEFCoin','DEFCoinType','DEFCoinCount','HPCoin','HPCoinType','HPCoinCount'];
+    const hasCoinSource=coinSourceKeys.some(key =>
+      Object.prototype.hasOwnProperty.call(rawCoinFields,key) ||
+      Object.prototype.hasOwnProperty.call(rawSourceFields,key));
+    // Older immutable DB29 packs may omit the derived sourceCoinTech object.
+    // Use sourceFields only when at least one original coin field exists;
+    // otherwise retain any coin expression already preserved in the stat tab.
+    const sourceCoinTech=type==='unit'&&hasCoinSource
       ?parseSourceCoinTech({...rawSourceFields,...rawCoinFields})
-      :{status:'not-applicable',stats:{},sharedTosses:0,review:[]};
+      :(type==='unit'?{status:'missing',stats:{},sharedTosses:0,review:[]}:
+        {status:'not-applicable',stats:{},sharedTosses:0,review:[]});
     const statTech=mergeSourceCoinTech(parsedStatTech,sourceCoinTech);
     const cardText=htmlToText(raw.text||detail['카드 텍스트']||detail['카드텍스트']||textFields['카드 텍스트']||'');
     const n={...raw,id:String(raw.id||''),name:String(raw.name||''),type:type||raw.type,faction,rawType:raw.type||null,

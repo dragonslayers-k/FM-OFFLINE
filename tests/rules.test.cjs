@@ -4384,6 +4384,6 @@ test('same numeric 82 in EarnSoul and RequireSoul does not cross-map at app load
   assert.equal(card.sourceFields.MuSoul,2);
   assert.deepEqual(card.candidateCost,{ncs:1});
   assert.equal(card.runtimeCostStatus,'semantic_review_blocked');
-  assert.deepEqual(card.runtimeCost,{});
+  assert.equal(card.runtimeCost,null);
   assert.equal(card.runtimeUpkeepNeutral,0);
 });
