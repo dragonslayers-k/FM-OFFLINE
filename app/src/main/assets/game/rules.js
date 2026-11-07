@@ -901,25 +901,34 @@
     return true;
   }
 
+  function sourceManualNeutralUpkeep(unit) {
+    const raw = unit && ((unit.sourceFields && unit.sourceFields.RequireSoul) || unit.soulCostRaw);
+    if (typeof raw !== 'string' || !/^\\d+$/.test(raw) || raw.length % 4 !== 0) return null;
+    let amount = 0;
+    for (let offset = 0; offset < raw.length; offset += 4) {
+      const code = raw.slice(offset, offset + 2);
+      const count = Number(raw.slice(offset + 2, offset + 4));
+      // RequireSoul MU(81) is the inferred source crosswalk to the Manual's
+      // colorless bead. NCS(82) and BONUS(83) are separate unresolved tokens.
+      if (code === '81') amount += count;
+    }
+    return amount;
+  }
+
   function unitNeutralUpkeep(unit) {
     if (!unit) return 0;
-    if (unit.runtimeUpkeepCost && typeof unit.runtimeUpkeepCost === 'object') {
+    const sourceAmount = sourceManualNeutralUpkeep(unit);
+    if (sourceAmount !== null) return sourceAmount;
+    // Trust an explicitly versioned MU-only overlay, never a legacy NCS-based
+    // upkeep profile or the generic one-time runtime cost.
+    if (unit.runtimeUpkeepStatus === 'mu_81_manual_neutral_crosswalk_inferred' &&
+        unit.runtimeUpkeepCost && typeof unit.runtimeUpkeepCost === 'object') {
       const parsed = readCost(unit.runtimeUpkeepCost);
-      // An explicitly present but malformed upkeep overlay is not evidence of
-      // zero upkeep. Continue to the verified runtime/source cost fallback.
       if (parsed.ok) return Number(parsed.cost.neutral || 0);
     }
-    if (unit.runtimeCostKnown === true) {
-      const explicit = Number(unit.runtimeUpkeepNeutral);
-      if (Number.isFinite(explicit) && explicit >= 0) return explicit;
-      const parsed = readCost(unit.runtimeCost);
-      return parsed.ok ? Number(parsed.cost.neutral || 0) : 1;
-    }
-    if (unit.costKnown === true && unit.costMapped === true) {
-      const parsed = readCost(unit.cost);
-      return parsed.ok ? Number(parsed.cost.neutral || 0) : 1;
-    }
-    // Missing provenance must never create Infinity or auto-lose a match.
+    if (unit.runtimeUpkeepStatus === 'manual_verified_ncs_only') return 0;
+    // Missing source provenance gets a conservative finite fallback. A generic
+    // one-time neutral payment is never silently converted into recurring upkeep.
     return 1;
   }
 
@@ -1341,8 +1350,8 @@ if (card.type === 'unit') {
   function chooseBlocker(attacker, defenders, rng) {
     if (!defenders.length) return null;
     // AI estimates use the same source-backed AP/DP coin profile as combat.
-    // NCS(82) means 0..8 attack dice and 0..2 defense dice;
-    // expected heads are one half per toss for blocker selection only.
+    // Expected coin outcomes are an AI heuristic; the combat engine still
+    // resolves the exact shared toss profile at battle time.
     const attackEstimate = expectedStatPower(attacker, 'ap');
     let best = defenders[0], bestScore = Infinity;
     for (const defender of defenders) {

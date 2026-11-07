@@ -395,3 +395,12 @@ Do not equate those unit markers with the separate `NCS (82)` token in `RequireS
 - Manual coin.htm confirms a single shared coin toss set is used across AP/DP/HP; each stat applies its own operation to the same result. Examples include AP +2C1 with DP -C1, which uses one coin toss, not two independent tosses.
 - Firestore sourceCoinTech fields are ATKCoin/DEFCoin/HPCoin (C-count and multiplier expression), corresponding CoinType operator codes (0 NONE, 1 PLUS, 2 MINUS, 3 X, 4 EQUAL), and CoinCount fields. Card-schema now maps these raw source fields into executable coinTech only when expression, operator and count agree; inconsistent/missing source metadata remains review-only.
 - Critical (C) remains a separately named stat category in user-provided NCS notation. This source-field mapping does not invent a critical-damage multiplier or probability.
+
+
+## 2026-11-07 semantic audit correction — RequireSoul upkeep and coin test
+
+- Withdrawn: RequireSoul NCS(82) is not established by Manual as the colorless bead. The app no longer derives recurring upkeep from NCS(82) or from a generic one-time neutral runtime cost.
+- The Manual's blank/colorless bead is crosswalked provisionally to MU(81); only MU(81) token amounts are used for recurring unit upkeep. This remains an inferred enum-to-icon crosswalk pending visual verification of the source icon against Manual images.
+- NCS(82), BONUS(83), and hybrid pair tokens retain their source identity and are not used for upkeep. Their payment fallbacks are documented separately in CardDB.
+- Removed the misleading test that labelled synthetic 8-AP/2-DP coin counts as an NCS(82) parser test. Added the actual Manual example +2C1 AP / -C1 DP and asserted that both stats use the same single toss.
+- User-confirmed N/C/S stat notation remains separate from Firestore RequireSoul enum NCS(82), CoinType, and StatType marker enums. Critical attack stat resolution is not claimed implemented by this patch.

@@ -4092,39 +4092,70 @@ test('mobile deck catalogue exposes decrement-to-zero controls and responsive de
 });
 
 
-test('malformed explicit upkeep overlay falls back conservatively while verified zero upkeep stays free',()=>{
-  const malformed=unit('malformed-upkeep',{runtimeUpkeepCost:{neutral:-1},
-    runtimeCost:{neutral:2},runtimeCostKnown:true,cost:{neutral:1},costKnown:true,costMapped:true});
-  const explicitZero=unit('explicit-zero-upkeep',{runtimeUpkeepCost:{neutral:0},
-    runtimeCost:{neutral:2},runtimeCostKnown:true,cost:{neutral:1},costKnown:true,costMapped:true});
-  const p=player('player',{units:[malformed,explicitZero],
+test('recurring upkeep comes from MU(81), never NCS(82), BONUS(83), or generic neutral cost',()=>{
+  const legacyNcs=unit('legacy-ncs-upkeep',{
+    sourceFields:{RequireSoul:'8201'},
+    runtimeUpkeepCost:{neutral:1},runtimeUpkeepStatus:'manual_verified_ncs_only',
+    runtimeCost:{neutral:1},runtimeCostKnown:true
+  });
+  const mu=unit('mu-upkeep',{
+    sourceFields:{RequireSoul:'8102'},
+    runtimeUpkeepCost:{neutral:2},runtimeUpkeepStatus:'mu_81_manual_neutral_crosswalk_inferred'
+  });
+  const mixed=unit('mixed-special-upkeep',{
+    sourceFields:{RequireSoul:'810182018301'},
+    runtimeUpkeepCost:{neutral:3},runtimeUpkeepStatus:'manual_verified_ncs_only'
+  });
+  const p=player('player',{units:[legacyNcs,mu,mixed],
     lands:[land('upkeep-neutral-source','forest',1,3)],
     deck:Array.from({length:6},(_,i)=>({id:'upkeep-draw-'+i}))});
   const s=state(p,player('ai'));
   FM._test.beginPhase(s,'player');
-  assert.equal(p.neutralUpkeep,2,'invalid overlay must fall back to verified runtimeCost neutral upkeep');
-  assert.equal(p.soulPool.neutral,1,'only the conservative two-soul upkeep is consumed');
-  assert.equal(p.deck.length,0,'the phase draw occurs after upkeep');
+  assert.equal(p.neutralUpkeep,3,'only MU(81) amounts 2 + 1 are recurring upkeep');
+  assert.equal(p.soulPool.neutral,0,'the three verified/inferred MU upkeep souls are consumed');
+});
+
+test('malformed upkeep overlay uses RequireSoul MU source, while explicit no-cost has zero upkeep',()=>{
+  const malformed=unit('malformed-upkeep',{
+    sourceFields:{RequireSoul:'8102'},runtimeUpkeepCost:{neutral:-1},
+    runtimeCost:{neutral:2},runtimeCostKnown:true
+  });
+  const explicitZero=unit('explicit-zero-upkeep',{
+    sourceFields:{RequireSoul:'0100'},runtimeUpkeepCost:{neutral:0},
+    runtimeUpkeepStatus:'zero_upkeep',runtimeCost:{neutral:2},runtimeCostKnown:true
+  });
+  const p=player('player',{units:[malformed,explicitZero],
+    lands:[land('upkeep-neutral-source','forest',1,2)],
+    deck:Array.from({length:6},(_,i)=>({id:'upkeep-draw-'+i}))});
+  const s=state(p,player('ai'));
+  FM._test.beginPhase(s,'player');
+  assert.equal(p.neutralUpkeep,2,'source MU(81) amount is authoritative even if overlay is malformed');
+  assert.equal(p.soulPool.neutral,0,'only the two MU upkeep souls are consumed');
 });
 
 
-test('NCS(82) unit coin profile resolves 0..8 attack dice and 0..2 defense dice',()=>{
-  const source=unit('ncs-82-unit',{ap:3,dp:4,hp:6,coinTech:{sharedTosses:8,stats:{
-    ap:{value:3,marker:'',coin:[{source:'C8',operation:'add',multiplier:1,tosses:8}]},
-    dp:{value:4,marker:'',coin:[{source:'C2',operation:'add',multiplier:1,tosses:2}]}
-  }}});
-  const profile=FM._test.coinProfile(source,()=>0.9);
-  const attack=FM._test.rollStat(source,'ap',()=>0.9,profile);
-  const defense=FM._test.rollStat(source,'dp',()=>0.9,profile);
-  assert.equal(profile.count,8);
-  assert.equal(attack.value,11,'eight successful attack dice add at most eight');
-  assert.equal(defense.value,6,'two successful defense dice add at most two');
-  const noHeads={rolls:Array(8).fill(0),count:8};
-  assert.equal(FM._test.rollStat(source,'ap',()=>0.1,noHeads).value,3,'zero attack heads is the lower bound');
-  assert.equal(FM._test.rollStat(source,'dp',()=>0.1,noHeads).value,4,'zero defense heads is the lower bound');
+test('Manual coin example +2C1 AP / -C1 DP uses one shared toss',()=>{
+  const sourceCoinTech={
+    ATKCoin:'2C1',ATKCoinType:1,ATKCoinCount:1,
+    DEFCoin:'C1',DEFCoinType:2,DEFCoinCount:1,
+    HPCoin:'NONE',HPCoinType:0,HPCoinCount:0
+  };
+  const source=CardSchema.normalize({
+    id:'manual-shared-coin-example',name:'매뉴얼 코인 예시',type:'unit',faction:'forest',
+    ap:2,dp:1,hp:3,cost:{forest:1},costKnown:true,sourceCoinTech,tabs:{}
+  });
+  let tossCalls=0;
+  const rng=()=>{tossCalls++;return 0.9;};
+  const profile=FM._test.coinProfile(source,rng);
+  const attack=FM._test.rollStat(source,'ap',rng,profile);
+  const defense=FM._test.rollStat(source,'dp',rng,profile);
+  assert.equal(profile.count,1);
+  assert.equal(tossCalls,1,'the same one-coin result is shared by AP and DP');
+  assert.equal(attack.value,4,'one head is doubled and added to AP');
+  assert.equal(defense.value,0,'the same head is subtracted from DP');
 });
 
-test('AI blocker selection accounts for NCS attack and defense dice expectations',()=>{
+test('AI blocker selection accounts for source coin modifier expectations',()=>{
   const attacker=unit('ncs-ai-attacker',{ap:2,coinTech:{sharedTosses:8,stats:{
     ap:{value:2,marker:'',coin:[{source:'C8',operation:'add',multiplier:1,tosses:8}]}
   }}});
