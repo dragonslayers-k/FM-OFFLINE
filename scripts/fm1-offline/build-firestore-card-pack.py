@@ -1000,7 +1000,7 @@ def self_test():
     assert not mismatched_known["known"] and mismatched_known["cost"]=={}
     invalid_json=db_cost_to_app({**base_cost_row,"soul_json":"{invalid"})
     assert not invalid_json["known"] and invalid_json["cost"]=={}
-    explicit_zero=db_cost_to_app({**base_cost_row,"soul_json":json.dumps({
+    explicit_zero=db_cost_to_app({**base_cost_row,"source_text":"0100","soul_json":json.dumps({
         "colors":{},"known":True,"mapping_review":False,"semantic_review":False})})
     assert explicit_zero["known"] and explicit_zero["cost"]=={"neutral":0}
 
