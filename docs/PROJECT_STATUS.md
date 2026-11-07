@@ -453,3 +453,8 @@ Validation checkpoint: SQLite converter fixtures use raw RequireSoul tokens; hyb
 The previous tagged `fallback_payable` policy was not fail-closed: `runtimeCostFor()` returned a generic neutral cost and `validateCardForPlay()` accepted it. That allowed cards with unverified RequireSoul NCS(82), BONUS(83), hybrid, unknown, missing, or invalid costs to be played using an invented generic payment. This was incorrect and has been removed.
 
 CardSchema now preserves each unresolved token in `candidateCost`, sets `runtimeCostKnown=false`, `runtimeCost=null`, and `runtimeCostStatus=semantic_review_blocked`. The game engine rejects the card before payment or consumption. Tests verify that a large neutral/colored soul pool cannot make these cards playable. Known pure-color costs and the inferred MU(81) candidate crosswalk remain separate. This does not change the immutable DB29 ZIP.
+
+
+## 2026-11-07 — DB29 coin-source coverage audit
+
+The CardSchema parser accepts explicit EQUAL notation in addition to the Firestore CoinType enum, and the runtime still resolves one shared coin toss profile for AP/DP/HP. The next validation uses the already-built DB29 import artifact only (no card ZIP regeneration and no emulator run) to report per-unit `coinTechSourceStatus` counts. A `source_review` count, if present, must be inspected before deciding whether those units can safely use tab-derived coin expressions.
