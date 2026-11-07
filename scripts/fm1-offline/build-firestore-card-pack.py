@@ -342,7 +342,9 @@ def db_cost_to_app(cost_row):
     if mapping_review: review.append("hybrid-payment-semantics-unverified")
     if semantic_review: review.append("special-soul-semantics-unverified")
     known=soul_known and not invalid_soul_json and not status_unverified and not mapping_review and not semantic_review
-    app_cost=dict(candidate) if known else {}
+    # Runtime keys use the app's canonical names (IRON -> metal); the
+    # candidateCost field keeps the source enum's original color labels.
+    app_cost=dict(runtime) if known else {}
     if known and not app_cost: app_cost={"neutral":0}
 
     if not source_tokens and not colors:
