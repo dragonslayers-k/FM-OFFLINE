@@ -449,9 +449,9 @@ test('a generic neutral bead can be paid from any generated soul',()=>{
   assert.equal(Object.values(p.soulPool.colored).reduce((sum,n)=>sum+n,0)+p.soulPool.neutral,1);
 });
 
-test('neutral soul upkeep is charged only for neutral summon beads',()=>{
+test('neutral soul upkeep is charged only for source-confirmed MU(81) beads',()=>{
   const p=player('player',{
-    units:[unit('colored-unit',{cost:{forest:2}}),unit('neutral-unit',{cost:{neutral:2}})],
+    units:[unit('colored-unit',{cost:{forest:2}}),unit('neutral-unit',{cost:{neutral:2},sourceFields:{RequireSoul:'8102'}})],
     lands:[land('light-land','light',1,1),land('fire-land','fire',1,1)],
     hand:Array.from({length:6},(_,i)=>({id:'h'+i})),
     deck:Array.from({length:8},(_,i)=>({id:'d'+i}))
@@ -462,6 +462,20 @@ test('neutral soul upkeep is charged only for neutral summon beads',()=>{
   assert.equal(p.neutralUpkeep,2);
   assert.equal(p.deck.length,8);
   assert.equal(Object.values(p.soulPool.colored).reduce((sum,n)=>sum+n,0)+p.soulPool.neutral,2);
+});
+
+test('NCS(82), BONUS(83), and hybrid candidates do not create neutral upkeep',()=>{
+  for(const raw of ['8202','8302','1202']){
+    const p=player('player',{
+      units:[unit('candidate-unit',{cost:{neutral:2},sourceFields:{RequireSoul:raw}})],
+      lands:[land('light-land','light',1,1)],
+      hand:Array.from({length:6},(_,i)=>({id:'h'+i})),
+      deck:Array.from({length:8},(_,i)=>({id:'d'+i}))
+    });
+    const ai=player('ai',{hand:Array.from({length:6},(_,i)=>({id:'ah'+i}))});
+    const s=state(p,ai);FM._test.beginPhase(s,'player');
+    assert.equal(p.neutralUpkeep,0,raw);
+  }
 });
 
 test('unpaid neutral upkeep destroys exactly the missing number of deck cards',()=>{
