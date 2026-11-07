@@ -225,6 +225,9 @@ const landStatus = Object.create(null);
 const landInstallCost = { known:0, review:0, mappingReview:0, semanticReview:0, runtimeReady:0 };
 const runtimeCostStatus = Object.create(null);
 const coinTechSourceStatus = Object.create(null);
+const coinTechSourceReviewCards = [];
+const blockedCostCandidateCounts = Object.create(null);
+const blockedCostInferenceCounts = Object.create(null);
 const runtimeEffectDisposition = Object.create(null);
 const runtimePlayable = { ready:0, blocked:0 };
 const effectAudit = { candidates:0, clauses:0, candidateOnlyCards:0, unexpectedExecutableEffects:0, spanErrors:0, runtimeDispositions:Object.create(null) };
@@ -311,6 +314,15 @@ for (const card of cards) {
   if(card.type==='unit'){
     const coinStatus=String(card.coinTechSourceStatus||'missing');
     coinTechSourceStatus[coinStatus]=(coinTechSourceStatus[coinStatus]||0)+1;
+    if(coinStatus==='source_review') coinTechSourceReviewCards.push({
+      id:String(card.id),name:String(card.name||''),review:Array.isArray(card.coinTechReview)?card.coinTechReview:[]
+    });
+  }
+  if(card.runtimeCostStatus==='semantic_review_blocked'){
+    for(const key of Object.keys(card.candidateCost||{}))
+      blockedCostCandidateCounts[key]=(blockedCostCandidateCounts[key]||0)+1;
+    for(const reason of (Array.isArray(card.runtimeCostInference)?card.runtimeCostInference:[]))
+      blockedCostInferenceCounts[reason]=(blockedCostInferenceCounts[reason]||0)+1;
   }
   const validation = FM.validateCardForPlay(card);
   playable[card.type] = playable[card.type] || { ok:0, blocked:0 };
@@ -601,7 +613,7 @@ if (skillAudit.mappingRows < 15000 || skillAudit.manualVerifiedMappings < 1000 |
   errors.push('Special-skill mapping validation mismatch: ' + JSON.stringify(skillAudit));
 }
 if (errors.length) {
-  console.error(JSON.stringify({errors:errors.slice(0,50),errorCount:errors.length,types,landStatus,landInstallCost,runtimeCostStatus,coinTechSourceStatus,runtimePlayable,runtimeEffectDisposition,runtimeActionAudit,costKnown,playable,effectAudit,skillAudit},null,2));
+  console.error(JSON.stringify({errors:errors.slice(0,50),errorCount:errors.length,types,landStatus,landInstallCost,runtimeCostStatus,coinTechSourceStatus,coinTechSourceReviewCards,blockedCostCandidateCounts,blockedCostInferenceCounts,runtimePlayable,runtimeEffectDisposition,runtimeActionAudit,costKnown,playable,effectAudit,skillAudit},null,2));
   process.exit(1);
 }
 console.log(JSON.stringify({
@@ -618,6 +630,9 @@ console.log(JSON.stringify({
   landInstallCost,
   runtimeCostStatus,
   coinTechSourceStatus,
+  coinTechSourceReviewCards,
+  blockedCostCandidateCounts,
+  blockedCostInferenceCounts,
   runtimeCostCoverage:runtimePlayable,
   runtimeEffectDisposition,
   runtimeActionAudit,
