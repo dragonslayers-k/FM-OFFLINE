@@ -360,3 +360,22 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 - Regression test exercises the actual preparation-phase path with both malformed and explicit-zero upkeep units, verifies only the conservative two-soul amount is consumed, and confirms the phase draw proceeds afterward.
 - Actions #422 / run `42313314863` passed: JavaScript game-rule suite and Python converter checks passed. DB29 pack, Gradle/APK, and emulator were intentionally skipped; only a 562-byte build-report artifact was retained.
 - DB29, DB30, main and release remain unchanged; PR #28 remains Draft/Open/unmerged.
+
+
+## 2026-11-07 — opening resources, legality, deck editor and landscape UI
+
+- Initial deal: both sides must receive at least one land if the deck contains a land. A free/installable land is preferred; after bounded shuffle attempts the fallback extracts a legal land even if every land has a payment cost.
+- Voluntary mulligan: shuffle the remaining deck and hand, burn one card, then draw to six. It deliberately does not guarantee another land.
+- Defensive preparation: after existing NCS upkeep is paid, the defender receives one neutral soul. The bonus cannot rescue an unpaid upkeep; it contributes to remaining resources and the deployment limit.
+- Unimplemented spell/enchant effects marked `fallback_noop` are no longer consumed as if they were normal successful plays. They stay in hand, do not spend souls, and are visibly disabled with a reason. Supported effects still pass the normal payment, target and slot checks.
+- Deck editor: card-name/ability search plus card-type and faction filters. Landscape layout places the two battle boards side by side and separates the deck list from the card catalogue.
+- Verification: 264 game-rule tests passed on commit `b5487de`; commit `1e3cf69` passed JavaScript/Python checks and Debug APK build/package verification. DB29 pack build was skipped.
+- Existing DB29 artifact reused for the emulator path: run `42192845020`, artifact `13491725083` (`FM1-CardData-v1.3.0-IMPORT-DB29`, approximately 406.5 MB). The workflow now downloads this original artifact archive directly and does not rebuild or re-upload the data pack.
+
+### Soul-producing unit markers — source review, not yet executable
+
+The community guide describes two separate unit markers: first-marked units create one soul when discarded from hand; second-marked units generate one neutral soul beginning one turn after being summoned. It also describes other third/fourth/fifth upgrade markers. This is community documentation, not a verified current Manual.zip rule mapping, and the card-level marker encoding still needs to be tied to exact source records before implementation.
+
+Reference: https://neginote.wixsite.com/fantasymasters/guide-units
+
+Do not equate those unit markers with the separate `NCS (82)` token in `RequireSoul`; the latter remains a semantic-review item until its exact payment/production meaning is verified. No generic NCS soul production has been invented.
