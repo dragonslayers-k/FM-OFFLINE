@@ -223,7 +223,7 @@
       {stat:'hp',value:'HPCoin',type:'HPCoinType',count:'HPCoinCount'}
     ];
     const stats={},review=[];
-    let sharedTosses=0,hasExpression=false;
+    let sharedTosses=0,hasExpression=false,hasInferredEqual=false;
     for(const spec of specs){
       const rawValue=String(source[spec.value]??'').trim();
       const rawCount=integer(source[spec.count]);
@@ -244,6 +244,10 @@
       let operation=null;
       if(rawType!==null){
         operation=operations[rawType]||null;
+        // CoinType EQUAL(5) exists in the Firestore enum, but Manual coin.htm
+        // does not define its execution. The replacement interpretation is
+        // inferred from the enum symbol and must remain visibly non-Manual.
+        if(rawType===5)hasInferredEqual=true;
         if(rawType===1){
           review.push(spec.stat+':NONE-type-with-coin-expression');
           stats[spec.stat]={coin:[]};
@@ -270,12 +274,12 @@
       stats[spec.stat]={coin:[parsed]};
       sharedTosses=Math.max(sharedTosses,parsed.tosses);
     }
-    return {status:review.length?'source_review':(hasExpression?'source_mapped':'no_coin'),
+    return {status:review.length?'source_review':(hasInferredEqual?'source_inferred':(hasExpression?'source_mapped':'no_coin')),
       stats,sharedTosses,review};
   }
 
   function mergeSourceCoinTech(parsed,source) {
-    if(!source||!['source_mapped','no_coin'].includes(source.status))return parsed;
+    if(!source||!['source_mapped','source_inferred','no_coin'].includes(source.status))return parsed;
     const stats={...(parsed.stats||{})};
     for(const stat of ['ap','dp','hp']){
       const previous=stats[stat]||{value:null,marker:'',coin:[]};

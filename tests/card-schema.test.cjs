@@ -282,6 +282,21 @@ test('dual-colour fractional land soul production and LP are preserved',()=>{
 });
 
 
+test('CoinType EQUAL remains an enum-inferred replacement, not a Manual-verified operation',()=>{
+  const sourceCoinTech={
+    ATKCoin:'2C1',ATKCoinType:5,ATKCoinCount:1,
+    DEFCoin:'NONE',DEFCoinType:1,DEFCoinCount:0,
+    HPCoin:'NONE',HPCoinType:1,HPCoinCount:0
+  };
+  const parsed=Schema.parseSourceCoinTech(sourceCoinTech);
+  assert.equal(parsed.status,'source_inferred');
+  assert.equal(parsed.stats.ap.coin[0].operation,'set');
+  const card=Schema.normalize({id:'coin-equal-inferred',name:'EQUAL 코인',type:'unit',
+    sourceFields:{RequireSoul:'1101'},sourceCoinTech,ap:3,dp:1,hp:2});
+  assert.equal(card.coinTechSourceStatus,'source_inferred');
+  assert.equal(card.coinTech.stats.ap.coin[0].operation,'set');
+});
+
 test('stat tech parser reads all three FM1 coin lanes and directional markers',()=>{
   const tech=Schema.parseStatTech({tabs:{'분류별':[{text:'공\n3\nC2\n방\n2\n-C1\n체\n5\nxC2'}]}});
   assert.equal(tech.stats.ap.value,3);

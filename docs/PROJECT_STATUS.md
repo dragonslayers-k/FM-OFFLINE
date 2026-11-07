@@ -393,7 +393,7 @@ Do not equate those unit markers with the separate `NCS (82)` token in `RequireS
 ## 2026-11-07 — Firestore coin source-field mapping
 
 - Manual coin.htm confirms a single shared coin toss set is used across AP/DP/HP; each stat applies its own operation to the same result. Examples include AP +2C1 with DP -C1, which uses one coin toss, not two independent tosses.
-- Firestore sourceCoinTech fields are ATKCoin/DEFCoin/HPCoin (C-count and multiplier expression), corresponding CoinType operator codes (0 NONE, 1 PLUS, 2 MINUS, 3 X, 4 EQUAL), and CoinCount fields. Card-schema now maps these raw source fields into executable coinTech only when expression, operator and count agree; inconsistent/missing source metadata remains review-only.
+- Firestore sourceCoinTech fields are ATKCoin/DEFCoin/HPCoin (C-count and multiplier expression), corresponding CoinType operator codes (1 NONE, 2 PLUS, 3 MINUS, 4 X, 5 EQUAL), and CoinCount fields. Codes 2–4 are backed by Manual coin.htm examples. Code 5 EQUAL is present in the enum, but Manual coin.htm does not define its execution; the app retains the enum-based `set` interpretation as `source_inferred`, not Manual-verified. Inconsistent/missing source metadata remains review-only.
 - Critical (C) remains a separately named stat category in user-provided NCS notation. This source-field mapping does not invent a critical-damage multiplier or probability.
 
 
@@ -457,7 +457,7 @@ CardSchema now preserves each unresolved token in `candidateCost`, sets `runtime
 
 ## 2026-11-07 — DB29 coin-source coverage audit
 
-The CardSchema parser accepts explicit EQUAL notation in addition to the Firestore CoinType enum, and the runtime still resolves one shared coin toss profile for AP/DP/HP. The next validation uses the already-built DB29 import artifact only (no card ZIP regeneration and no emulator run) to report per-unit `coinTechSourceStatus` counts. A `source_review` count, if present, must be inspected before deciding whether those units can safely use tab-derived coin expressions.
+The CardSchema parser preserves Firestore CoinType EQUAL(5) as an enum-inferred `set` operation with `coinTechSourceStatus=source_inferred`; Manual coin.htm does not independently define EQUAL. The runtime still resolves one shared coin toss profile for AP/DP/HP. A `source_review` count must be inspected before allowing a unit's tab-derived coin expression to replace an unresolved source operator.
 
 
 ## 2026-11-07 — Manual soul-cost rule and unknown-upkeep correction
