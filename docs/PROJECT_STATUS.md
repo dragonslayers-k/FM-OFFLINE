@@ -429,3 +429,6 @@ CardSchema now reparses each card's original `sourceFields.RequireSoul` when loa
 Firestore records 16120828657–16120828663 contain TextExtra-only effects named 전력봉인 and 중급열사. The text explicitly describes a 3-turn status that, on activation, removes one 유소울 or NCS소울, increases upkeep by one, and reduces DP by one. These effect names are not the Skill2 enum: the same card's Skill2=129 maps to 절해라, while Skill1=51 maps to 관통공격. One variant has RequireSoul=71048103 (4 light + 3 MU), not RequireSoul NCS(82).
 
 This is a separate source-text resource/effect question, not the user-defined N/C/S(82) stat notation. The reviewed Manual pages and web searches did not define the NCS소울 resource pool or status timing. The app preserves TextExtra but does not execute 전력봉인/중급열사 yet; do not claim these effects are implemented until their lifecycle and resource source are verified.
+
+
+Converter validation note: the app pack builder now reparses raw RequireSoul tokens, keeps NCS/BONUS/hybrid candidates separate, uses a tagged generic payable fallback for unresolved tokens, maps iron to the runtime metal key, and derives unit upkeep only from the inferred MU(81) neutral-bead crosswalk. The latest converter self-test is being re-run against this exact PR head; DB29 ZIP remains reused and immutable.
