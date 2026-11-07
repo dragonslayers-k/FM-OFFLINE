@@ -962,7 +962,8 @@ def self_test():
         "verification_status":"enum_decoded","source_text":"5102"
     }
     decoded=db_cost_to_app(base_cost_row)
-    assert decoded["known"] and decoded["cost"]=={"metal":2}
+    print("DEBUG db_cost_to_app base fixture:",json.dumps(decoded,sort_keys=True))
+    assert decoded["known"] and decoded["cost"]=={"metal":2}, decoded
     assert db_cost_to_app({**base_cost_row,"mapping_review":"0"})["known"]
     json_hybrid=db_cost_to_app({**base_cost_row,"soul_json":json.dumps({
         "colors":{"iron":2},"known":True,"mapping_review":True,"semantic_review":False})})
