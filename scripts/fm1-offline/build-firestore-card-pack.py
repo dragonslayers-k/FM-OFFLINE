@@ -945,6 +945,8 @@ def self_test():
     },stat_enum)
     assert stat_profile["ap"]["marker"]=="★" and stat_profile["ap"]["status"]=="manual_marker_mapped"
     assert stat_profile["dp"]["marker"]=="▲" and stat_profile["hp"]["marker"]=="▼"
+    none_profile=parse_source_stat_tech({"ATK":3,"ATKStatType":1},stat_enum)
+    assert none_profile["ap"]["marker"]=="" and none_profile["ap"]["status"]=="source_mapped_no_marker"
     unverified_profile=parse_source_stat_tech({"ATK":3,"ATKStatType":21},stat_enum)
     assert unverified_profile["ap"]["type"]=="FRONT"
     assert unverified_profile["ap"]["marker"]=="" and unverified_profile["ap"]["status"]=="source_type_semantics_unverified"

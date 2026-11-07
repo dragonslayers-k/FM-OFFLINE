@@ -4257,6 +4257,10 @@ test('Firestore StatType markers map CONST/UP/DOWN and retain unverified types s
   assert.equal(card.statMarkers.ap,'★');
   assert.equal(card.statMarkers.dp,'▲');
   assert.equal(card.statMarkers.hp,'▼');
+  const none=CardSchema.normalize({id:'stat-type-none',name:'No marker',type:'unit',
+    sourceFields:{RequireSoul:'0100'},
+    sourceStatTech:{ap:{value:3,typeCode:1,type:'NONE',marker:'없음',status:'source_mapped_no_marker'}}});
+  assert.equal(none.statMarkers.ap,'');
   const front=CardSchema.normalize({id:'stat-type-front',name:'Unverified marker',type:'unit',
     sourceFields:{RequireSoul:'0100'},
     sourceStatTech:{ap:{value:3,typeCode:21,type:'FRONT',marker:'F',status:'source_type_semantics_unverified'}}});

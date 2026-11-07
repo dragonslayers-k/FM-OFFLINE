@@ -214,7 +214,7 @@
     if (!source || typeof source !== 'object' || Array.isArray(source)) {
       return {status:'missing',stats:{},sharedTosses:0,review:[]};
     }
-    // Firestore Enum+CoinType keys: 0 NONE, 1 PLUS, 2 MINUS, 3 X, 4 EQUAL.
+    // Firestore CoinType raw values: 1 NONE, 2 PLUS, 3 MINUS, 4 X, 5 EQUAL.
     const operations={2:'add',3:'subtract',4:'multiply',5:'set'};
     const specs=[
       {stat:'ap',value:'ATKCoin',type:'ATKCoinType',count:'ATKCoinCount'},
