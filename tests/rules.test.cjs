@@ -4301,7 +4301,7 @@ test('DB29 RequireSoul source blocks unresolved tokens and preserves MU upkeep s
     'community-documented NCS soul remains a separate resource candidate and is not paid as neutral');
   assert.equal(ncs.runtimeUpkeepNeutral,0);
   assert.deepEqual(ncs.runtimeUpkeepCost,{neutral:0});
-  assert.ok(ncs.runtimeCostInference.includes('ncs_requiresoul_semantics_unverified_blocked'));
+  assert.ok(ncs.runtimeCostInference.includes('ncs_soul_distinct_resource_candidate_unverified_blocked'));
   assert.deepEqual(ncs.candidateCost,{ncs:1});
 
   const hybrid=CardSchema.normalize({id:'hybrid-runtime-source',name:'Hybrid source',type:'unit',
