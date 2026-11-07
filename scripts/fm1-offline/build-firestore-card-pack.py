@@ -132,10 +132,15 @@ def parse_cost(raw, require_soul_enum):
         else:
             components=symbol.split("_")
             if components and all(part in colors for part in components):
-                record["kind"]="colored"
+                record["kind"]="colored-candidate"
                 record["colors"]=[colors[part] for part in components]
                 for color in record["colors"]:
                     values[color]=values.get(color,0)+amount
+                if len(components)>1:
+                    record["status"]="hybrid_payment_unverified"
+                    record["inference"]="hybrid_symbol_payment_choice_unverified"
+                    out["mapping_review"]=True
+                    out["review"].append("hybrid-payment-semantics-unverified:"+symbol)
             else:
                 record["status"]="manual_review"
                 out["review"].append("unresolved-requiresoul-symbol:"+symbol)
@@ -232,176 +237,135 @@ def db_flag(value):
 
 
 def db_cost_to_app(cost_row):
-    """Resolve a playable cost separately from the immutable source/review state."""
+    """Build candidate and playable costs without promoting unresolved tokens."""
     if cost_row is None:
-        return {
-            "cost": {}, "candidateCost": {}, "runtimeCost": {"neutral": 1},
-            "runtimeCostKnown": True, "runtimeCostStatus": "fallback_payable",
-            "runtimeCostInference": ["missing-source-cost"],
-            "runtimeUpkeepNeutral": 0, "known": False, "mappingReview": False,
-            "semanticReview": False, "soulKnown": False,
-            "review": ["database-cost-row-missing"], "tokens": [],
-            "sourceStatus": "missing", "specialSouls": {"ncs": 0, "bonus": 0}
-        }
-    if not hasattr(cost_row, "get"):
-        try:
-            cost_row = {key: cost_row[key] for key in cost_row.keys()}
-        except (AttributeError, KeyError, TypeError):
-            return {
-                "cost": {}, "candidateCost": {}, "runtimeCost": {"neutral": 1},
-                "runtimeCostKnown": True, "runtimeCostStatus": "fallback_payable",
-                "runtimeCostInference": ["invalid-source-row-payable-fallback"],
-                "runtimeUpkeepNeutral": 0, "known": False, "mappingReview": False,
-                "semanticReview": False, "soulKnown": False,
-                "review": ["invalid-database-cost-row"], "tokens": [],
-                "sourceStatus": "invalid", "specialSouls": {"ncs": 0, "bonus": 0}
-            }
+        return {"cost":{},"candidateCost":{},"runtimeCost":{"neutral":1},
+            "runtimeCostKnown":True,"runtimeCostStatus":"fallback_payable",
+            "runtimeCostInference":["missing-source-cost"],"runtimeUpkeepNeutral":0,
+            "known":False,"mappingReview":False,"semanticReview":False,"soulKnown":False,
+            "review":["database-cost-row-missing"],"tokens":[],
+            "sourceStatus":"missing","specialSouls":{"ncs":0,"bonus":0}}
+    if not hasattr(cost_row,"get"):
+        try: cost_row={key:cost_row[key] for key in cost_row.keys()}
+        except (AttributeError,KeyError,TypeError):
+            return {"cost":{},"candidateCost":{},"runtimeCost":{"neutral":1},
+                "runtimeCostKnown":True,"runtimeCostStatus":"fallback_payable",
+                "runtimeCostInference":["invalid-source-row-payable-fallback"],"runtimeUpkeepNeutral":0,
+                "known":False,"mappingReview":False,"semanticReview":False,"soulKnown":False,
+                "review":["invalid-database-cost-row"],"tokens":[],
+                "sourceStatus":"invalid","specialSouls":{"ncs":0,"bonus":0}}
 
-    review = []
-    source_status = str(cost_row.get("verification_status") or "unknown").strip().lower()
-    invalid_soul_json = False
-    try:
-        soul = json.loads(cost_row.get("soul_json") or "{}")
-    except (TypeError, ValueError):
-        soul = {}
-        invalid_soul_json = True
-    if not isinstance(soul, dict):
-        soul = {}
-        invalid_soul_json = True
-    colors = soul.get("colors") or {}
-    if not isinstance(colors, dict):
-        colors = {}
-        invalid_soul_json = True
+    review=[]
+    source_status=str(cost_row.get("verification_status") or "unknown").strip().lower()
+    invalid_soul_json=False
+    try: soul=json.loads(cost_row.get("soul_json") or "{}")
+    except (TypeError,ValueError): soul={};invalid_soul_json=True
+    if not isinstance(soul,dict): soul={};invalid_soul_json=True
+    colors=soul.get("colors") or {}
+    if not isinstance(colors,dict): colors={};invalid_soul_json=True
+    tokens=soul.get("tokens") if isinstance(soul.get("tokens"),list) else []
+    raw=cost_row.get("source_text")
+    if isinstance(raw,str) and raw and raw.isdigit() and len(raw)%4==0:
+        source_tokens=[{"raw":raw[i:i+4],"code":int(raw[i:i+2]),"count":int(raw[i+2:i+4])}
+            for i in range(0,len(raw),4)]
+    else:
+        source_tokens=tokens
 
-    candidate = {}
-    for key, value in colors.items():
-        amount = integer(value)
-        if amount is None or amount <= 0:
+    pure_codes={11:"dark",21:"fire",31:"water",41:"forest",51:"iron",61:"earth",71:"light"}
+    hybrid_codes={12:"dark+earth",13:"dark+fire",14:"dark+light",15:"dark+water",
+        22:"fire+forest",23:"fire+iron",24:"fire+water",32:"earth+water",
+        33:"forest+water",42:"forest+iron",43:"forest+light",52:"earth+iron",
+        53:"iron+light",62:"earth+light"}
+    candidate={};runtime={};inference=[]
+    fallback=False;mu_amount=0;ncs_amount=0;bonus_amount=0;hybrid_seen=False
+    def add(target,key,amount): target[key]=target.get(key,0)+amount
+
+    for token in source_tokens:
+        if not isinstance(token,dict): continue
+        code=integer(token.get("code"))
+        amount=integer(token.get("count",token.get("amount")))
+        if amount is None or amount<=0: continue
+        if code in pure_codes:
+            color=pure_codes[code];add(candidate,color,amount)
+            add(runtime,"metal" if color=="iron" else color,amount)
+        elif code==81:
+            add(candidate,"neutral",amount);add(runtime,"neutral",amount);mu_amount+=amount
+            inference.append("mu_81_manual_neutral_bead_crosswalk_inferred")
+        elif code==82:
+            add(candidate,"ncs",amount);add(runtime,"neutral",amount);ncs_amount+=amount
+            inference.append("ncs_requiresoul_semantics_unverified_generic_fallback");fallback=True
+        elif code==83:
+            add(candidate,"bonus",amount);add(runtime,"neutral",amount);bonus_amount+=amount
+            inference.append("bonus_requiresoul_semantics_unverified_generic_fallback");fallback=True
+        elif code in hybrid_codes:
+            pair=hybrid_codes[code];add(candidate,"hybrid:"+pair,amount);add(runtime,"neutral",amount)
+            inference.append("hybrid_payment_semantics_unverified_generic_fallback")
+            fallback=True;hybrid_seen=True
+        elif code==1 and amount==0:
             continue
-        if key == "ncs":
-            candidate["neutral"] = candidate.get("neutral", 0) + amount
-        elif key == "bonus":
-            # Keep BONUS distinct in provenance; its runtime payment is generic once.
-            candidate["bonus"] = candidate.get("bonus", 0) + amount
         else:
-            normalized = "metal" if key == "iron" else key
-            candidate[normalized] = candidate.get(normalized, 0) + amount
+            add(candidate,"unknown:"+str(code),amount);add(runtime,"neutral",amount)
+            inference.append("unknown_requiresoul_token_generic_payable_fallback");fallback=True
 
-    mapping_review = (
-        db_flag(cost_row.get("mapping_review")) or
-        db_flag(soul.get("mapping_review")) or
-        source_status == "mapping_review"
-    )
-    semantic_review = (
-        db_flag(cost_row.get("semantic_review")) or
-        db_flag(soul.get("semantic_review")) or
-        source_status == "semantic_review"
-    )
-    column_soul_known = db_flag(cost_row.get("soul_known"))
-    json_soul_known = db_flag(soul.get("known"))
-    soul_known = column_soul_known and json_soul_known
-    status_unverified = source_status in {
-        "unknown", "unresolved", "missing", "invalid", "error", "pending", "not_verified"
-    }
-    if invalid_soul_json:
-        review.append("invalid-soul-json")
-    # Never trust legacy DB flags that promoted NCS to neutral or hybrid
-    # pairs to both-color payment. Re-derive the unresolved semantics from the
-    # source RequireSoul tokens above.
-    if ncs_amount or bonus_amount:
-        semantic_review = True
-    if any(str(key).startswith("hybrid:") for key in candidate):
-        mapping_review = True
+    if not source_tokens and colors:
+        for key,value in colors.items():
+            amount=integer(value)
+            if amount is None or amount<=0: continue
+            if key in {"dark","fire","water","forest","iron","earth","light"}:
+                add(candidate,key,amount);add(runtime,"metal" if key=="iron" else key,amount)
+            elif key=="neutral":
+                add(candidate,"neutral",amount);add(runtime,"neutral",amount);mu_amount+=amount
+                inference.append("legacy_mu_neutral_crosswalk_inferred")
+            elif key=="ncs":
+                add(candidate,"ncs",amount);add(runtime,"neutral",amount);ncs_amount+=amount
+                inference.append("ncs_requiresoul_semantics_unverified_generic_fallback");fallback=True
+            elif key=="bonus":
+                add(candidate,"bonus",amount);add(runtime,"neutral",amount);bonus_amount+=amount
+                inference.append("bonus_requiresoul_semantics_unverified_generic_fallback");fallback=True
+            else:
+                add(candidate,"unknown:"+str(key),amount);add(runtime,"neutral",amount)
+                inference.append("legacy_unknown_cost_generic_fallback");fallback=True
+
+    mapping_review=(db_flag(cost_row.get("mapping_review")) or db_flag(soul.get("mapping_review"))
+        or source_status=="mapping_review" or hybrid_seen)
+    semantic_review=(db_flag(cost_row.get("semantic_review")) or db_flag(soul.get("semantic_review"))
+        or source_status=="semantic_review" or bool(ncs_amount or bonus_amount))
+    column_soul_known=db_flag(cost_row.get("soul_known"))
+    json_soul_known=db_flag(soul.get("known"))
+    soul_known=column_soul_known and json_soul_known
+    status_unverified=source_status in {"unknown","unresolved","missing","invalid","error","pending","not_verified"}
+    if invalid_soul_json: review.append("invalid-soul-json")
     if not soul_known:
         review.append("unresolved-source-token" if not column_soul_known and not json_soul_known
-                      else "sqlite-json-known-status-mismatch")
-    if status_unverified:
-        review.append("source-cost-status-unverified")
-    if mapping_review:
-        review.append("hybrid-cost-mapping-unverified")
-    if semantic_review:
-        review.append("special-soul-semantics-unverified")
+            else "sqlite-json-known-status-mismatch")
+    if status_unverified: review.append("source-cost-status-unverified")
+    if mapping_review: review.append("hybrid-payment-semantics-unverified")
+    if semantic_review: review.append("special-soul-semantics-unverified")
+    known=soul_known and not invalid_soul_json and not status_unverified and not mapping_review and not semantic_review
+    app_cost=dict(candidate) if known else {}
+    if known and not app_cost: app_cost={"neutral":0}
 
-    known = soul_known and not invalid_soul_json and not status_unverified and not mapping_review and not semantic_review
-    app_cost = {k: v for k, v in candidate.items() if k != "bonus"} if known else {}
-    if known and not app_cost:
-        app_cost = {"neutral": 0}
-
-    # Runtime payment accepts only the engine's seven colors + neutral.
-    # NCS and BONUS both consume generic generated soul at play time, but only
-    # NCS carries the Manual-defined unit-only recurring upkeep rule.
-    runtime = {}
-    for key, amount in candidate.items():
-        payment_key = "neutral" if key == "bonus" else key
-        runtime[payment_key] = runtime.get(payment_key, 0) + amount
-
-    tokens = soul.get("tokens") if isinstance(soul.get("tokens"), list) else []
-    unresolved = [
-        token for token in tokens
-        if isinstance(token, dict) and str(token.get("status") or "").lower()
-        in {"manual_review", "unmapped", "unknown", "unresolved"}
-    ]
-    inference = []
-    if mapping_review:
-        inference.append("hybrid-requires-all-component-colors")
-    ncs_amount = max(0, integer(colors.get("ncs")) or 0)
-    bonus_amount = max(0, integer(colors.get("bonus")) or 0)
-    if ncs_amount:
-        inference.append("ncs-generic-payment-unit-only-upkeep")
-    if bonus_amount:
-        inference.append("bonus-generic-one-time-payment-no-upkeep")
-    fallback = False
-    if unresolved:
-        fallback_amount = sum(max(1, integer(token.get("amount")) or 1) for token in unresolved)
-        runtime["neutral"] = runtime.get("neutral", 0) + fallback_amount
-        inference.append("unresolved-source-token-conservative-payable-fallback")
-        fallback = True
-    elif (not soul_known or invalid_soul_json or status_unverified) and not runtime:
-        runtime["neutral"] = 1
-        inference.append("missing-source-cost-conservative-payable-fallback")
-        fallback = True
-    elif (not soul_known or invalid_soul_json or status_unverified) and candidate:
-        # Preserve decoded source components and add a payable unit for the
-        # unresolved portion rather than silently dropping it.
-        runtime["neutral"] = runtime.get("neutral", 0) + 1
-        inference.append("partial-source-cost-conservative-payable-fallback")
-        fallback = True
-
+    if not source_tokens and not colors:
+        runtime["neutral"]=1;inference.append("missing-source-cost-conservative-payable-fallback");fallback=True
+    if (not soul_known or invalid_soul_json or status_unverified) and not runtime:
+        runtime["neutral"]=1;inference.append("missing-source-cost-conservative-payable-fallback");fallback=True
     if not runtime:
-        if known and candidate == {}:
-            runtime = {"neutral": 0}
+        if known and not candidate: runtime={"neutral":0}
         else:
-            runtime = {"neutral": 1}
-            inference.append("empty-source-cost-conservative-payable-fallback")
-            fallback = True
+            runtime={"neutral":1};inference.append("empty-source-cost-conservative-payable-fallback");fallback=True
 
-    for key, value in runtime.items():
-        if key not in {"dark", "fire", "water", "forest", "metal", "earth", "light", "neutral"}:
-            raise ValueError(f"Unsupported runtime cost key: {key}")
-        if not isinstance(value, int) or value < 0:
+    allowed={"dark","fire","water","forest","metal","earth","light","neutral"}
+    for key,value in runtime.items():
+        if key not in allowed or not isinstance(value,int) or value<0:
             raise ValueError(f"Invalid runtime cost: {key}={value}")
-
-    status = "fallback_payable" if fallback else (
-        "implemented_inferred" if mapping_review or semantic_review or bonus_amount else "implemented_verified"
-    )
-    return {
-        "cost": app_cost,
-        "candidateCost": candidate,
-        "runtimeCost": runtime,
-        "runtimeCostKnown": True,
-        "runtimeCostStatus": status,
-        "runtimeCostInference": sorted(set(inference)),
-        "runtimeUpkeepNeutral": ncs_amount,
-        "known": known,
-        "mappingReview": mapping_review,
-        "semanticReview": semantic_review,
-        "soulKnown": soul_known,
-        "review": review,
-        "tokens": tokens,
-        "specialSouls": {"ncs": ncs_amount, "bonus": bonus_amount},
-        "sourceStatus": source_status,
-        "raw": cost_row.get("source_text"),
-    }
+    status="fallback_payable" if fallback else (
+        "implemented_inferred" if mu_amount or mapping_review or semantic_review else "implemented_verified")
+    return {"cost":app_cost,"candidateCost":candidate,"runtimeCost":runtime,
+        "runtimeCostKnown":True,"runtimeCostStatus":status,"runtimeCostInference":sorted(set(inference)),
+        "runtimeUpkeepNeutral":mu_amount,"known":known,"mappingReview":mapping_review,
+        "semanticReview":semantic_review,"soulKnown":soul_known,"review":review,
+        "tokens":tokens,"specialSouls":{"ncs":ncs_amount,"bonus":bonus_amount},
+        "sourceStatus":source_status,"raw":raw}
 
 
 def load_normalized_database(db_path, expected_count=TOTAL):
@@ -996,9 +960,27 @@ def self_test():
     json_hybrid=db_cost_to_app({**base_cost_row,"soul_json":json.dumps({
         "colors":{"iron":2},"known":True,"mapping_review":True,"semantic_review":False})})
     assert not json_hybrid["known"] and json_hybrid["cost"]=={} and json_hybrid["mappingReview"]
-    json_special=db_cost_to_app({**base_cost_row,"soul_json":json.dumps({
-        "colors":{"ncs":1,"bonus":2},"known":True,"mapping_review":False,"semantic_review":True})})
+    json_special=db_cost_to_app({**base_cost_row,"source_text":"82018302","soul_json":json.dumps({
+        "colors":{"ncs":1,"bonus":2},"known":True,"mapping_review":False,"semantic_review":True,
+        "tokens":[{"code":82,"count":1,"normalized_color":"ncs","status":"semantic_review"},
+                  {"code":83,"count":2,"normalized_color":"bonus","status":"semantic_review"}]})})
     assert not json_special["known"] and json_special["cost"]=={} and json_special["semanticReview"]
+    assert json_special["runtimeCost"]=={"neutral":3}
+    assert json_special["runtimeCostStatus"]=="fallback_payable"
+    assert json_special["runtimeUpkeepNeutral"]==0
+    ncs=db_cost_to_app({**base_cost_row,"source_text":"8201","soul_json":json.dumps({
+        "colors":{"ncs":1},"known":True,"mapping_review":False,"semantic_review":True,
+        "tokens":[{"code":82,"count":1,"normalized_color":"ncs","status":"semantic_review"}]})})
+    assert ncs["runtimeCost"]=={"neutral":1} and ncs["runtimeUpkeepNeutral"]==0
+    mu=db_cost_to_app({**base_cost_row,"source_text":"8102","soul_json":json.dumps({
+        "colors":{"neutral":2},"known":True,"mapping_review":False,"semantic_review":False,
+        "tokens":[{"code":81,"count":2,"normalized_color":"neutral","status":"enum_decoded"}]})})
+    assert mu["runtimeCost"]=={"neutral":2} and mu["runtimeUpkeepNeutral"]==2
+    hybrid=db_cost_to_app({**base_cost_row,"source_text":"1201","mapping_review":1,"soul_json":json.dumps({
+        "colors":{"dark":1,"earth":1},"known":True,"mapping_review":True,"semantic_review":False,
+        "tokens":[{"code":12,"count":1,"normalized_color":"dark+earth","status":"hybrid_payment_unverified"}]})})
+    assert hybrid["runtimeCost"]=={"neutral":1} and hybrid["runtimeUpkeepNeutral"]==0
+    assert hybrid["candidateCost"]=={"hybrid:dark+earth":1}
     status_hybrid=db_cost_to_app({**base_cost_row,"verification_status":"mapping_review"})
     assert not status_hybrid["known"] and status_hybrid["mappingReview"]
     status_special=db_cost_to_app({**base_cost_row,"verification_status":"semantic_review"})
