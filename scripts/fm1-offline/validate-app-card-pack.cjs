@@ -542,8 +542,13 @@ for (const card of cards) {
   }
 }
 
-const expectedIntentionalBlocks=cards.filter(card=>['spell','enchant'].includes(card.type) &&
-  card.runtimeEffectDisposition==='fallback_noop').length;
+const expectedIntentionalBlocks=cards.filter(card=>{
+  const unsupportedEffectCard=['spell','enchant'].includes(card.type) &&
+    card.runtimeEffectDisposition==='fallback_noop';
+  const unresolvedCostBlocked=card.type!=='land' &&
+    card.runtimeCostStatus==='semantic_review_blocked' && card.runtimeCostKnown!==true;
+  return unsupportedEffectCard||unresolvedCostBlocked;
+}).length;
 if (runtimeActionAudit.attempted !== 15350 ||
     runtimeActionAudit.completed + runtimeActionAudit.intentionallyBlocked !== 15350 ||
     runtimeActionAudit.intentionallyBlocked !== expectedIntentionalBlocks ||
