@@ -289,6 +289,57 @@
     c.requiresTargetCheck=!!(c.owner||c.race||c.affiliation||c.unsupported.length);
     c.mapped=c.unsupported.length===0; return c;
   }
+  function parseRequireSoulRuntime(rawValue, cardType) {
+    if (typeof rawValue !== 'string' || !rawValue.length) return null;
+    const candidate={}, runtime={}, inference=[];
+    let fallback=false, muCrosswalk=false, upkeep=0;
+    const pure={'11':'dark','21':'fire','31':'water','41':'forest','51':'iron','61':'earth','71':'light'};
+    const hybrid={
+      '12':'dark+earth','13':'dark+fire','14':'dark+light','15':'dark+water',
+      '22':'fire+forest','23':'fire+iron','24':'fire+water','32':'earth+water',
+      '33':'forest+water','42':'forest+iron','43':'forest+light',
+      '52':'earth+iron','53':'iron+light','62':'earth+light'
+    };
+    const add=(target,key,value)=>{target[key]=(target[key]||0)+value;};
+    const digits=[...rawValue].every(ch=>ch>='0'&&ch<='9');
+    if(!digits||rawValue.length%4!==0){
+      return {candidateCost:{unknown:rawValue},runtimeCost:{neutral:1},runtimeCostStatus:'fallback_payable',
+        runtimeCostInference:['invalid-requiresoul-source-conservative-payable-fallback'],
+        runtimeUpkeepCost:{neutral:0},runtimeUpkeepNeutral:0,runtimeUpkeepStatus:'zero_upkeep'};
+    }
+    for(let i=0;i<rawValue.length;i+=4){
+      const code=rawValue.slice(i,i+2),amount=Number(rawValue.slice(i+2,i+4));
+      if(code==='01'&&amount===0)continue;
+      if(pure[code]){
+        const color=pure[code];add(candidate,color,amount);add(runtime,color==='iron'?'metal':color,amount);
+      }else if(code==='81'){
+        add(candidate,'neutral',amount);add(runtime,'neutral',amount);
+        muCrosswalk=true;inference.push('mu_81_manual_neutral_bead_crosswalk_inferred');
+        if(cardType==='unit')upkeep+=amount;
+      }else if(code==='82'){
+        add(candidate,'ncs',amount);add(runtime,'neutral',amount);
+        inference.push('ncs_requiresoul_semantics_unverified_generic_fallback');fallback=true;
+      }else if(code==='83'){
+        add(candidate,'bonus',amount);add(runtime,'neutral',amount);
+        inference.push('bonus_requiresoul_semantics_unverified_generic_fallback');fallback=true;
+      }else if(hybrid[code]){
+        add(candidate,'hybrid:'+hybrid[code],amount);add(runtime,'neutral',amount);
+        inference.push('hybrid_payment_semantics_unverified_generic_fallback');fallback=true;
+      }else{
+        add(candidate,'unknown:'+code,amount);add(runtime,'neutral',amount);
+        inference.push('unknown_requiresoul_token_generic_payable_fallback');fallback=true;
+      }
+    }
+    if(!Object.keys(runtime).length)runtime.neutral=0;
+    return {
+      candidateCost:candidate,runtimeCost:runtime,
+      runtimeCostStatus:fallback?'fallback_payable':(muCrosswalk?'implemented_inferred':'implemented_verified'),
+      runtimeCostInference:[...new Set(inference)],
+      runtimeUpkeepCost:{neutral:upkeep},runtimeUpkeepNeutral:upkeep,
+      runtimeUpkeepStatus:upkeep?'mu_81_manual_neutral_crosswalk_inferred':'zero_upkeep'
+    };
+  }
+
   function normalize(raw) {
     if(!raw||typeof raw!=='object') throw new TypeError('FM1 card record must be an object');
     const detail=fieldMap(raw,'분류별'),meta=fieldMap(raw,'기타'),textFields=fieldMap(raw,'텍스트');
@@ -314,10 +365,22 @@
     const costKnown=verifiedImageCost!==null||(raw.costKnown!==false&&sourceCost!==null&&Object.keys(sourceCost).length>0);
     n.cost=costKnown?sourceCost:null;n.costKnown=costKnown;n.costMapped=costKnown;
     const runtimeCost=normalizeCostObject(raw.runtimeCost);
-    n.runtimeCostKnown=raw.runtimeCostKnown===true&&runtimeCost!==null;
-    n.runtimeCost=n.runtimeCostKnown?runtimeCost:null;
-    n.runtimeCostStatus=String(raw.runtimeCostStatus||'source-not-available');
-    n.runtimeCostInference=Array.isArray(raw.runtimeCostInference)?raw.runtimeCostInference:[];
+    const sourceFields=raw.sourceFields&&typeof raw.sourceFields==='object'?raw.sourceFields:{};
+    const sourceRequireSoul=sourceFields.RequireSoul??raw.soulCostRaw;
+    const sourceSoulRuntime=type!=='land'?parseRequireSoulRuntime(sourceRequireSoul,type):null;
+    n.runtimeCostKnown=sourceSoulRuntime!==null||(raw.runtimeCostKnown===true&&runtimeCost!==null);
+    n.runtimeCost=sourceSoulRuntime?sourceSoulRuntime.runtimeCost:(n.runtimeCostKnown?runtimeCost:null);
+    n.runtimeCostStatus=sourceSoulRuntime?sourceSoulRuntime.runtimeCostStatus:String(raw.runtimeCostStatus||'source-not-available');
+    n.runtimeCostInference=sourceSoulRuntime?sourceSoulRuntime.runtimeCostInference:(Array.isArray(raw.runtimeCostInference)?raw.runtimeCostInference:[]);
+    if(sourceSoulRuntime){
+      n.candidateCost=sourceSoulRuntime.candidateCost;
+      n.runtimeUpkeepCost=sourceSoulRuntime.runtimeUpkeepCost;
+      n.runtimeUpkeepNeutral=sourceSoulRuntime.runtimeUpkeepNeutral;
+      n.runtimeUpkeepStatus=sourceSoulRuntime.runtimeUpkeepStatus;
+      if(sourceSoulRuntime.runtimeCostStatus==='fallback_payable'){
+        n.cost=null;n.costKnown=false;n.costMapped=false;
+      }
+    }
     n.costSource=hasPrimaryCost?'source-json':(verifiedImageCost!==null?'verified-image-map':(sourceCost?'source-soulCost':'unknown'));
     const landCandidates=[raw.landInstallCost,raw.installCost,raw.summonCost,raw.soulCost,type==='land'?raw.cost:null]
       .map(normalizeCostObject).filter(value=>value!==null&&Object.keys(value).length>0);
@@ -508,7 +571,7 @@
       return card;
     });
   }
-  const api = {normalize,normalizeMany,fieldMap,entries,normalizeAbility,mappedType,parseStatTech,parseCoinExpression,parseSourceCoinTech,parseItemConditions,parseCardTextEffect,htmlToText,dedupeTextBlocks,parseColors,parseSoulProduction,safeSourceCardUrl};
+  const api = {normalize,normalizeMany,fieldMap,entries,normalizeAbility,mappedType,parseStatTech,parseCoinExpression,parseSourceCoinTech,parseRequireSoulRuntime,parseItemConditions,parseCardTextEffect,htmlToText,dedupeTextBlocks,parseColors,parseSoulProduction,safeSourceCardUrl};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.FMCardSchema = api;
 })(typeof window !== 'undefined' ? window : globalThis);

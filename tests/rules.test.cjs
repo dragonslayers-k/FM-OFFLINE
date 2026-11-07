@@ -4206,3 +4206,41 @@ test('inconsistent Firestore coin count is retained for review and not executed'
   assert.equal(parsed.status,'source_review');
   assert.ok(parsed.review.includes('ap:coin-count-mismatch'));
 });
+
+
+test('DB29 RequireSoul raw source overrides legacy NCS upkeep and hybrid both-color payment',()=>{
+  const ncs=CardSchema.normalize({id:'ncs-runtime-source',name:'NCS source',type:'unit',
+    sourceFields:{RequireSoul:'8201'},runtimeCost:{neutral:1},runtimeCostKnown:true,
+    runtimeUpkeepCost:{neutral:1},runtimeUpkeepStatus:'manual_verified_ncs_only'});
+  assert.deepEqual(ncs.runtimeCost,{neutral:1});
+  assert.equal(ncs.runtimeCostStatus,'fallback_payable');
+  assert.equal(ncs.runtimeUpkeepNeutral,0);
+  assert.deepEqual(ncs.runtimeUpkeepCost,{neutral:0});
+  assert.ok(ncs.runtimeCostInference.includes('ncs_requiresoul_semantics_unverified_generic_fallback'));
+  assert.deepEqual(ncs.candidateCost,{ncs:1});
+
+  const hybrid=CardSchema.normalize({id:'hybrid-runtime-source',name:'Hybrid source',type:'unit',
+    sourceFields:{RequireSoul:'1201'},runtimeCost:{dark:1,earth:1},runtimeCostKnown:true});
+  assert.deepEqual(hybrid.runtimeCost,{neutral:1},
+    'unverified hybrid payment is one generic fallback token, not both component colors');
+  assert.equal(hybrid.runtimeCostStatus,'fallback_payable');
+  assert.deepEqual(hybrid.candidateCost,{'hybrid:dark+earth':1});
+  assert.equal(hybrid.runtimeUpkeepNeutral,0);
+
+  const mu=CardSchema.normalize({id:'mu-runtime-source',name:'MU source',type:'unit',
+    sourceFields:{RequireSoul:'8102'},runtimeCost:{neutral:2},runtimeCostKnown:true});
+  assert.deepEqual(mu.runtimeCost,{neutral:2});
+  assert.equal(mu.runtimeCostStatus,'implemented_inferred');
+  assert.equal(mu.runtimeUpkeepNeutral,2);
+});
+
+test('RequireSoul pure colors and explicit no-cost retain their source runtime values',()=>{
+  const pure=CardSchema.normalize({id:'pure-runtime-source',name:'Pure source',type:'unit',
+    sourceFields:{RequireSoul:'1102'},runtimeCost:{dark:2},runtimeCostKnown:true});
+  assert.deepEqual(pure.runtimeCost,{dark:2});
+  assert.equal(pure.runtimeCostStatus,'implemented_verified');
+  const free=CardSchema.normalize({id:'free-runtime-source',name:'Free source',type:'spell',
+    sourceFields:{RequireSoul:'0100'},runtimeCost:{neutral:1},runtimeCostKnown:true});
+  assert.deepEqual(free.runtimeCost,{neutral:0});
+  assert.equal(free.runtimeCostStatus,'implemented_verified');
+});

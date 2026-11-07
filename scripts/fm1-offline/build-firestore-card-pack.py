@@ -65,9 +65,7 @@ def faction(label_text):
     return "neutral"
 
 def parse_cost(raw, require_soul_enum):
-    """Decode RequireSoul codes, including documented two-colour tokens.
-    NCS and BONUS remain review-only until their payment rules are verified.
-    """
+    """Decode RequireSoul codes; hybrid/NCS/BONUS payment semantics remain review-only."""
     out={"cost":{},"known":False,"review":[],"raw":raw,"tokens":[]}
     if not isinstance(raw,str) or not raw:
         out["review"].append("source-cost-missing"); return out
@@ -275,6 +273,13 @@ def db_cost_to_app(cost_row):
     }
     if invalid_soul_json:
         review.append("invalid-soul-json")
+    # Never trust legacy DB flags that promoted NCS to neutral or hybrid
+    # pairs to both-color payment. Re-derive the unresolved semantics from the
+    # source RequireSoul tokens above.
+    if ncs_amount or bonus_amount:
+        semantic_review = True
+    if any(str(key).startswith("hybrid:") for key in candidate):
+        mapping_review = True
     if not soul_known:
         review.append("unresolved-source-token" if not column_soul_known and not json_soul_known
                       else "sqlite-json-known-status-mismatch")
