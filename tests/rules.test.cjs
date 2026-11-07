@@ -871,14 +871,15 @@ test('runtime cost overlay allows inferred BONUS payment while source review rem
   assert.equal(p.soulPool.colored.metal,0);
 });
 
-test('unverified source cost receives a payable conservative runtime fallback, never a free cost',()=>{
-  const card={...unit('unverified'),instanceId:'unverified-1',cost:{forest:0},costKnown:false,costMapped:false};
+test('unverified source cost is blocked instead of receiving a generic neutral fallback',()=>{
+  const card={...unit('unverified'),instanceId:'unverified-1',cost:{forest:0},costKnown:false,costMapped:false,
+    runtimeCost:null,runtimeCostKnown:false,runtimeCostStatus:'semantic_review_blocked'};
   const p=player('player',{hand:[card],soulPool:{colored:{forest:10},neutral:10},unitDeployLimit:10});
   const result=FM.playCard(state(p,player('ai')),'player','unverified-1');
-  assert.equal(result.ok,true);
-  assert.equal(p.soulPool.neutral,9);
-  assert.equal(p.units.length,1);
-  assert.equal(p.hand.length,0);
+  assert.equal(result.ok,false);
+  assert.equal(p.soulPool.neutral,10);
+  assert.equal(p.units.length,0);
+  assert.equal(p.hand.length,1);
 });
 
 test('stat markers block changes in the protected direction',()=>{
@@ -1735,13 +1736,16 @@ test('neutral upkeep is charged only for units with a neutral soul cost and limi
 });
 
 
-test('missing source cost receives a payable fallback while an empty claimed-known object remains invalid',()=>{
-  const missing={...unit('missing-cost'),instanceId:'missing-cost-1',cost:null,costKnown:false,costMapped:false};
-  const empty={...unit('empty-cost'),instanceId:'empty-cost-1',cost:{},costKnown:true,costMapped:true};
+test('missing source cost is blocked and an empty claimed-known object remains invalid',()=>{
+  const missing={...unit('missing-cost'),instanceId:'missing-cost-1',cost:null,costKnown:false,costMapped:false,
+    runtimeCost:null,runtimeCostKnown:false,runtimeCostStatus:'semantic_review_blocked'};
+  const empty={...unit('empty-cost'),instanceId:'empty-cost-1',cost:{},costKnown:true,costMapped:true,
+    runtimeCost:null,runtimeCostKnown:false,runtimeCostStatus:'semantic_review_blocked'};
   const p=player('player',{hand:[missing,empty],soulPool:{colored:{forest:10},neutral:10},unitDeployLimit:10});
   const s=state(p,player('ai'));
-  assert.equal(FM.playCard(s,'player','missing-cost-1').ok,true);
-  assert.equal(p.soulPool.neutral,9);
+  assert.equal(FM.playCard(s,'player','missing-cost-1').ok,false);
+  assert.equal(p.soulPool.neutral,10);
+  assert.equal(p.hand.length,2);
   assert.equal(FM.playCard(s,'player','empty-cost-1').ok,false);
 });
 
