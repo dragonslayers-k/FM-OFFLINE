@@ -33,3 +33,8 @@ This audit rechecked the Dropbox Manual.zip pages `gamerule.htm`, `ready.htm`, `
 - App pack builder now emits `sourceStatTech` from `ATKStatType`, `DEFStatType`, and `HPStatType`.
 - Only `CONST` (★), `UP` (▲), and `DOWN` (▼) are mapped to Manual-defined change restrictions. `FRONT`, `BACK`, `HAND`, `TURN`, `PLUS`, `MINUS`, and `EQUAL` remain preserved but semantically unimplemented.
 - No DB29 mutation, DB30 creation, or PR merge is authorized by this audit.
+
+
+## Firestore enum raw-code correction
+
+The enumtable's outer map key is an index; the first integer in each enum row is the raw code stored in the card fields. For `StatType`, raw values are 1=NONE, 11=CONST(★), 12=UP(▲), 13=DOWN(▼), 21=FRONT, 22=BACK, 23=HAND, 24=TURN, 31=PLUS, 32=MINUS, 33=EQUAL. For `CoinType`, raw values are 1=NONE, 2=PLUS, 3=MINUS, 4=X, 5=EQUAL. The app parser and regression fixtures now use these raw values. The outer index must never be substituted for the source row value.

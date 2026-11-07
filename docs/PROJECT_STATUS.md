@@ -432,3 +432,6 @@ This is a separate source-text resource/effect question, not the user-defined N/
 
 
 Converter validation note: the app pack builder now reparses raw RequireSoul tokens, keeps NCS/BONUS/hybrid candidates separate, uses a tagged generic payable fallback for unresolved tokens, maps iron to the runtime metal key, and derives unit upkeep only from the inferred MU(81) neutral-bead crosswalk. The latest converter self-test is being re-run against this exact PR head; DB29 ZIP remains reused and immutable.
+
+
+Firestore enum raw-code audit: `Enum+StatType` row values, not outer map indexes, are the card-field codes: 1=NONE, 11=CONST(★), 12=UP(▲), 13=DOWN(▼), 21=FRONT, 22=BACK, 23=HAND, 24=TURN, 31=PLUS, 32=MINUS, 33=EQUAL. `Enum+CoinType` raw codes are 1=NONE, 2=PLUS, 3=MINUS, 4=X, 5=EQUAL. The earlier synthetic 1/2/3 StatType fixtures and 0/1/2 CoinType assumptions were incorrect and are replaced.

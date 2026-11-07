@@ -936,16 +936,16 @@ def self_test():
     assert not hybrid_single["known"] and hybrid_single["mapping_review"]
     assert hybrid_single["tokens"][0]["status"]=="hybrid_payment_unverified"
     assert parse_cost("8102",require_soul_enum)["cost"]=={"neutral":2}
-    stat_enum={"0":{"symbol":"NONE","icon":"없음"},"1":{"symbol":"CONST","icon":"★"},
-        "2":{"symbol":"UP","icon":"▲"},"3":{"symbol":"DOWN","icon":"▼"},
-        "4":{"symbol":"FRONT","icon":"F"}}
+    stat_enum={"1":{"symbol":"NONE","icon":"없음"},"11":{"symbol":"CONST","icon":"★"},
+        "12":{"symbol":"UP","icon":"▲"},"13":{"symbol":"DOWN","icon":"▼"},
+        "21":{"symbol":"FRONT","icon":"F"}}
     stat_profile=parse_source_stat_tech({
-        "ATK":4,"ATKStatType":1,"DEF":2,"DEFStatType":2,
-        "HP":5,"HPStatType":3
+        "ATK":4,"ATKStatType":11,"DEF":2,"DEFStatType":12,
+        "HP":5,"HPStatType":13
     },stat_enum)
     assert stat_profile["ap"]["marker"]=="★" and stat_profile["ap"]["status"]=="manual_marker_mapped"
     assert stat_profile["dp"]["marker"]=="▲" and stat_profile["hp"]["marker"]=="▼"
-    unverified_profile=parse_source_stat_tech({"ATK":3,"ATKStatType":4},stat_enum)
+    unverified_profile=parse_source_stat_tech({"ATK":3,"ATKStatType":21},stat_enum)
     assert unverified_profile["ap"]["type"]=="FRONT"
     assert unverified_profile["ap"]["marker"]=="" and unverified_profile["ap"]["status"]=="source_type_semantics_unverified"
     assert parse_cost("8301",require_soul_enum)["known"] is False

@@ -196,8 +196,8 @@
       const previous=result[stat]||{value:null,marker:'',coin:[]};
       const typeCode=integer(source.typeCode);
       let marker=previous.marker||'';
-      if(typeCode===0)marker='';
-      else if([1,2,3].includes(typeCode))marker=String(source.marker||'');
+      if(typeCode===1)marker='';
+      else if([11,12,13].includes(typeCode))marker=String(source.marker||'');
       result[stat]={
         ...previous,
         value:decimal(source.value)??previous.value,
@@ -215,7 +215,7 @@
       return {status:'missing',stats:{},sharedTosses:0,review:[]};
     }
     // Firestore Enum+CoinType keys: 0 NONE, 1 PLUS, 2 MINUS, 3 X, 4 EQUAL.
-    const operations={1:'add',2:'subtract',3:'multiply',4:'set'};
+    const operations={2:'add',3:'subtract',4:'multiply',5:'set'};
     const specs=[
       {stat:'ap',value:'ATKCoin',type:'ATKCoinType',count:'ATKCoinCount'},
       {stat:'dp',value:'DEFCoin',type:'DEFCoinType',count:'DEFCoinCount'},
@@ -243,7 +243,7 @@
       let operation=null;
       if(rawType!==null){
         operation=operations[rawType]||null;
-        if(rawType===0){
+        if(rawType===1){
           review.push(spec.stat+':NONE-type-with-coin-expression');
           stats[spec.stat]={coin:[]};
           continue;

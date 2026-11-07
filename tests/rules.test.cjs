@@ -4141,9 +4141,9 @@ test('malformed upkeep overlay uses RequireSoul MU source, while explicit no-cos
 
 test('Manual coin example +2C1 AP / -C1 DP uses one shared toss',()=>{
   const sourceCoinTech={
-    ATKCoin:'2C1',ATKCoinType:1,ATKCoinCount:1,
-    DEFCoin:'C1',DEFCoinType:2,DEFCoinCount:1,
-    HPCoin:'NONE',HPCoinType:0,HPCoinCount:0
+    ATKCoin:'2C1',ATKCoinType:2,ATKCoinCount:1,
+    DEFCoin:'C1',DEFCoinType:3,DEFCoinCount:1,
+    HPCoin:'NONE',HPCoinType:1,HPCoinCount:0
   };
   const source=CardSchema.normalize({
     id:'manual-shared-coin-example',name:'매뉴얼 코인 예시',type:'unit',faction:'forest',
@@ -4173,18 +4173,18 @@ test('AI blocker selection accounts for source coin modifier expectations',()=>{
 
 test('Firestore source coin fields map CoinType operators and share one toss profile',()=>{
   const source={
-    ATKCoin:'C3',ATKCoinType:3,ATKCoinCount:3,
-    DEFCoin:'2C1',DEFCoinType:2,DEFCoinCount:1,
-    HPCoin:'NONE',HPCoinType:0,HPCoinCount:0
+    ATKCoin:'2C3',ATKCoinType:2,ATKCoinCount:3,
+    DEFCoin:'C1',DEFCoinType:3,DEFCoinCount:1,
+    HPCoin:'NONE',HPCoinType:1,HPCoinCount:0
   };
   const parsed=CardSchema.parseSourceCoinTech(source);
   assert.equal(parsed.status,'source_mapped');
   assert.equal(parsed.sharedTosses,3);
   assert.deepEqual(parsed.stats.ap.coin[0],{
-    source:'C3',operation:'multiply',multiplier:1,tosses:3
+    source:'2C3',operation:'add',multiplier:2,tosses:3
   });
   assert.deepEqual(parsed.stats.dp.coin[0],{
-    source:'2C1',operation:'subtract',multiplier:2,tosses:1
+    source:'C1',operation:'subtract',multiplier:1,tosses:1
   });
   assert.deepEqual(parsed.stats.hp.coin,[]);
   const normalized=CardSchema.normalize({
@@ -4193,15 +4193,15 @@ test('Firestore source coin fields map CoinType operators and share one toss pro
     sourceCoinTech:source,tabs:{}
   });
   assert.equal(normalized.coinTech.source,'firestore-source-coin-fields');
-  assert.equal(normalized.coinTech.stats.ap.coin[0].operation,'multiply');
+  assert.equal(normalized.coinTech.stats.ap.coin[0].operation,'add');
   assert.equal(normalized.coinTech.stats.dp.coin[0].operation,'subtract');
 });
 
 test('inconsistent Firestore coin count is retained for review and not executed',()=>{
   const parsed=CardSchema.parseSourceCoinTech({
     ATKCoin:'C3',ATKCoinType:3,ATKCoinCount:2,
-    DEFCoin:'NONE',DEFCoinType:0,DEFCoinCount:0,
-    HPCoin:'NONE',HPCoinType:0,HPCoinCount:0
+    DEFCoin:'NONE',DEFCoinType:1,DEFCoinCount:0,
+    HPCoin:'NONE',HPCoinType:1,HPCoinCount:0
   });
   assert.equal(parsed.status,'source_review');
   assert.ok(parsed.review.includes('ap:coin-count-mismatch'));
@@ -4250,16 +4250,16 @@ test('Firestore StatType markers map CONST/UP/DOWN and retain unverified types s
   const card=CardSchema.normalize({id:'stat-type-source',name:'Stat marker source',type:'unit',
     sourceFields:{RequireSoul:'0100'},
     sourceStatTech:{
-      ap:{value:4,typeCode:1,type:'CONST',marker:'★',status:'manual_marker_mapped'},
-      dp:{value:2,typeCode:2,type:'UP',marker:'▲',status:'manual_marker_mapped'},
-      hp:{value:5,typeCode:3,type:'DOWN',marker:'▼',status:'manual_marker_mapped'}
+      ap:{value:4,typeCode:11,type:'CONST',marker:'★',status:'manual_marker_mapped'},
+      dp:{value:2,typeCode:12,type:'UP',marker:'▲',status:'manual_marker_mapped'},
+      hp:{value:5,typeCode:13,type:'DOWN',marker:'▼',status:'manual_marker_mapped'}
     }});
   assert.equal(card.statMarkers.ap,'★');
   assert.equal(card.statMarkers.dp,'▲');
   assert.equal(card.statMarkers.hp,'▼');
   const front=CardSchema.normalize({id:'stat-type-front',name:'Unverified marker',type:'unit',
     sourceFields:{RequireSoul:'0100'},
-    sourceStatTech:{ap:{value:3,typeCode:4,type:'FRONT',marker:'F',status:'source_type_semantics_unverified'}}});
+    sourceStatTech:{ap:{value:3,typeCode:21,type:'FRONT',marker:'F',status:'source_type_semantics_unverified'}}});
   assert.equal(front.statMarkers.ap,'',
     'FRONT is preserved as a source StatType but not treated as a Manual star/triangle restriction');
   assert.equal(front.statTech.stats.ap.sourceType,'FRONT');
