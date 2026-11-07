@@ -926,8 +926,13 @@ def self_test():
         "83":{"symbol":"BONUS","icon":"/bonus.webp"}
     }
     assert parse_cost("11012102",require_soul_enum)["cost"]=={"dark":1,"fire":2}
-    assert parse_cost("12011101",require_soul_enum)["cost"]=={"dark":2,"earth":1}
-    assert parse_cost("1302",require_soul_enum)["cost"]=={"dark":2,"fire":2}
+    hybrid_pair=parse_cost("12011101",require_soul_enum)
+    assert not hybrid_pair["known"] and hybrid_pair["mapping_review"]
+    assert hybrid_pair["tokens"][0]["status"]=="hybrid_payment_unverified"
+    assert hybrid_pair["tokens"][0]["colors"]==["dark","earth"]
+    hybrid_single=parse_cost("1302",require_soul_enum)
+    assert not hybrid_single["known"] and hybrid_single["mapping_review"]
+    assert hybrid_single["tokens"][0]["status"]=="hybrid_payment_unverified"
     assert parse_cost("8102",require_soul_enum)["cost"]=={"neutral":2}
     stat_enum={"0":{"symbol":"NONE","icon":"없음"},"1":{"symbol":"CONST","icon":"★"},
         "2":{"symbol":"UP","icon":"▲"},"3":{"symbol":"DOWN","icon":"▼"},
