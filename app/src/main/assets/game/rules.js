@@ -667,45 +667,57 @@
   }
 
   function buildStarterDeck(cards, faction) {
-    const pool = cards.filter(c => c.faction === faction || c.faction === 'neutral');
-    const source = pool.length >= 20 ? pool : cards;
-    // The starter profile is intended to be playable immediately, not merely
-    // a 50-card sample in database order. Prioritize low-LP/low-install-cost
-    // lands and affordable cards so both human and AI can establish resources.
-    const landInstallScore = card => card.landInstallCostKnown === true
-      ? sumCost(card.landInstallCost) : Number.MAX_SAFE_INTEGER;
-    const lands = source.filter(c => c.type === 'land').sort((a,b) =>
-      (Number(a.requiredLP || 0) - Number(b.requiredLP || 0)) ||
-      (landInstallScore(a) - landInstallScore(b)));
-    const offFactionCost = card => Object.entries(runtimeCostFor(card) || {}).reduce((sum,[color,amount]) =>
-      sum + (color !== faction && color !== 'neutral' && color !== 'bonus' ? (Number(amount) || 0) : 0),0);
-    const units = source.filter(c => c.type === 'unit').sort((a,b) =>
-      (offFactionCost(a) - offFactionCost(b)) ||
-      (sumCost(runtimeCostFor(a)) - sumCost(runtimeCostFor(b))) ||
-      ((Number(b.ap || 0) + Number(b.dp || 0) + Number(b.hp || 0)) -
-       (Number(a.ap || 0) + Number(a.dp || 0) + Number(a.hp || 0))));
-    const others = source.filter(c => c.type === 'item' || c.type === 'spell' || c.type === 'enchant')
-      .sort((a,b) => (offFactionCost(a) - offFactionCost(b)) ||
-        (sumCost(runtimeCostFor(a)) - sumCost(runtimeCostFor(b))));
-    const result = [];
-    const used = new Map();
-    function addRepeated(list, wanted) {
-      if (!list.length) return;
-      let added = 0, cursor = 0;
-      while (added < wanted && cursor < list.length * 5) {
-        const card = list[cursor++ % list.length];
-        const limit = Math.max(1, Math.min(4, Number(card.deckLimit) || 4));
-        const count = used.get(card.id) || 0;
-        if (count < limit) { result.push(clone(card)); used.set(card.id, count + 1); added++; }
+    const all=Array.isArray(cards)?cards:[];
+    const factionPool=all.filter(c=>c.faction===faction||c.faction==='neutral');
+    // Never put a source-unverified card into the generated starter deck.
+    // Otherwise an unusable land can satisfy the opening-hand mulligan but
+    // cannot be installed, leaving the AI with no generated souls.
+    const allPlayable=all.filter(c=>validateCardForPlay(c).ok);
+    const factionPlayable=factionPool.filter(c=>validateCardForPlay(c).ok);
+    const source=factionPlayable.length>=20&&factionPlayable.some(c=>c.type==='land')
+      ?factionPlayable:allPlayable;
+    const landInstallScore=card=>card.landInstallCostKnown===true
+      ?sumCost(card.landInstallCost):Number.MAX_SAFE_INTEGER;
+    const lands=source.filter(c=>c.type==='land').sort((a,b)=>
+      (Number(a.requiredLP||0)-Number(b.requiredLP||0))||
+      (landInstallScore(a)-landInstallScore(b)));
+    const offFactionCost=card=>Object.entries(runtimeCostFor(card)||{}).reduce((sum,[color,amount])=>
+      sum+(color!==faction&&color!=='neutral'&&color!=='bonus'?(Number(amount)||0):0),0);
+    const units=source.filter(c=>c.type==='unit').sort((a,b)=>
+      (offFactionCost(a)-offFactionCost(b))||
+      (sumCost(runtimeCostFor(a))-sumCost(runtimeCostFor(b)))||
+      ((Number(b.ap||0)+Number(b.dp||0)+Number(b.hp||0))-
+       (Number(a.ap||0)+Number(a.dp||0)+Number(a.hp||0))));
+    const others=source.filter(c=>c.type==='item'||c.type==='spell'||c.type==='enchant')
+      .sort((a,b)=>(offFactionCost(a)-offFactionCost(b))||
+        (sumCost(runtimeCostFor(a))-sumCost(runtimeCostFor(b))));
+    if(!lands.length)throw new Error('기본 덱을 만들 수 있는 합법적인 지형 카드가 없습니다.');
+    const result=[],used=new Map();
+    function addRepeated(list,wanted){
+      if(!list.length)return;
+      let added=0,cursor=0;
+      while(added<wanted&&cursor<list.length*5){
+        const card=list[cursor++%list.length];
+        const limit=Math.max(1,Math.min(4,Number(card.deckLimit)||4));
+        const count=used.get(card.id)||0;
+        if(count<limit){result.push(clone(card));used.set(card.id,count+1);added++;}
       }
     }
-    addRepeated(lands, 10);
-    addRepeated(units, 24);
-    addRepeated(others, 16);
-    if (result.length !== 50) throw new Error('합법적인 50장 기본 덱을 구성할 카드가 부족합니다.');
+    addRepeated(lands,10);
+    addRepeated(units,24);
+    addRepeated(others,16);
+    // If the legal land pool cannot supply ten copies, fill the remaining
+    // slots with other legal cards instead of failing or adding blocked cards.
+    const filler=units.concat(others,lands);
+    while(result.length<50){
+      const before=result.length;
+      addRepeated(filler,50-result.length);
+      if(result.length===before)break;
+    }
+    if(result.length!==50)throw new Error(
+      '합법적인 카드만으로 50장 기본 덱을 구성할 수 없습니다. 현재 '+result.length+'장입니다.');
     return result;
   }
-
   function player(state, id) { return state.players[id]; }
   function opponentId(id) { return id === 'player' ? 'ai' : 'player'; }
   function addLog(state, text) {
@@ -1745,7 +1757,8 @@ if (card.type === 'unit') {
     while (progressed && actions < maxActions && state.status === 'playing') {
       progressed = false;
       actions++;
-      const candidates = ai.hand.filter(c => c.type !== 'land' && canPay(ai, runtimeCostFor(c)) && validateCardForPlay(c).ok && (c.type !== 'unit' || ai.unitDeployedThisPhase < ai.unitDeployLimit));
+      const candidates = ai.hand.filter(c => c.type !== 'land' && canPay(ai, runtimeCostFor(c)) && validateCardForPlay(c).ok &&
+        (c.type !== 'unit' || (ai.unitDeployedThisPhase < ai.unitDeployLimit && ai.units.length < 5)));
       const unitCandidates = candidates.filter(c => c.type === 'unit');
       const unitCard = unitCandidates.sort((a, b) => {
         if (state.settings.difficulty === 'hard') {

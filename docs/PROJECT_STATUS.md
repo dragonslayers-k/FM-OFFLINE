@@ -472,3 +472,8 @@ A separate fail-open/fail-closed defect was corrected: when an already-present/l
 - Firestore `CoinType=EQUAL(5)` remains preserved as an enum-inferred candidate. Manual `coin.htm` does not define its execution, so the candidate `set` operation is not merged into executable AP/DP/HP coin rules.
 - If an explicit operator in the source expression (for example `+2C1`) conflicts with the Firestore `CoinType` enum (for example MINUS), that stat lane is marked `source_review` and its source-derived coin modifier is cleared. Display-text parsing cannot restore the conflicting effect.
 - Valid source lanes on the same card remain independently mapped; invalid lanes are blocked without discarding other validated lanes.
+
+
+## 2026-11-07 — AI starter deck legality correction
+
+The generated starter deck previously ranked low-cost cards but could still include lands with unverified installation costs, units with blocked RequireSoul tokens, and spells with fallback_noop effects. The opening-hand rule guarantees a land, not a playable land; consequently an AI hand could contain only a non-installable land and have no legal way to generate souls. Starter-deck construction now filters every card through the same `validateCardForPlay` gate used by actual play, selects a faction pool only when it contains enough legal cards and at least one legal land, and fills short land quotas with other legal cards. It fails with a specific error if no legal land or fewer than 50 legal cards exist. AI unit candidates are also excluded when all five unit slots are occupied.

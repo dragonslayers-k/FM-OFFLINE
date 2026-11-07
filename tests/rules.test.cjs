@@ -3818,6 +3818,26 @@ test('starter deck prioritizes affordable terrain and runtime-cost cards over so
   assert.ok(deck.slice(34).every(c=>c.id.startsWith('other-')));
 });
 
+test('starter deck excludes unplayable cards and fills from the remaining legal pool',()=>{
+  const invalidLand={...land('invalid-starter-land','forest'),landInstallCostKnown:false,landInstallCost:undefined};
+  const onlyLegalLand={...land('single-legal-land','forest'),deckLimit:4};
+  const invalidUnit=CardSchema.normalize({id:'invalid-starter-unit',name:'NCS 후보 유닛',type:'unit',
+    faction:'forest',ap:3,dp:1,hp:4,cost:{forest:1},costKnown:true,costMapped:true,
+    runtimeCost:{forest:1},runtimeCostKnown:true,sourceFields:{RequireSoul:'8201'}});
+  const legalUnits=Array.from({length:24},(_,i)=>unit('legal-starter-unit-'+i,{deckLimit:4}));
+  const legalSpells=Array.from({length:8},(_,i)=>({
+    id:'legal-starter-spell-'+i,name:'드로우 주문 '+i,type:'spell',faction:'forest',deckLimit:4,
+    cost:{forest:1},costKnown:true,costMapped:true,runtimeCost:{forest:1},runtimeCostKnown:true,
+    runtimeCostStatus:'source_verified',effect:{type:'draw',amount:1},runtimeEffectDisposition:'implemented_verified'
+  }));
+  const invalidSpell={...legalSpells[0],id:'invalid-starter-spell',runtimeEffectDisposition:'fallback_noop'};
+  const deck=FM.buildStarterDeck([invalidLand,onlyLegalLand,invalidUnit,...legalUnits,...legalSpells,invalidSpell],'forest');
+  assert.equal(deck.length,50);
+  assert.ok(deck.some(c=>c.type==='land'),'starter deck must contain an installable land');
+  assert.ok(deck.every(c=>FM.validateCardForPlay(c).ok),'every generated starter card must be playable');
+  assert.ok(!deck.some(c=>['invalid-starter-land','invalid-starter-unit','invalid-starter-spell'].includes(c.id)));
+});
+
 test('AI refuses unsupported fallback enchants and preserves its resources',()=>{
   const enchant={id:'ai-enchant-fallback',name:'AI fallback enchant',type:'enchant',
     instanceId:'ai-enchant-fallback-1',faction:'forest',cost:{forest:1},costKnown:true,costMapped:true,
