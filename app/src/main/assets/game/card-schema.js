@@ -382,7 +382,7 @@
         if(cardType==='unit')upkeep+=amount;
       }else if(code==='82'){
         add(candidate,'ncs',amount);
-        inference.push('ncs_requiresoul_semantics_unverified_blocked');blocked=true;
+        inference.push('ncs_soul_distinct_resource_candidate_unverified_blocked');blocked=true;
       }else if(code==='83'){
         add(candidate,'bonus',amount);
         inference.push('bonus_requiresoul_semantics_unverified_blocked');blocked=true;

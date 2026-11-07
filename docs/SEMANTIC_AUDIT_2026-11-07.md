@@ -9,7 +9,7 @@ This audit rechecked the Dropbox Manual.zip pages `gamerule.htm`, `ready.htm`, `
 | Data / notation | Meaning | Handling |
 |---|---|---|
 | User-confirmed N/C/S(82) unit-stat shorthand | N=Normal attack, C=Critical attack, S=Defense; (82)=attack dice 0–8 and defense dice 0–2 | Preserve as a separate notation. No Firestore field mapping has yet been proven. |
-| Firestore `RequireSoul` code 82 / enum `NCS` | Separate source token in the cost field | `semantic_review`; generic payable fallback only; never recurring upkeep. |
+| Firestore `RequireSoul` code 82 / enum `NCS` | Candidate cost token for a distinct NCS-soul resource documented by community card-skill references | `community_documented_candidate` / `semantic_review`; runtime blocked until NCS-soul pool and payment rules are verified; never MU/neutral fallback. |
 | Firestore `RequireSoul` code 81 / enum `MU` | Candidate crosswalk to Manual's colorless/neutral bead | `implemented_inferred`; generic any-color payment; unit-only upkeep. Icon-to-Manual image match remains pending. |
 | Firestore `RequireSoul` code 83 / enum `BONUS` | Separate source token | `semantic_review`; generic payable fallback only; no upkeep. |
 | Manual coin expression C | Coin; e.g. C3 throws three coins, 2C3 multiplies the result by two | Separate from the C in N/C/S. One shared toss set applies to AP/DP/HP. |
@@ -62,3 +62,8 @@ The Manual's `soulcost.htm` ties recurring upkeep to the neutral bead on a Unit'
 Firestore card `16112710291` (`구름도시`) provides a cross-check: `RequireSoul="71018101"` encodes LIGHT ×1 + MU ×1 for installation; `EarnSoulList="8201"` uses a different enum where code 82 is MU02 and outputs two neutral/MU souls; `MuSoul=2` matches the output. The card's source TextExtra also states the special land consumes 1 MU soul and 1 colored soul. This confirms that a numeric code must be read with its exact source field and enum namespace. `RequireSoul=8201` remains the distinct NCS cost token and is blocked.
 
 The app normalizer now merges raw `sourceFields` coin data with the derived `sourceCoinTech` object. If the derived object is absent in an older immutable DB29 pack, the raw original fields still drive the shared coin calculation. Regression coverage checks the Manual `+2C1 AP / -C1 DP` one-toss example through `sourceFields` alone.
+
+
+## 2026-11-07 — NCS-soul resource distinction
+
+A 2017 Inven community card-skill list records NCS소울 as a distinct resource: converting a hand-card YuSoul to NCS, creating or replacing cards with NCS-soul costs, moving captured units to hand using NCS-soul, and consuming NCS-soul to increase upkeep. The app and CardDB now label RequireSoul NCS(82) as a separate NCS-soul candidate instead of treating its meaning as wholly unknown. It remains intentionally blocked: the official pool, generation timing, debit path, and payment rules have not been verified. No generic neutral fallback is allowed. Reference: https://www.inven.co.kr/board/hs/3509/1426815 (community reference; not official Manual).

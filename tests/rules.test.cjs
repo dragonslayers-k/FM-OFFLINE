@@ -4297,6 +4297,8 @@ test('DB29 RequireSoul source blocks unresolved tokens and preserves MU upkeep s
   assert.equal(ncs.runtimeCost,null);
   assert.equal(ncs.runtimeCostKnown,false);
   assert.equal(ncs.runtimeCostStatus,'semantic_review_blocked');
+  assert.ok(ncs.runtimeCostInference.includes('ncs_soul_distinct_resource_candidate_unverified_blocked'),
+    'community-documented NCS soul remains a separate resource candidate and is not paid as neutral');
   assert.equal(ncs.runtimeUpkeepNeutral,0);
   assert.deepEqual(ncs.runtimeUpkeepCost,{neutral:0});
   assert.ok(ncs.runtimeCostInference.includes('ncs_requiresoul_semantics_unverified_blocked'));
