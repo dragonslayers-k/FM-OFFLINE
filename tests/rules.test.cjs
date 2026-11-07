@@ -4244,3 +4244,24 @@ test('RequireSoul pure colors and explicit no-cost retain their source runtime v
   assert.deepEqual(free.runtimeCost,{neutral:0});
   assert.equal(free.runtimeCostStatus,'implemented_verified');
 });
+
+
+test('Firestore StatType markers map CONST/UP/DOWN and retain unverified types separately',()=>{
+  const card=CardSchema.normalize({id:'stat-type-source',name:'Stat marker source',type:'unit',
+    sourceFields:{RequireSoul:'0100'},
+    sourceStatTech:{
+      ap:{value:4,typeCode:1,type:'CONST',marker:'★',status:'manual_marker_mapped'},
+      dp:{value:2,typeCode:2,type:'UP',marker:'▲',status:'manual_marker_mapped'},
+      hp:{value:5,typeCode:3,type:'DOWN',marker:'▼',status:'manual_marker_mapped'}
+    }});
+  assert.equal(card.statMarkers.ap,'★');
+  assert.equal(card.statMarkers.dp,'▲');
+  assert.equal(card.statMarkers.hp,'▼');
+  const front=CardSchema.normalize({id:'stat-type-front',name:'Unverified marker',type:'unit',
+    sourceFields:{RequireSoul:'0100'},
+    sourceStatTech:{ap:{value:3,typeCode:4,type:'FRONT',marker:'F',status:'source_type_semantics_unverified'}}});
+  assert.equal(front.statMarkers.ap,'',
+    'FRONT is preserved as a source StatType but not treated as a Manual star/triangle restriction');
+  assert.equal(front.statTech.stats.ap.sourceType,'FRONT');
+  assert.equal(front.statTech.stats.ap.sourceTypeStatus,'source_type_semantics_unverified');
+});

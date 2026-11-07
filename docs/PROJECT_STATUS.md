@@ -411,3 +411,14 @@ Do not equate those unit markers with the separate `NCS (82)` token in `RequireS
 Manual `gamerule.htm` states that the initial six-card deal is repeated if it contains no land. The redraw returns the dealt cards to the deck and shuffles again; it does not require a free/zero-cost land. The app previously preferred a playable free land, which was an invented condition, and its deterministic fallback could leave fewer than six cards. The updated implementation accepts any land and ensures the fallback still fills six cards. Voluntary mulligan remains separate: it burns one card and carries no land guarantee.
 
 The defender's +1 generic soul is a project balance rule requested during testing, not an official Manual rule. It remains a clearly identified house-rule bonus and must not be described as source-canonical.
+
+
+## 2026-11-07 — Card-stat source-field audit
+
+Firestore `ATKStatType`, `DEFStatType`, and `HPStatType` were previously not copied into the app card pack. The pack builder now preserves them as `sourceStatTech`; CardSchema maps only the Manual-described marker meanings: `CONST` (★), `UP` (▲), and `DOWN` (▼). The Manual states ★ blocks all changes, ▲ blocks decreases, and ▼ blocks increases. Other source enum values (`FRONT`, `BACK`, `HAND`, `TURN`, `PLUS`, `MINUS`, `EQUAL`) are retained with their source codes but are not given invented runtime behavior until a Manual rule is found.
+
+Do not conflate these fields with the user-confirmed N/C/S shorthand (N=Normal attack, C=Critical attack, S=Defense; (82)=attack dice 0–8 and defense dice 0–2), Firestore `RequireSoul` code 82, `CoinType` C (coin), or the separate `RankType` enum. The N/C/S shorthand has not yet been tied to a specific Firestore source field; it is not synthesized from `RankType` or `RequireSoul`.
+
+## 2026-11-07 — RequireSoul runtime correction
+
+CardSchema now reparses each card's original `sourceFields.RequireSoul` when loading the existing DB29 pack. This overrides stale runtime profiles: MU(81) is the inferred Manual-neutral crosswalk and supplies unit-only upkeep; NCS(82), BONUS(83), and hybrid pair tokens are preserved as candidate identities and use tagged generic payable fallbacks without recurring upkeep. Hybrid pairs are no longer charged as both colors. DB29 itself remains immutable and was not rebuilt.

@@ -64,6 +64,38 @@ def faction(label_text):
         if any(n in s for n in needles): return color
     return "neutral"
 
+def parse_source_stat_tech(fields, stat_type_enum):
+    """Preserve source AP/DP/HP StatType and apply only Manual-defined markers."""
+    result = {}
+    for source_field, stat in (("ATK","ap"),("DEF","dp"),("HP","hp")):
+        value = integer(fields.get(source_field))
+        type_code = integer(fields.get(source_field + "StatType"))
+        if value is None and type_code is None:
+            continue
+        meta = stat_type_enum.get(str(type_code), {}) if type_code is not None else {}
+        symbol = str(meta.get("symbol") or "").upper()
+        icon = str(meta.get("icon") or "")
+        if symbol in {"CONST","UP","DOWN"}:
+            marker = icon
+            status = "manual_marker_mapped"
+        elif symbol == "NONE":
+            marker = ""
+            status = "source_mapped_no_marker"
+        elif symbol:
+            marker = ""
+            status = "source_type_semantics_unverified"
+        else:
+            marker = ""
+            status = "source_stat_type_unmapped" if type_code is not None else "source_stat_type_missing"
+        result[stat] = {
+            "value": value, "typeCode": type_code, "type": symbol or None,
+            "icon": icon or None, "marker": marker, "status": status,
+            "sourceValueField": source_field,
+            "sourceTypeField": source_field + "StatType"
+        }
+    return result
+
+
 def parse_cost(raw, require_soul_enum):
     """Decode RequireSoul codes; hybrid/NCS/BONUS payment semantics remain review-only."""
     out={"cost":{},"known":False,"review":[],"raw":raw,"tokens":[]}
@@ -664,7 +696,7 @@ def runtime_effect_mapping_for_row(row, enums):
     return mapping
 
 
-def build_card(row, enums, earn_soul_enum, require_soul_enum):
+def build_card(row, enums, earn_soul_enum, require_soul_enum, stat_type_enum):
     f=row.get("raw_payload") or {}
     cid=str(row.get("card_id") or f.get("ID") or "")
     name=str(row.get("name") or f.get("Name") or "")
@@ -709,6 +741,7 @@ def build_card(row, enums, earn_soul_enum, require_soul_enum):
     if runtime_effect_disposition!="implemented_inferred": runtime_effect_mapping=None
     card={
         "id":cid,"name":name,"type":typ,"faction":color,
+        "sourceStatTech":parse_source_stat_tech(f,stat_type_enum),
         "cost":c["cost"] if cost_known else {},
         "runtimeCost":c.get("runtimeCost",c["cost"]),
         "runtimeCostKnown":c.get("runtimeCostKnown",c["known"]),
@@ -932,6 +965,18 @@ def self_test():
     assert parse_cost("12011101",require_soul_enum)["cost"]=={"dark":2,"earth":1}
     assert parse_cost("1302",require_soul_enum)["cost"]=={"dark":2,"fire":2}
     assert parse_cost("8102",require_soul_enum)["cost"]=={"neutral":2}
+    stat_enum={"0":{"symbol":"NONE","icon":"없음"},"1":{"symbol":"CONST","icon":"★"},
+        "2":{"symbol":"UP","icon":"▲"},"3":{"symbol":"DOWN","icon":"▼"},
+        "4":{"symbol":"FRONT","icon":"F"}}
+    stat_profile=parse_source_stat_tech({
+        "ATK":4,"ATKStatType":1,"DEF":2,"DEFStatType":2,
+        "HP":5,"HPStatType":3
+    },stat_enum)
+    assert stat_profile["ap"]["marker"]=="★" and stat_profile["ap"]["status"]=="manual_marker_mapped"
+    assert stat_profile["dp"]["marker"]=="▲" and stat_profile["hp"]["marker"]=="▼"
+    unverified_profile=parse_source_stat_tech({"ATK":3,"ATKStatType":4},stat_enum)
+    assert unverified_profile["ap"]["type"]=="FRONT"
+    assert unverified_profile["ap"]["marker"]=="" and unverified_profile["ap"]["status"]=="source_type_semantics_unverified"
     assert parse_cost("8301",require_soul_enum)["known"] is False
     assert parse_cost("8201",require_soul_enum)["known"] is False
     assert parse_cost("0100",require_soul_enum)["cost"]=={"neutral":0}
@@ -1212,6 +1257,9 @@ def convert(a):
     enums=enum_lookup(enum_data)
     earn_soul_enum=enum_symbol_map(enum_data,"EarnSoul")
     require_soul_enum=enum_symbol_map(enum_data,"RequireSoul")
+    stat_type_enum=enum_symbol_map(enum_data,"StatType")
+    if not stat_type_enum:
+        raise RuntimeError("enumtable is missing Enum+StatType; refusing to guess AP/DP/HP stat markers")
     if not earn_soul_enum:
         raise RuntimeError("enumtable is missing Enum+EarnSoul; refusing to guess land soul production")
     if not require_soul_enum:
@@ -1286,7 +1334,7 @@ def convert(a):
     effect_candidate_bytes=json.dumps(effect_candidate_data,ensure_ascii=False,separators=(",",":")).encode("utf-8")
     effect_candidate_sha256=hashlib.sha256(effect_candidate_bytes).hexdigest()
     for index,row in enumerate(source_records,1):
-        card=build_card(row,enums,earn_soul_enum,require_soul_enum)
+        card=build_card(row,enums,earn_soul_enum,require_soul_enum,stat_type_enum)
         for image_type in ("small","large"):
             meta=(row.get("source_image_metadata") or {}).get(image_type) or {}
             card.setdefault("sourceImageSha256",{})[image_type]=meta.get("sha256")

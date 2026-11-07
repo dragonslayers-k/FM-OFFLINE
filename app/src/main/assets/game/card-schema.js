@@ -189,6 +189,24 @@
         result[current].value = Number(valueMatch[2]);
       }
     }
+    const sourceStatTech=card.sourceStatTech&&typeof card.sourceStatTech==='object'?card.sourceStatTech:{};
+    for(const stat of ['ap','dp','hp']){
+      const source=sourceStatTech[stat];
+      if(!source||typeof source!=='object')continue;
+      const previous=result[stat]||{value:null,marker:'',coin:[]};
+      const typeCode=integer(source.typeCode);
+      let marker=previous.marker||'';
+      if(typeCode===0)marker='';
+      else if([1,2,3].includes(typeCode))marker=String(source.marker||'');
+      result[stat]={
+        ...previous,
+        value:decimal(source.value)??previous.value,
+        marker,
+        sourceTypeCode:typeCode,
+        sourceType:String(source.type||''),
+        sourceTypeStatus:String(source.status||'source_type_unverified')
+      };
+    }
     const tosses = Object.values(result).flatMap(x => x.coin).reduce((m,x) => Math.max(m,x.tosses),0);
     return { stats:result, sharedTosses:tosses, raw:block };
   }
