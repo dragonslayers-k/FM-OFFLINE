@@ -3810,7 +3810,7 @@ test('starter deck prioritizes affordable terrain and runtime-cost cards over so
   const affordableLands=Array.from({length:10},(_,i)=>land('cheap-land-'+i,'forest',1,0)).map(c=>({...c,deckLimit:4,landInstallCost:{neutral:0}}));
   const costlyUnits=Array.from({length:24},(_,i)=>unit('costly-unit-'+i,{deckLimit:4,cost:{forest:3},runtimeCost:{forest:3},runtimeCostKnown:true}));
   const affordableUnits=Array.from({length:24},(_,i)=>unit('cheap-unit-'+i,{deckLimit:4,cost:{forest:2},runtimeCost:{forest:1},runtimeCostKnown:true}));
-  const otherCards=Array.from({length:8},(_,i)=>({id:'other-'+i,name:'other-'+i,type:'spell',faction:'forest',deckLimit:4,cost:{forest:2},runtimeCost:{forest:1},runtimeCostKnown:true,effect:{type:'draw',amount:1}}));
+  const otherCards=Array.from({length:8},(_,i)=>({id:'other-'+i,name:'other-'+i,type:'spell',faction:'forest',deckLimit:4,cost:{forest:2},runtimeCost:{forest:1},runtimeCostKnown:true,triggerTiming:'공격턴',effect:{type:'draw',amount:1}}));
   const deck=FM.buildStarterDeck(unknownLands.concat(expensiveLands,affordableLands,costlyUnits,affordableUnits,otherCards),'forest');
   assert.equal(deck.length,50);
   assert.ok(deck.slice(0,10).every(c=>c.id.startsWith('cheap-land-')));
@@ -3828,7 +3828,7 @@ test('starter deck excludes unplayable cards and fills from the remaining legal 
   const legalSpells=Array.from({length:8},(_,i)=>({
     id:'legal-starter-spell-'+i,name:'드로우 주문 '+i,type:'spell',faction:'forest',deckLimit:4,
     cost:{forest:1},costKnown:true,costMapped:true,runtimeCost:{forest:1},runtimeCostKnown:true,
-    runtimeCostStatus:'source_verified',effect:{type:'draw',amount:1},runtimeEffectDisposition:'implemented_verified'
+    runtimeCostStatus:'source_verified',triggerTiming:'공격턴',effect:{type:'draw',amount:1},runtimeEffectDisposition:'implemented_verified'
   }));
   const invalidSpell={...legalSpells[0],id:'invalid-starter-spell',runtimeEffectDisposition:'fallback_noop'};
   const deck=FM.buildStarterDeck([invalidLand,onlyLegalLand,invalidUnit,...legalUnits,...legalSpells,invalidSpell],'forest');
