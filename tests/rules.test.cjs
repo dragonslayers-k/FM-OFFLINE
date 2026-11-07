@@ -304,7 +304,8 @@ test('AI preparation stops when neutral upkeep destroys its final deck card',()=
       name:'무속성 유지비 유닛',
       cost:{forest:1,neutral:1},
       costKnown:true,
-      costMapped:true
+      costMapped:true,
+      sourceFields:{RequireSoul:'8101'}
     })],
     lands:[]
   });
@@ -1931,14 +1932,14 @@ test('BONUS one-time runtime payment is excluded from recurring unit upkeep',()=
   assert.equal(s.status,'playing');
 });
 
-test('missing legacy upkeep provenance uses finite conservative fallback and never ends the match by Infinity',()=>{
+test('missing legacy upkeep provenance does not invent a recurring soul charge',()=>{
   const unknown=unit('unknown-upkeep',{cost:{},costKnown:false,costMapped:false});
   const p=player('player',{units:[unknown],soulPool:{colored:{},neutral:0}});
   const s=state(p,player('ai'));
   FM._test.beginPhase(s,'player');
-  assert.equal(p.neutralUpkeep,1);
+  assert.equal(p.neutralUpkeep,0);
   assert.equal(s.status,'playing');
-  assert.equal(p.deck.length,13);
+  assert.equal(p.deck.length,14);
 });
 
 test('unmapped spell effect is paid, consumed and closed as a deterministic no-op',()=>{

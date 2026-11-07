@@ -916,9 +916,10 @@
       if (parsed.ok) return Number(parsed.cost.neutral || 0);
     }
     if (unit.runtimeUpkeepStatus === 'manual_verified_ncs_only') return 0;
-    // Missing source provenance gets a conservative finite fallback. A generic
-    // one-time neutral payment is never silently converted into recurring upkeep.
-    return 1;
+    // RequireSoul provenance is mandatory to infer recurring MU upkeep.
+    // An unknown source must not invent a recurring charge: the card's one-time
+    // cost is already blocked by validateCardForPlay when its cost is unresolved.
+    return 0;
   }
 
   function payNeutralUpkeep(p) {

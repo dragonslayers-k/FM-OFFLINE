@@ -43,3 +43,8 @@ The enumtable's outer map key is an index; the first integer in each enum row is
 ### EarnSoul / RequireSoul code-82 namespace split
 
 The Firestore enumtable defines `EarnSoul` raw code 82 as `MU02` (two neutral souls produced per token), while `RequireSoul` raw code 82 is the separate `NCS` token. The user-confirmed `NCS(82)` notation is a third, unrelated unit-stat shorthand (N/C/S with attack dice 0–8 and defense dice 0–2). A fourth literal, `NCS소울`, appears in some `TextExtra` effects and remains a separate source-text resource question. These meanings must never be joined by the shared number/string alone. The app's `parse_earn_soul_list` already decodes `EarnSoul` 8201 as two neutral output; converter self-tests cover it separately from `RequireSoul` 8201 review handling.
+
+
+## Additional runtime correction — unknown upkeep provenance
+
+The Manual's `soulcost.htm` ties recurring upkeep to the neutral bead on a Unit's source summon cost. The app no longer assumes a one-soul upkeep when a legacy unit has no valid `RequireSoul` provenance and no versioned upkeep overlay. Unknown summon costs are already blocked at play validation; inventing a recurring charge on an existing unit was not a Manual-defined fallback. MU(81) source-backed upkeep remains active for units only.

@@ -458,3 +458,10 @@ CardSchema now preserves each unresolved token in `candidateCost`, sets `runtime
 ## 2026-11-07 — DB29 coin-source coverage audit
 
 The CardSchema parser accepts explicit EQUAL notation in addition to the Firestore CoinType enum, and the runtime still resolves one shared coin toss profile for AP/DP/HP. The next validation uses the already-built DB29 import artifact only (no card ZIP regeneration and no emulator run) to report per-unit `coinTechSourceStatus` counts. A `source_review` count, if present, must be inspected before deciding whether those units can safely use tab-derived coin expressions.
+
+
+## 2026-11-07 — Manual soul-cost rule and unknown-upkeep correction
+
+The Dropbox `Manual.zip` page `soulcost.htm` explicitly states that the Soul Cost rule applies only to Unit cards with a colorless/neutral (무속성) summon-cost bead. That amount is paid once when the unit is summoned and is then paid again as recurring upkeep at each following preparation phase; an unpaid amount destroys the same number of deck cards. Accordingly, source `RequireSoul` MU(81) maps to the Manual neutral bead and contributes to recurring upkeep only for Unit cards. Non-Unit MU costs are one-time costs only. NCS(82), BONUS(83), and hybrid tokens remain blocked pending separate authoritative definitions.
+
+A separate fail-open/fail-closed defect was corrected: when an already-present/legacy unit has no valid source RequireSoul provenance and no versioned upkeep overlay, the engine previously invented a one-neutral-soul recurring charge. Missing provenance is not evidence of a one-soul upkeep. The unit now contributes zero inferred upkeep; its card remains unplayable from hand if its one-time cost is unresolved. Explicit MU(81) upkeep and explicit versioned overlays continue to be charged. Regression tests now distinguish a source-backed MU(81) upkeep unit from an unknown legacy unit.
