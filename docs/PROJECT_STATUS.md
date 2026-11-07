@@ -422,3 +422,10 @@ Do not conflate these fields with the user-confirmed N/C/S shorthand (N=Normal a
 ## 2026-11-07 — RequireSoul runtime correction
 
 CardSchema now reparses each card's original `sourceFields.RequireSoul` when loading the existing DB29 pack. This overrides stale runtime profiles: MU(81) is the inferred Manual-neutral crosswalk and supplies unit-only upkeep; NCS(82), BONUS(83), and hybrid pair tokens are preserved as candidate identities and use tagged generic payable fallbacks without recurring upkeep. Hybrid pairs are no longer charged as both colors. DB29 itself remains immutable and was not rebuilt.
+
+
+## 2026-11-07 — TextExtra effect audit: Klub variants
+
+Firestore records 16120828657–16120828663 contain TextExtra-only effects named 전력봉인 and 중급열사. The text explicitly describes a 3-turn status that, on activation, removes one 유소울 or NCS소울, increases upkeep by one, and reduces DP by one. These effect names are not the Skill2 enum: the same card's Skill2=129 maps to 절해라, while Skill1=51 maps to 관통공격. One variant has RequireSoul=71048103 (4 light + 3 MU), not RequireSoul NCS(82).
+
+This is a separate source-text resource/effect question, not the user-defined N/C/S(82) stat notation. The reviewed Manual pages and web searches did not define the NCS소울 resource pool or status timing. The app preserves TextExtra but does not execute 전력봉인/중급열사 yet; do not claim these effects are implemented until their lifecycle and resource source are verified.
