@@ -310,7 +310,7 @@
   function parseRequireSoulRuntime(rawValue, cardType) {
     if (typeof rawValue !== 'string' || !rawValue.length) return null;
     const candidate={}, runtime={}, inference=[];
-    let fallback=false, muCrosswalk=false, upkeep=0;
+    let blocked=false, muCrosswalk=false, upkeep=0;
     const pure={'11':'dark','21':'fire','31':'water','41':'forest','51':'iron','61':'earth','71':'light'};
     const hybrid={
       '12':'dark+earth','13':'dark+fire','14':'dark+light','15':'dark+water',
@@ -321,13 +321,14 @@
     const add=(target,key,value)=>{target[key]=(target[key]||0)+value;};
     const digits=[...rawValue].every(ch=>ch>='0'&&ch<='9');
     if(!digits||rawValue.length%4!==0){
-      return {candidateCost:{unknown:rawValue},runtimeCost:{neutral:1},runtimeCostStatus:'fallback_payable',
-        runtimeCostInference:['invalid-requiresoul-source-conservative-payable-fallback'],
+      return {candidateCost:{unknown:rawValue},runtimeCost:null,runtimeCostKnown:false,
+        runtimeCostStatus:'semantic_review_blocked',
+        runtimeCostInference:['invalid-requiresoul-source-blocked'],
         runtimeUpkeepCost:{neutral:0},runtimeUpkeepNeutral:0,runtimeUpkeepStatus:'zero_upkeep'};
     }
     for(let i=0;i<rawValue.length;i+=4){
       const code=rawValue.slice(i,i+2),amount=Number(rawValue.slice(i+2,i+4));
-      if(code==='01'&&amount===0)continue;
+      if(amount===0)continue;
       if(pure[code]){
         const color=pure[code];add(candidate,color,amount);add(runtime,color==='iron'?'metal':color,amount);
       }else if(code==='81'){
@@ -335,23 +336,28 @@
         muCrosswalk=true;inference.push('mu_81_manual_neutral_bead_crosswalk_inferred');
         if(cardType==='unit')upkeep+=amount;
       }else if(code==='82'){
-        add(candidate,'ncs',amount);add(runtime,'neutral',amount);
-        inference.push('ncs_requiresoul_semantics_unverified_generic_fallback');fallback=true;
+        add(candidate,'ncs',amount);
+        inference.push('ncs_requiresoul_semantics_unverified_blocked');blocked=true;
       }else if(code==='83'){
-        add(candidate,'bonus',amount);add(runtime,'neutral',amount);
-        inference.push('bonus_requiresoul_semantics_unverified_generic_fallback');fallback=true;
+        add(candidate,'bonus',amount);
+        inference.push('bonus_requiresoul_semantics_unverified_blocked');blocked=true;
       }else if(hybrid[code]){
-        add(candidate,'hybrid:'+hybrid[code],amount);add(runtime,'neutral',amount);
-        inference.push('hybrid_payment_semantics_unverified_generic_fallback');fallback=true;
+        add(candidate,'hybrid:'+hybrid[code],amount);
+        inference.push('hybrid_payment_semantics_unverified_blocked');blocked=true;
+      }else if(code==='01'){
+        add(candidate,'unknown:'+code,amount);
+        inference.push('nonzero-none-requiresoul-token-blocked');blocked=true;
       }else{
-        add(candidate,'unknown:'+code,amount);add(runtime,'neutral',amount);
-        inference.push('unknown_requiresoul_token_generic_payable_fallback');fallback=true;
+        add(candidate,'unknown:'+code,amount);
+        inference.push('unknown_requiresoul_token_blocked');blocked=true;
       }
     }
-    if(!Object.keys(runtime).length)runtime.neutral=0;
+    if(!Object.keys(candidate).length&&!blocked)runtime.neutral=0;
     return {
-      candidateCost:candidate,runtimeCost:runtime,
-      runtimeCostStatus:fallback?'fallback_payable':(muCrosswalk?'implemented_inferred':'implemented_verified'),
+      candidateCost:candidate,
+      runtimeCost:blocked?null:runtime,
+      runtimeCostKnown:!blocked,
+      runtimeCostStatus:blocked?'semantic_review_blocked':(muCrosswalk?'implemented_inferred':'implemented_verified'),
       runtimeCostInference:[...new Set(inference)],
       runtimeUpkeepCost:{neutral:upkeep},runtimeUpkeepNeutral:upkeep,
       runtimeUpkeepStatus:upkeep?'mu_81_manual_neutral_crosswalk_inferred':'zero_upkeep'
@@ -386,7 +392,7 @@
     const sourceFields=raw.sourceFields&&typeof raw.sourceFields==='object'?raw.sourceFields:{};
     const sourceRequireSoul=sourceFields.RequireSoul??raw.soulCostRaw;
     const sourceSoulRuntime=type!=='land'?parseRequireSoulRuntime(sourceRequireSoul,type):null;
-    n.runtimeCostKnown=sourceSoulRuntime!==null||(raw.runtimeCostKnown===true&&runtimeCost!==null);
+    n.runtimeCostKnown=sourceSoulRuntime?sourceSoulRuntime.runtimeCostKnown===true:(raw.runtimeCostKnown===true&&runtimeCost!==null);
     n.runtimeCost=sourceSoulRuntime?sourceSoulRuntime.runtimeCost:(n.runtimeCostKnown?runtimeCost:null);
     n.runtimeCostStatus=sourceSoulRuntime?sourceSoulRuntime.runtimeCostStatus:String(raw.runtimeCostStatus||'source-not-available');
     n.runtimeCostInference=sourceSoulRuntime?sourceSoulRuntime.runtimeCostInference:(Array.isArray(raw.runtimeCostInference)?raw.runtimeCostInference:[]);
@@ -395,7 +401,7 @@
       n.runtimeUpkeepCost=sourceSoulRuntime.runtimeUpkeepCost;
       n.runtimeUpkeepNeutral=sourceSoulRuntime.runtimeUpkeepNeutral;
       n.runtimeUpkeepStatus=sourceSoulRuntime.runtimeUpkeepStatus;
-      if(sourceSoulRuntime.runtimeCostStatus==='fallback_payable'){
+      if(sourceSoulRuntime.runtimeCostStatus==='semantic_review_blocked'){
         n.cost=null;n.costKnown=false;n.costMapped=false;
       }
     }

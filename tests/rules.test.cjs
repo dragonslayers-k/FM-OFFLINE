@@ -73,22 +73,37 @@ test('a missing or empty source cost is not silently treated as free',()=>{
   assert.equal(FM.canPay(p,{forest:0}),true);
 });
 
-// End-to-end payment regression: inferred flexible-neutral cost must consume real generated souls.
-test('inferred NCS/BONUS neutral soul can consume any remaining generated color',()=>{
-  const p=player('player',{soulPool:{colored:{forest:1,metal:1},neutral:0}});
-  assert.equal(FM.canPay(p,{forest:1,neutral:1}),true);
-  assert.equal(FM.spendSoul(p,{forest:1,neutral:1}),true);
-  assert.equal(p.soulPool.neutral,0);
-  assert.equal(Object.values(p.soulPool.colored).reduce((sum,n)=>sum+Number(n||0),0),0);
-  assert.equal(p.soulPool.colored.forest,0);
-  assert.equal(p.soulPool.colored.metal,0);
+test('unverified RequireSoul NCS/BONUS tokens cannot be paid as generic neutral souls',()=>{
+  for(const [code,name] of [['82','NCS'],['83','BONUS']]){
+    const card=CardSchema.normalize({id:'blocked-'+name,name,type:'unit',
+      sourceFields:{RequireSoul:code+'01'},runtimeCost:{neutral:1},runtimeCostKnown:true});
+    assert.equal(card.runtimeCostKnown,false);
+    assert.equal(card.runtimeCost,null);
+    assert.equal(card.runtimeCostStatus,'semantic_review_blocked');
+    const p=player('player',{hand:[card],soulPool:{colored:{forest:3,metal:2},neutral:5},unitDeployLimit:5});
+    const before=JSON.stringify(p.soulPool);
+    const result=FM.playCard(state(p,player('ai')),'player',card.instanceId);
+    assert.equal(result.ok,false);
+    assert.match(result.reason,/RequireSoul/);
+    assert.equal(p.hand.length,1);
+    assert.equal(JSON.stringify(p.soulPool),before);
+  }
 });
 
-test('inferred hybrid soul cost still requires each printed color',()=>{
-  const p=player('player',{soulPool:{colored:{forest:1,metal:0},neutral:5}});
-  assert.equal(FM.canPay(p,{forest:1,metal:1}),false);
-  p.soulPool.colored.metal=1;
-  assert.equal(FM.canPay(p,{forest:1,metal:1}),true);
+test('unverified hybrid RequireSoul token is not converted to both colors or generic neutral',()=>{
+  const card=CardSchema.normalize({id:'blocked-hybrid',name:'혼합비용 미확인',type:'unit',
+    sourceFields:{RequireSoul:'1201'},runtimeCost:{dark:1,earth:1},runtimeCostKnown:true});
+  assert.equal(card.runtimeCostKnown,false);
+  assert.equal(card.runtimeCost,null);
+  assert.equal(card.runtimeCostStatus,'semantic_review_blocked');
+  assert.deepEqual(card.candidateCost,{'hybrid:dark+earth':1});
+  const p=player('player',{hand:[card],soulPool:{colored:{dark:1,earth:1},neutral:5},unitDeployLimit:5});
+  const result=FM.playCard(state(p,player('ai')),'player',card.instanceId);
+  assert.equal(result.ok,false);
+  assert.equal(p.hand.length,1);
+  assert.equal(p.soulPool.colored.dark,1);
+  assert.equal(p.soulPool.colored.earth,1);
+  assert.equal(p.soulPool.neutral,5);
 });
 
 
@@ -1890,19 +1905,16 @@ test('pending source-cost status does not block a card with an inferred payable 
   assert.equal(p.units.length,1);
 });
 
-test('RequireSoul NCS(82) fallback payment does not become recurring unit upkeep',()=>{
-  const ncs=unit('ncs-runtime',{instanceId:'ncs-runtime-1',sourceFields:{RequireSoul:'8201'},
-    runtimeCost:{neutral:1},runtimeCostKnown:true,runtimeUpkeepCost:{neutral:1},
-    runtimeUpkeepStatus:'manual_verified_ncs_only',costKnown:false,costMapped:false});
-  const p=player('player',{hand:[ncs],soulPool:{colored:{},neutral:2},unitDeployLimit:1});
+test('RequireSoul NCS(82) is blocked until its cost meaning is verified',()=>{
+  const ncs=CardSchema.normalize({id:'ncs-runtime',name:'NCS 미확인 유닛',type:'unit',
+    sourceFields:{RequireSoul:'8201'},runtimeCost:{neutral:1},runtimeCostKnown:true});
+  const p=player('player',{hand:[ncs],soulPool:{colored:{},neutral:2},unitDeployLimit:2});
   const s=state(p,player('ai'));
-  const result=FM.playCard(s,'player','ncs-runtime-1');
-  assert.equal(result.ok,true);
-  assert.equal(p.soulPool.neutral,1);
-  FM._test.beginPhase(s,'player');
-  assert.equal(p.neutralUpkeep,0,'NCS(82) has no verified recurring-upkeep mapping');
-  assert.equal(p.soulPool.neutral,0,'the empty test battlefield generates no neutral soul; NCS adds no upkeep');
-  assert.equal(s.status,'playing');
+  const result=FM.playCard(s,'player',ncs.instanceId);
+  assert.equal(result.ok,false);
+  assert.equal(p.hand.length,1);
+  assert.equal(p.units.length,0);
+  assert.equal(p.soulPool.neutral,2);
 });
 
 test('BONUS one-time runtime payment is excluded from recurring unit upkeep',()=>{
@@ -4208,22 +4220,23 @@ test('inconsistent Firestore coin count is retained for review and not executed'
 });
 
 
-test('DB29 RequireSoul raw source overrides legacy NCS upkeep and hybrid both-color payment',()=>{
+test('DB29 RequireSoul source blocks unresolved tokens and preserves MU upkeep separately',()=>{
   const ncs=CardSchema.normalize({id:'ncs-runtime-source',name:'NCS source',type:'unit',
     sourceFields:{RequireSoul:'8201'},runtimeCost:{neutral:1},runtimeCostKnown:true,
     runtimeUpkeepCost:{neutral:1},runtimeUpkeepStatus:'manual_verified_ncs_only'});
-  assert.deepEqual(ncs.runtimeCost,{neutral:1});
-  assert.equal(ncs.runtimeCostStatus,'fallback_payable');
+  assert.equal(ncs.runtimeCost,null);
+  assert.equal(ncs.runtimeCostKnown,false);
+  assert.equal(ncs.runtimeCostStatus,'semantic_review_blocked');
   assert.equal(ncs.runtimeUpkeepNeutral,0);
   assert.deepEqual(ncs.runtimeUpkeepCost,{neutral:0});
-  assert.ok(ncs.runtimeCostInference.includes('ncs_requiresoul_semantics_unverified_generic_fallback'));
+  assert.ok(ncs.runtimeCostInference.includes('ncs_requiresoul_semantics_unverified_blocked'));
   assert.deepEqual(ncs.candidateCost,{ncs:1});
 
   const hybrid=CardSchema.normalize({id:'hybrid-runtime-source',name:'Hybrid source',type:'unit',
     sourceFields:{RequireSoul:'1201'},runtimeCost:{dark:1,earth:1},runtimeCostKnown:true});
-  assert.deepEqual(hybrid.runtimeCost,{neutral:1},
-    'unverified hybrid payment is one generic fallback token, not both component colors');
-  assert.equal(hybrid.runtimeCostStatus,'fallback_payable');
+  assert.equal(hybrid.runtimeCost,null);
+  assert.equal(hybrid.runtimeCostKnown,false);
+  assert.equal(hybrid.runtimeCostStatus,'semantic_review_blocked');
   assert.deepEqual(hybrid.candidateCost,{'hybrid:dark+earth':1});
   assert.equal(hybrid.runtimeUpkeepNeutral,0);
 

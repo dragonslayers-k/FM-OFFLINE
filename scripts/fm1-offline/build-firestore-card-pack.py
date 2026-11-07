@@ -132,9 +132,10 @@ def parse_cost(raw, require_soul_enum):
         else:
             components=symbol.split("_")
             if components and all(part in colors for part in components):
-                record["kind"]="colored-candidate"
+                record["kind"]="hybrid-candidate" if len(components)>1 else "colored-candidate"
                 record["colors"]=[colors[part] for part in components]
-                for color in record["colors"]:
+                if len(components)==1:
+                    color=record["colors"][0]
                     values[color]=values.get(color,0)+amount
                 if len(components)>1:
                     record["status"]="hybrid_payment_unverified"
@@ -932,6 +933,7 @@ def self_test():
     assert not hybrid_pair["known"] and hybrid_pair["mapping_review"]
     assert hybrid_pair["tokens"][0]["status"]=="hybrid_payment_unverified"
     assert hybrid_pair["tokens"][0]["colors"]==["dark","earth"]
+    assert hybrid_pair["cost"]=={}, "unverified hybrid icon must not be stored as two required colors"
     hybrid_single=parse_cost("1302",require_soul_enum)
     assert not hybrid_single["known"] and hybrid_single["mapping_review"]
     assert hybrid_single["tokens"][0]["status"]=="hybrid_payment_unverified"

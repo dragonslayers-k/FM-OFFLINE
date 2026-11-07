@@ -380,9 +380,10 @@
     return {ok:true,cost:normalized};
   }
   function runtimeCostFor(card) {
+    if (card && ['semantic_review_blocked','fallback_payable','mapping_review'].includes(card.runtimeCostStatus)) return null;
     if (card && card.runtimeCostKnown === true) return card.runtimeCost;
     if (card && card.costKnown === true && card.costMapped === true) return card.cost;
-    return {neutral:1};
+    return null;
   }
 
   function costText(cost) {
@@ -565,7 +566,10 @@
     if ((card.type === 'spell' || card.type === 'enchant') && card.runtimeEffectDisposition === 'fallback_noop')
       return {ok:false,reason:'이 카드의 원본 효과는 아직 구현·검증되지 않아 현재 대전에서 사용할 수 없습니다. 효과가 검증된 뒤 활성화됩니다.'};
     if(card.type!=='land'){
-      const parsed=readCost(runtimeCostFor(card));if(!parsed.ok)return parsed;
+      if(['semantic_review_blocked','fallback_payable','mapping_review'].includes(card.runtimeCostStatus))
+        return {ok:false,reason:'이 카드의 RequireSoul 원본 토큰은 소울 비용 의미가 검증되지 않았습니다. 임의의 무속성 비용으로 대체하지 않고 사용을 차단합니다.'};
+      const parsed=readCost(runtimeCostFor(card));
+      if(!parsed.ok)return {ok:false,reason:'카드의 소울 비용을 검증할 수 없습니다: '+parsed.reason};
     }
     if(card.type==='unit'&&(!Number.isFinite(Number(card.ap))||!Number.isFinite(Number(card.dp))||!Number.isFinite(Number(card.hp))||Number(card.hp)<=0))
       return {ok:false,reason:'유닛의 AP·DP·HP 데이터가 누락되었거나 올바르지 않습니다.'};

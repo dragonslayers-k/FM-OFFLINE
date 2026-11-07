@@ -145,7 +145,7 @@ Data pack 1.3 keeps `cards.json` under the Android 128MiB limit. Full provenance
 ## 2026-11-06 — v4.9 runtime profile implementation update
 
 - Source review status and runtime playability are independent. A pending/non_executable label alone never blocks deck building, card selection, cost payment, or turn progression.
-- The DB29 SQLite converter now emits a valid runtime payment cost for each card while retaining source values/review flags. BONUS is one-time generic neutral payment; NCS is generic payment plus unit-only recurring upkeep. Missing/unresolved costs receive conservative payable neutral fallback, never free zero.
+- The DB29 SQLite converter preserves candidate/source values and review flags. Only source-backed pure colors and the inferred MU(81) neutral-bead crosswalk receive runtime costs. RequireSoul NCS(82), BONUS(83), hybrid pairs, unknown tokens, and missing/invalid costs are blocked from play until their semantics are verified; none are converted to generic neutral payment.
 - The engine uses runtime cost before source verification flags, keeps unit upkeep finite, allows MagicLand installation with zero invented ordinary production, and provides deterministic item-target fallback. Exact simple spell text with supported attack/defend/battle-start timing can use tested inferred handlers; unsupported spells and all enchants (until event-duration slot handling exists) close as paid terminal no-ops.
 - The pack carries a terminal runtime disposition for every source effect clause. Candidate/source text remains non-verified; fallback no-op is not a claim of original effect implementation.
 - Current branch work remains unmerged. The full DB29 pack validator and emulator smoke must still pass on the same final combined SHA before claiming 15,350-card runtime readiness.
@@ -401,7 +401,7 @@ Do not equate those unit markers with the separate `NCS (82)` token in `RequireS
 
 - Withdrawn: RequireSoul NCS(82) is not established by Manual as the colorless bead. The app no longer derives recurring upkeep from NCS(82) or from a generic one-time neutral runtime cost.
 - The Manual's blank/colorless bead is crosswalked provisionally to MU(81); only MU(81) token amounts are used for recurring unit upkeep. This remains an inferred enum-to-icon crosswalk pending visual verification of the source icon against Manual images.
-- NCS(82), BONUS(83), and hybrid pair tokens retain their source identity and are not used for upkeep. Their payment fallbacks are documented separately in CardDB.
+- NCS(82), BONUS(83), and hybrid pair tokens retain their source identity and are not used for upkeep or generic payment. Cards containing unresolved tokens are blocked by CardSchema validation.
 - Removed the misleading test that labelled synthetic 8-AP/2-DP coin counts as an NCS(82) parser test. Added the actual Manual example +2C1 AP / -C1 DP and asserted that both stats use the same single toss.
 - User-confirmed N/C/S stat notation remains separate from Firestore RequireSoul enum NCS(82), CoinType, and StatType marker enums. Critical attack stat resolution is not claimed implemented by this patch.
 
@@ -421,7 +421,7 @@ Do not conflate these fields with the user-confirmed N/C/S shorthand (N=Normal a
 
 ## 2026-11-07 — RequireSoul runtime correction
 
-CardSchema now reparses each card's original `sourceFields.RequireSoul` when loading the existing DB29 pack. This overrides stale runtime profiles: MU(81) is the inferred Manual-neutral crosswalk and supplies unit-only upkeep; NCS(82), BONUS(83), and hybrid pair tokens are preserved as candidate identities and use tagged generic payable fallbacks without recurring upkeep. Hybrid pairs are no longer charged as both colors. DB29 itself remains immutable and was not rebuilt.
+CardSchema reparses each card's original `sourceFields.RequireSoul` when loading the existing DB29 pack. This overrides stale runtime profiles: MU(81) remains an inferred Manual-neutral crosswalk and supplies unit-only upkeep; NCS(82), BONUS(83), hybrid pairs, unknown tokens, and invalid/missing costs are preserved as candidates but blocked from play. No generic neutral payment fallback is allowed. DB29 itself remains immutable and was not rebuilt.
 
 
 ## 2026-11-07 — TextExtra effect audit: Klub variants
@@ -431,7 +431,7 @@ Firestore records 16120828657–16120828663 contain TextExtra-only effects named
 This is a separate source-text resource/effect question, not the user-defined N/C/S(82) stat notation. The reviewed Manual pages and web searches did not define the NCS소울 resource pool or status timing. The app preserves TextExtra but does not execute 전력봉인/중급열사 yet; do not claim these effects are implemented until their lifecycle and resource source are verified.
 
 
-Converter validation note: the app pack builder now reparses raw RequireSoul tokens, keeps NCS/BONUS/hybrid candidates separate, uses a tagged generic payable fallback for unresolved tokens, maps iron to the runtime metal key, and derives unit upkeep only from the inferred MU(81) neutral-bead crosswalk. The latest converter self-test is being re-run against this exact PR head; DB29 ZIP remains reused and immutable.
+Converter validation note: the app pack builder reparses raw RequireSoul tokens, keeps NCS/BONUS/hybrid candidates separate, blocks unresolved costs from runtime payment, maps iron to the runtime metal key, and derives unit upkeep only from the inferred MU(81) neutral-bead crosswalk. The existing DB29 ZIP is reused and immutable.
 
 
 Firestore enum raw-code audit: `Enum+StatType` row values, not outer map indexes, are the card-field codes: 1=NONE, 11=CONST(★), 12=UP(▲), 13=DOWN(▼), 21=FRONT, 22=BACK, 23=HAND, 24=TURN, 31=PLUS, 32=MINUS, 33=EQUAL. `Enum+CoinType` raw codes are 1=NONE, 2=PLUS, 3=MINUS, 4=X, 5=EQUAL. The earlier synthetic 1/2/3 StatType fixtures and 0/1/2 CoinType assumptions were incorrect and are replaced.
@@ -445,4 +445,11 @@ Final enum regression fixture alignment: explicit zero-cost source rows use raw 
 The Firestore enumtable defines `EarnSoul` raw code 82 as `MU02` (two neutral souls produced per token), while `RequireSoul` raw code 82 is the separate `NCS` token. The user-confirmed `NCS(82)` notation is a third, unrelated unit-stat shorthand (N/C/S with attack dice 0–8 and defense dice 0–2). A fourth literal, `NCS소울`, appears in some `TextExtra` effects and remains a separate source-text resource question. These meanings must never be joined by the shared number/string alone. The app's `parse_earn_soul_list` already decodes `EarnSoul` 8201 as two neutral output; converter self-tests cover it separately from `RequireSoul` 8201 review handling.
 
 
-Validation checkpoint: SQLite converter fixtures now use raw RequireSoul token strings for hybrid/NCS/BONUS cases; hybrid payment remains one tagged generic fallback rather than both component colors, NCS/BONUS never create recurring upkeep, and the build_card test helper keeps backward-compatible optional StatType metadata. Re-run full PR validation against this commit.
+Validation checkpoint: SQLite converter fixtures use raw RequireSoul tokens; hybrid component colors are stored only as candidate components, and unresolved hybrid/NCS/BONUS/unknown costs are not payable. The build_card test helper retains backward-compatible optional StatType metadata. Full PR validation must be rerun against this commit.
+
+
+## 2026-11-07 — Strict RequireSoul playability correction
+
+The previous tagged `fallback_payable` policy was not fail-closed: `runtimeCostFor()` returned a generic neutral cost and `validateCardForPlay()` accepted it. That allowed cards with unverified RequireSoul NCS(82), BONUS(83), hybrid, unknown, missing, or invalid costs to be played using an invented generic payment. This was incorrect and has been removed.
+
+CardSchema now preserves each unresolved token in `candidateCost`, sets `runtimeCostKnown=false`, `runtimeCost=null`, and `runtimeCostStatus=semantic_review_blocked`. The game engine rejects the card before payment or consumption. Tests verify that a large neutral/colored soul pool cannot make these cards playable. Known pure-color costs and the inferred MU(81) candidate crosswalk remain separate. This does not change the immutable DB29 ZIP.

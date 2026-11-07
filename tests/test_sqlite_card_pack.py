@@ -167,8 +167,9 @@ class SqliteCardPackTests(unittest.TestCase):
         self.assertEqual(parsed["candidateCost"], {"hybrid:forest+iron": 1})
         self.assertTrue(parsed["mappingReview"])
         self.assertIn("hybrid-payment-semantics-unverified", parsed["review"])
-        self.assertEqual(parsed["runtimeCost"], {"neutral": 1})
-        self.assertEqual(parsed["runtimeCostStatus"], "fallback_payable")
+        self.assertEqual(parsed["runtimeCost"], {})
+        self.assertFalse(parsed["runtimeCostKnown"])
+        self.assertEqual(parsed["runtimeCostStatus"], "semantic_review_blocked")
 
     def test_ncs_and_bonus_remain_separate_and_unverified_cost_fails_closed(self):
         row = self.db.execute("SELECT * FROM card_costs").fetchone()
@@ -188,9 +189,10 @@ class SqliteCardPackTests(unittest.TestCase):
         self.assertEqual(parsed["specialSouls"]["bonus"], 2)
         self.assertTrue(parsed["semanticReview"])
         self.assertIn("special-soul-semantics-unverified", parsed["review"])
-        self.assertEqual(parsed["runtimeCost"], {"metal": 2, "neutral": 3})
+        self.assertEqual(parsed["runtimeCost"], {})
+        self.assertFalse(parsed["runtimeCostKnown"])
         self.assertEqual(parsed["runtimeUpkeepNeutral"], 0)
-        self.assertEqual(parsed["runtimeCostStatus"], "fallback_payable")
+        self.assertEqual(parsed["runtimeCostStatus"], "semantic_review_blocked")
 
     def test_simple_spell_inference_requires_supported_timing_and_enchant_stays_fallback(self):
         enums = {"TurnType": {"1": "공격"}, "EnchantSlot": {"1": "아군 슬롯 1"}}
