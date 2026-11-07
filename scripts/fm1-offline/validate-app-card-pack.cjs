@@ -230,7 +230,7 @@ const effectAudit = { candidates:0, clauses:0, candidateOnlyCards:0, unexpectedE
 const skillAudit = { mappingRows:0, manualVerifiedMappings:0, communityCandidates:0, unmapped:0,
   noSkill:0, communityRuleExecution:0, manualRuleCards:0 };
 const errors = [];
-const runtimeActionAudit = { attempted:0, completed:0, blocked:0, terminalStates:Object.create(null), byType:Object.create(null) };
+const runtimeActionAudit = { attempted:0, completed:0, intentionallyBlocked:0, blocked:0, terminalStates:Object.create(null), byType:Object.create(null) };
 function makeProbePlayer(id) {
   return {
     id, name:id, isAI:id==='ai',
@@ -290,14 +290,15 @@ function probeRuntimeAction(sourceCard) {
   else if(card.type==='unit') { terminalState=owner.units.some(x=>x.instanceId===instanceId); terminalLabel='unit_summoned'; }
   else if(card.type==='spell') {
     terminalState=owner.spells.some(x=>x.instanceId===instanceId)||owner.graveyard.some(x=>x.instanceId===instanceId);
-    terminalLabel=owner.spells.some(x=>x.instanceId===instanceId)?'spell_queued':'spell_fallback_terminal';
+    terminalLabel=owner.spells.some(x=>x.instanceId===instanceId)?'spell_queued':
+      owner.graveyard.some(x=>x.instanceId===instanceId)?'spell_fallback_terminal':'spell_effect_unimplemented_blocked';
   } else if(card.type==='item') {
     terminalState=owner.graveyard.some(x=>x.instanceId===instanceId)||
       ownTarget.equipment.includes(card.name)||enemyTarget.equipment.includes(card.name);
     terminalLabel=owner.graveyard.some(x=>x.instanceId===instanceId)?'item_fallback_terminal':'item_equipped';
   } else if(card.type==='enchant') {
     terminalState=owner.graveyard.some(x=>x.instanceId===instanceId);
-    terminalLabel='enchant_fallback_terminal';
+    terminalLabel=terminalState?'enchant_fallback_terminal':'enchant_effect_unimplemented_blocked';
   }
   return {ok:!!(result&&result.ok)&&!remainsInHand&&terminalState&&owner.playedAnyCardThisPhase,
     reason:result&&result.reason||(!owner.playedAnyCardThisPhase?'phase action flag was not completed':'action did not reach a terminal state'),
@@ -309,11 +310,22 @@ for (const card of cards) {
   const validation = FM.validateCardForPlay(card);
   playable[card.type] = playable[card.type] || { ok:0, blocked:0 };
   runtimeActionAudit.attempted++;
-  runtimeActionAudit.byType[card.type]=runtimeActionAudit.byType[card.type]||{completed:0,blocked:0};
+  runtimeActionAudit.byType[card.type]=runtimeActionAudit.byType[card.type]||{completed:0,intentionallyBlocked:0,blocked:0};
   const actionProbe=probeRuntimeAction(card);
+  const unsupportedEffectCard=['spell','enchant'].includes(card.type) &&
+    card.runtimeEffectDisposition==='fallback_noop';
+  const intentionallyBlocked=unsupportedEffectCard && !validation.ok && !actionProbe.ok &&
+    actionProbe.remainsInHand && !actionProbe.playedAnyCardThisPhase &&
+    actionProbe.reason===validation.reason;
   if(actionProbe.ok){
     runtimeActionAudit.completed++;
     runtimeActionAudit.byType[card.type].completed++;
+    runtimeActionAudit.terminalStates[actionProbe.terminalLabel]=(runtimeActionAudit.terminalStates[actionProbe.terminalLabel]||0)+1;
+  }else if(intentionallyBlocked){
+    // Unimplemented spell/enchant effects are expected to stay in hand without
+    // paying souls or completing a phase action; they are not playable probes.
+    runtimeActionAudit.intentionallyBlocked++;
+    runtimeActionAudit.byType[card.type].intentionallyBlocked++;
     runtimeActionAudit.terminalStates[actionProbe.terminalLabel]=(runtimeActionAudit.terminalStates[actionProbe.terminalLabel]||0)+1;
   }else{
     runtimeActionAudit.blocked++;
@@ -325,6 +337,7 @@ for (const card of cards) {
     playable[card.type].blocked++;
     const reason = String(validation.reason || 'unknown');
     blocked[reason] = (blocked[reason] || 0) + 1;
+    if (!intentionallyBlocked) errors.push(card.id + ': card cannot enter a playable action: ' + reason);
   }
 
   if (card.sourceCardUrl !== 'https://fmlunatic.com/card/' + card.id) {
@@ -523,11 +536,15 @@ for (const card of cards) {
       if (card.costSemanticReview) costKnown[card.type].semanticReview++;
     }
   }
-  if (!validation.ok) errors.push(card.id + ': card cannot enter a playable action: ' + String(validation.reason || 'unknown'));
 }
 
-if (runtimeActionAudit.attempted !== 15350 || runtimeActionAudit.completed !== 15350 || runtimeActionAudit.blocked !== 0) {
-  errors.push('Runtime action terminal-state coverage mismatch: ' + JSON.stringify(runtimeActionAudit));
+const expectedIntentionalBlocks=cards.filter(card=>['spell','enchant'].includes(card.type) &&
+  card.runtimeEffectDisposition==='fallback_noop').length;
+if (runtimeActionAudit.attempted !== 15350 ||
+    runtimeActionAudit.completed + runtimeActionAudit.intentionallyBlocked !== 15350 ||
+    runtimeActionAudit.intentionallyBlocked !== expectedIntentionalBlocks ||
+    runtimeActionAudit.blocked !== 0) {
+  errors.push('Runtime action completion/intentional-block coverage mismatch: ' + JSON.stringify({runtimeActionAudit,expectedIntentionalBlocks}));
 }
 
 for (const [type, count] of Object.entries(EXPECTED)) {
