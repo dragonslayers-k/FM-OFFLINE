@@ -206,18 +206,20 @@ class SqliteCardPackTests(unittest.TestCase):
         enchant = {"raw_payload": {"Category": 5, "TextBase": "아군 유닛의 AP를 +2만큼 증가", "TurnType": 1, "EnchantSlot": 1}}
         self.assertIsNone(CONVERTER.runtime_effect_mapping_for_row(enchant, enums))
 
-    def test_missing_and_unresolved_costs_get_nonzero_payable_runtime_fallbacks(self):
+    def test_missing_and_unresolved_costs_are_blocked_instead_of_generic_payable_fallbacks(self):
         missing = CONVERTER.db_cost_to_app(None)
-        self.assertEqual(missing["runtimeCost"], {"neutral": 1})
-        self.assertEqual(missing["runtimeCostStatus"], "fallback_payable")
+        self.assertEqual(missing["runtimeCost"], {})
+        self.assertFalse(missing["runtimeCostKnown"])
+        self.assertEqual(missing["runtimeCostStatus"], "semantic_review_blocked")
         unknown = CONVERTER.db_cost_to_app({
             "soul_json": json.dumps({"colors": {}, "known": False, "tokens": [
-                {"raw": "9902", "amount": 2, "status": "manual_review"}]}),
+                {"raw": "9902", "code": 99, "amount": 2, "status": "manual_review"}]}),
             "soul_known": 0, "mapping_review": 0, "semantic_review": 1,
             "verification_status": "semantic_review", "source_text": "9902"
         })
-        self.assertEqual(unknown["runtimeCost"], {"neutral": 2})
-        self.assertEqual(unknown["runtimeCostStatus"], "fallback_payable")
+        self.assertEqual(unknown["runtimeCost"], {})
+        self.assertFalse(unknown["runtimeCostKnown"])
+        self.assertEqual(unknown["runtimeCostStatus"], "semantic_review_blocked")
 
     def test_load_reads_exact_url_image_hash_and_effect_candidates_from_sqlite(self):
         rows = CONVERTER.load_normalized_database(self.db_path, expected_count=1)
