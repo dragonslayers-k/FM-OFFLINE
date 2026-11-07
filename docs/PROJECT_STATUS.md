@@ -443,3 +443,6 @@ Final enum regression fixture alignment: explicit zero-cost source rows use raw 
 ### EarnSoul / RequireSoul code-82 namespace split
 
 The Firestore enumtable defines `EarnSoul` raw code 82 as `MU02` (two neutral souls produced per token), while `RequireSoul` raw code 82 is the separate `NCS` token. The user-confirmed `NCS(82)` notation is a third, unrelated unit-stat shorthand (N/C/S with attack dice 0–8 and defense dice 0–2). A fourth literal, `NCS소울`, appears in some `TextExtra` effects and remains a separate source-text resource question. These meanings must never be joined by the shared number/string alone. The app's `parse_earn_soul_list` already decodes `EarnSoul` 8201 as two neutral output; converter self-tests cover it separately from `RequireSoul` 8201 review handling.
+
+
+Validation checkpoint: SQLite converter fixtures now use raw RequireSoul token strings for hybrid/NCS/BONUS cases; hybrid payment remains one tagged generic fallback rather than both component colors, NCS/BONUS never create recurring upkeep, and the build_card test helper keeps backward-compatible optional StatType metadata. Re-run full PR validation against this commit.
