@@ -55,6 +55,20 @@ test('parses FM1 shared-coin stat notation from the unit stat tab',()=>{
   assert.equal(card.coinTech.stats.hp.coin[0].operation,'add');
 });
 
+test('reused DB29 pack maps StatType directly from raw sourceFields without rebuilding the ZIP',()=>{
+  const card=Schema.normalize({
+    id:'U-STAT-LEGACY-PACK',name:'기존팩 원본 StatType',type:'unit',faction:'light',
+    ap:5,dp:2,hp:4,
+    tabs:{'분류별':['공\\n▲5\\n방\\n▼2\\n체\\n★4']},
+    sourceFields:{ATK:5,ATKStatType:21,DEF:2,DEFStatType:12,HP:4,HPStatType:13}
+  });
+  assert.equal(card.statTech.stats.ap.sourceTypeCode,21);
+  assert.equal(card.statTech.stats.ap.sourceType,'FRONT');
+  assert.equal(card.statTech.stats.ap.marker,'');
+  assert.equal(card.statTech.stats.dp.marker,'▲');
+  assert.equal(card.statTech.stats.hp.marker,'▼');
+});
+
 test('source StatType markers override text parsing and unknown types never become combat restrictions',()=>{
   const card=Schema.normalize({
     id:'U-STAT-SOURCE',name:'원본기호검증',type:'unit',faction:'light',

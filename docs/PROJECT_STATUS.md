@@ -477,3 +477,8 @@ A separate fail-open/fail-closed defect was corrected: when an already-present/l
 ## 2026-11-07 — AI starter deck legality correction
 
 The generated starter deck previously ranked low-cost cards but could still include lands with unverified installation costs, units with blocked RequireSoul tokens, and spells with fallback_noop effects. The opening-hand rule guarantees a land, not a playable land; consequently an AI hand could contain only a non-installable land and have no legal way to generate souls. Starter-deck construction now filters every card through the same `validateCardForPlay` gate used by actual play, selects a faction pool only when it contains enough legal cards and at least one legal land, and fills short land quotas with other legal cards. It fails with a specific error if no legal land or fewer than 50 legal cards exist. AI unit candidates are also excluded when all five unit slots are occupied.
+
+
+## 2026-11-07 — Reused DB29 v1.3.0 StatType compatibility
+
+The existing immutable DB29 v1.3.0 Android ZIP was produced before the derived `sourceStatTech` field was added to the converter. It does, however, preserve the complete raw Firestore card fields under `sourceFields`. CardSchema now derives the same Manual-limited marker mapping directly from `sourceFields.ATKStatType`, `DEFStatType`, and `HPStatType` when `sourceStatTech` is absent. This makes the current APK correction effective against the reused ZIP without regenerating or mutating DB29. Regression coverage exercises a legacy-pack card with FRONT/UP/DOWN source codes.

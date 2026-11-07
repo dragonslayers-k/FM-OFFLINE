@@ -164,6 +164,34 @@
     return {source:raw,operation:op==='-'?'subtract':op==='X'?'multiply':op==='+'?'add':'set',
       multiplier:match[2]?Number(match[2]):1,tosses:Number(match[3])};
   }
+  function sourceStatTechFromFields(fields) {
+    if(!fields||typeof fields!=='object'||Array.isArray(fields))return {};
+    const names={1:'NONE',11:'CONST',12:'UP',13:'DOWN',21:'FRONT',22:'BACK',23:'HAND',24:'TURN',31:'PLUS',32:'MINUS',33:'EQUAL'};
+    const specs=[
+      {stat:'ap',value:'ATK',type:'ATKStatType'},
+      {stat:'dp',value:'DEF',type:'DEFStatType'},
+      {stat:'hp',value:'HP',type:'HPStatType'}
+    ];
+    const result={};
+    for(const spec of specs){
+      const hasValue=Object.prototype.hasOwnProperty.call(fields,spec.value);
+      const hasType=Object.prototype.hasOwnProperty.call(fields,spec.type);
+      if(!hasValue&&!hasType)continue;
+      const typeCode=integer(fields[spec.type]);
+      let marker='',status='source_type_semantics_unverified';
+      if(typeCode===1)status='source_mapped_no_marker';
+      else if(typeCode===11){marker='★';status='manual_marker_mapped';}
+      else if(typeCode===12){marker='▲';status='manual_marker_mapped';}
+      else if(typeCode===13){marker='▼';status='manual_marker_mapped';}
+      else if(typeCode===null)status='source_stat_type_missing';
+      result[spec.stat]={
+        value:decimal(fields[spec.value]),typeCode,type:names[typeCode]||'',
+        marker,status,sourceValueField:spec.value,sourceTypeField:spec.type
+      };
+    }
+    return result;
+  }
+
   function parseStatTech(card) {
     const lines = entries(card,'분류별');
     const block = lines.find(x => /(^|\n)\s*(공|방|체)\s*(\n|$)/.test(x)) || '';
@@ -189,7 +217,10 @@
         result[current].value = Number(valueMatch[2]);
       }
     }
-    const sourceStatTech=card.sourceStatTech&&typeof card.sourceStatTech==='object'?card.sourceStatTech:{};
+    // DB29 v1.3.0 is intentionally reused and predates the derived
+    // sourceStatTech object; its raw Firestore sourceFields are authoritative.
+    const sourceStatTech=card.sourceStatTech&&typeof card.sourceStatTech==='object'
+      ?card.sourceStatTech:sourceStatTechFromFields(card.sourceFields);
     for(const stat of ['ap','dp','hp']){
       const source=sourceStatTech[stat];
       if(!source||typeof source!=='object')continue;
