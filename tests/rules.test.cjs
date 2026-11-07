@@ -450,7 +450,7 @@ test('neutral soul upkeep is charged only for neutral summon beads',()=>{
 
 test('unpaid neutral upkeep destroys exactly the missing number of deck cards',()=>{
   const p=player('player',{
-    units:[unit('neutral-unit',{cost:{neutral:3}})],
+    units:[unit('neutral-unit',{cost:{neutral:3},sourceFields:{RequireSoul:'8103'}})],
     lands:[land('one-soul','fire',1,0)],
     hand:Array.from({length:6},(_,i)=>({id:'h'+i})),
     deck:Array.from({length:6},(_,i)=>({id:'d'+i}))
@@ -1709,8 +1709,8 @@ test('DB29 Manual Consecutive Attack applies AP-minus-one doubling with DP and b
 });
 
 test('neutral upkeep is charged only for units with a neutral soul cost and limits deployment after upkeep',()=>{
-  const noNeutral=unit('no-neutral',{cost:{forest:1},costKnown:true});
-  const withNeutral=unit('with-neutral',{cost:{forest:1,neutral:1},costKnown:true});
+  const noNeutral=unit('no-neutral',{cost:{forest:1},costKnown:true,sourceFields:{RequireSoul:'1101'}});
+  const withNeutral=unit('with-neutral',{cost:{forest:1,neutral:1},costKnown:true,sourceFields:{RequireSoul:'8101'}});
   const p=player('player',{lands:[land('land','forest',1,0)],units:[noNeutral,withNeutral]});
   const s=state(p,player('ai'));
   FM._test.beginPhase(s,'player');
@@ -1890,23 +1890,24 @@ test('pending source-cost status does not block a card with an inferred payable 
   assert.equal(p.units.length,1);
 });
 
-test('Manual NCS runtime cost pays from the pool and applies unit-only recurring upkeep',()=>{
-  const ncs=unit('ncs-runtime',{instanceId:'ncs-runtime-1',runtimeCost:{neutral:1},runtimeCostKnown:true,
-    runtimeUpkeepCost:{neutral:1},costKnown:false,costMapped:false});
+test('RequireSoul NCS(82) fallback payment does not become recurring unit upkeep',()=>{
+  const ncs=unit('ncs-runtime',{instanceId:'ncs-runtime-1',sourceFields:{RequireSoul:'8201'},
+    runtimeCost:{neutral:1},runtimeCostKnown:true,runtimeUpkeepCost:{neutral:1},
+    runtimeUpkeepStatus:'manual_verified_ncs_only',costKnown:false,costMapped:false});
   const p=player('player',{hand:[ncs],soulPool:{colored:{},neutral:2},unitDeployLimit:1});
   const s=state(p,player('ai'));
   const result=FM.playCard(s,'player','ncs-runtime-1');
   assert.equal(result.ok,true);
   assert.equal(p.soulPool.neutral,1);
   FM._test.beginPhase(s,'player');
-  assert.equal(p.neutralUpkeep,1);
-  assert.equal(p.soulPool.neutral,0);
+  assert.equal(p.neutralUpkeep,0,'NCS(82) has no verified recurring-upkeep mapping');
+  assert.equal(p.soulPool.neutral,1);
   assert.equal(s.status,'playing');
 });
 
 test('BONUS one-time runtime payment is excluded from recurring unit upkeep',()=>{
-  const bonus=unit('bonus-runtime',{runtimeCost:{neutral:2},runtimeCostKnown:true,
-    runtimeUpkeepCost:{neutral:0},costKnown:false,costMapped:false});
+  const bonus=unit('bonus-runtime',{sourceFields:{RequireSoul:'8302'},runtimeCost:{neutral:2},runtimeCostKnown:true,
+    runtimeUpkeepCost:{neutral:0},runtimeUpkeepStatus:'zero_upkeep',costKnown:false,costMapped:false});
   const p=player('player',{units:[bonus],soulPool:{colored:{},neutral:0}});
   const s=state(p,player('ai'));
   FM._test.beginPhase(s,'player');

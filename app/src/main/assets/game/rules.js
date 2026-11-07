@@ -888,7 +888,7 @@
 
   function sourceManualNeutralUpkeep(unit) {
     const raw = unit && ((unit.sourceFields && unit.sourceFields.RequireSoul) || unit.soulCostRaw);
-    if (typeof raw !== 'string' || !/^\\d+$/.test(raw) || raw.length % 4 !== 0) return null;
+    if (typeof raw !== 'string' || !/^\d+$/.test(raw) || raw.length % 4 !== 0) return null;
     let amount = 0;
     for (let offset = 0; offset < raw.length; offset += 4) {
       const code = raw.slice(offset, offset + 2);
