@@ -4250,7 +4250,7 @@ test('Firestore source coin fields map CoinType operators and share one toss pro
 test('Firestore CoinType operator/sign conflict is blocked instead of using display fallback',()=>{
   const card=CardSchema.normalize({id:'coin-conflict-runtime',name:'충돌 코인',type:'unit',
     ap:3,dp:1,hp:4,sourceFields:{RequireSoul:'1101'},
-    tabs:{'분류별':[{text:'공\\n3\\n+C1\\n방\\n1\\n체\\n4'}]},
+    tabs:{'분류별':[{text:'공\n3\n+C1\n방\n1\n체\n4'}]},
     sourceCoinTech:{ATKCoin:'+2C1',ATKCoinType:3,ATKCoinCount:1,
       DEFCoin:'NONE',DEFCoinType:1,DEFCoinCount:0,
       HPCoin:'NONE',HPCoinType:1,HPCoinCount:0}});

@@ -457,7 +457,7 @@ CardSchema now preserves each unresolved token in `candidateCost`, sets `runtime
 
 ## 2026-11-07 — DB29 coin-source coverage audit
 
-The CardSchema parser preserves Firestore CoinType EQUAL(5) as an enum-inferred `set` operation with `coinTechSourceStatus=source_inferred`; Manual coin.htm does not independently define EQUAL. The runtime still resolves one shared coin toss profile for AP/DP/HP. A `source_review` count must be inspected before allowing a unit's tab-derived coin expression to replace an unresolved source operator.
+The CardSchema parser preserves Firestore CoinType EQUAL(5) as an enum-inferred candidate but does not execute it; Manual coin.htm does not independently define EQUAL. Source-review lanes are blocked and cannot be replaced by tab-derived coin expressions. Valid source-mapped lanes on the same card remain independently executable. The runtime resolves one shared coin toss profile for AP/DP/HP.
 
 
 ## 2026-11-07 — Manual soul-cost rule and unknown-upkeep correction

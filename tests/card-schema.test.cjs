@@ -77,7 +77,7 @@ test('source CoinType conflicts never fall back to display-text coin effects',()
   const card=Schema.normalize({
     id:'coin-type-conflict',name:'코인 원본 충돌',type:'unit',faction:'light',
     ap:3,dp:1,hp:4,
-    tabs:{'분류별':[{text:'공\\n3\\n+C1\\n방\\n1\\n체\\n4'}]},
+    tabs:{'분류별':[{text:'공\n3\n+C1\n방\n1\n체\n4'}]},
     sourceCoinTech:{
       ATKCoin:'+2C1',ATKCoinType:3,ATKCoinCount:1,
       DEFCoin:'NONE',DEFCoinType:1,DEFCoinCount:0,

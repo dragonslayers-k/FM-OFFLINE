@@ -265,7 +265,7 @@
         stats[spec.stat]={coin:[]};
         continue;
       }
-      if(rawType!==null&&/^[+\\-X=]/i.test(rawValue)&&parsed.operation!==operation){
+      if(rawType!==null&&['+','-','X','='].includes(rawValue[0].toUpperCase())&&parsed.operation!==operation){
         review.push(spec.stat+':coin-type-expression-mismatch');
         stats[spec.stat]={coin:[]};
         continue;
